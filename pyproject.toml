@@ -1,0 +1,30 @@
+[build-system]
+requires = [ "hatchling", "hatch-vcs" ]
+build-backend = "hatchling.build"
+
+[project]
+name = "HardcoverHarvester"
+authors = [
+    { name="Philip Johansson", email="hardcoverharvester@phlipphlop.me" },
+]
+description = "A tool to fetch books on Hardcover from MaM"
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+  "rich_argparse"
+]
+dynamic = [ "version" ]
+
+[tool.hatch.version]
+source = "vcs"
+[tool.hatch.build.hooks.vcs]
+version-file = "src/hardcoverharvester/_version.py"
+
+[project.url]
+Homepage = "https://git.phlipphlop.me/phlipphlop/HardcoverHarvester"
+Issuse = "https://git.phlipphlop.me/phlipphlop/HardcoverHarvester/issues"
