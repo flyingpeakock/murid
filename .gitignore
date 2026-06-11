@@ -7,3 +7,4 @@ _version.py
 result
 .pre-commit-config.yaml
 .direnv
+config.yaml

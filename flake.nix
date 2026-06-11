@@ -37,7 +37,17 @@
           projectRoot = ./.;
         };
       in {
-        packages.default = pkgs.callPackage ./package.nix {};
+        packages.default = pkgs.python3Packages.buildPythonApplication (
+          project.renderers.buildPythonPackage {
+            python = pkgs.python3;
+          }
+          // {
+            pname = "HardcoverHarvester";
+            version = "0.0.0";
+
+            meta.mainProgram = "HardcoverHarvester";
+          }
+        );
 
         pre-commit.settings.hooks = {
           alejandra.enable = true;

@@ -16,7 +16,10 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-  "rich_argparse"
+  "rich",
+  "rich_argparse",
+  "pyyaml",
+  "requests"
 ]
 dynamic = [ "version" ]
 
@@ -25,6 +28,9 @@ source = "vcs"
 [tool.hatch.build.hooks.vcs]
 version-file = "src/hardcoverharvester/_version.py"
 
-[project.url]
+[project.scripts]
+HardcoverHarvester = "hardcoverharvester:hardcoverharvester.main"
+
+[project.urls]
 Homepage = "https://git.phlipphlop.me/phlipphlop/HardcoverHarvester"
-Issuse = "https://git.phlipphlop.me/phlipphlop/HardcoverHarvester/issues"
+Issues = "https://git.phlipphlop.me/phlipphlop/HardcoverHarvester/issues"
