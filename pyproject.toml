@@ -30,7 +30,7 @@ source = "vcs"
 version-file = "src/hardcoverharvester/_version.py"
 
 [project.scripts]
-HardcoverHarvester = "hardcoverharvester:hardcoverharvester.main"
+HardcoverHarvester = "hardcoverharvester:main.main"
 
 [project.optional-dependencies]
 dev = [
