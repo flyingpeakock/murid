@@ -21,6 +21,7 @@ dependencies = [
   "pyyaml",
   "requests"
 ]
+
 dynamic = [ "version" ]
 
 [tool.hatch.version]
@@ -31,6 +32,30 @@ version-file = "src/hardcoverharvester/_version.py"
 [project.scripts]
 HardcoverHarvester = "hardcoverharvester:hardcoverharvester.main"
 
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pytest-cov",
+  "ruff"
+]
+tests = [
+  "pytest",
+  "pytest-cov"
+]
+
 [project.urls]
 Homepage = "https://git.phlipphlop.me/phlipphlop/HardcoverHarvester"
 Issues = "https://git.phlipphlop.me/phlipphlop/HardcoverHarvester/issues"
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = [
+  "-ra"
+]
+
+[tool.coverage.run]
+source = ["hardcoverharvester"]

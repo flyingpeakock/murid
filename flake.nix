@@ -45,6 +45,10 @@
             pname = "HardcoverHarvester";
             version = "0.0.0";
 
+            nativeCheckInputs = [
+              pkgs.python3Packages.pytestCheckHook
+            ];
+
             meta.mainProgram = "HardcoverHarvester";
           }
         );
@@ -71,6 +75,7 @@
             pkgs.hatch
             pkgs.pyenv
             pkgs.ruff
+            pkgs.python3Packages.pytest
             pythonEnv
           ];
         };
