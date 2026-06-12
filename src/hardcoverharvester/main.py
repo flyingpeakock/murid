@@ -1,6 +1,7 @@
 import argparse
 import logging
 
+import requests
 from rich.logging import RichHandler
 from rich_argparse import RichHelpFormatter
 
@@ -68,20 +69,21 @@ Downloads are sent to qBittorrent and then added to Calibre.
     except CalibreError as e:
         logger.error(f"Error initializing Calibre: {e}")
         raise SystemExit(1) from e
+    hardcoverObjects = [Hardcover(user["api_key"], user["id"]) for user in config.get("users")]
 
-    calibreBooks = calibre.get_books()
-    count = len(calibreBooks)
-    logger.info(f"Fetched {count} book{'s' if count != 1 else ''} from Calibre database")
+    try:
+        calibreBooks = calibre.get_books()
+        count = len(calibreBooks)
+        logger.info(f"Fetched {count} book{'s' if count != 1 else ''} from Calibre database")
 
-    hardcoverObjects = []
-    hardcoverBooks = []
-    for user in config.get("users"):
-        logger.debug(f"Processing user_id: {user['id']}")
-        hardcoverObjects.append(Hardcover(user["api_key"], user["id"]))
-        hardcoverBooks.extend(hardcoverObjects[-1].get_books())
-    count = len(hardcoverBooks)
-    logger.info(f"Fetched {count} book{'s' if count != 1 else ''} from Hardcover API")
-    logger.debug(f"Hardcover books: {hardcoverBooks}")
+        hardcoverBooks = [book for hardcover in hardcoverObjects for book in hardcover.get_books()]
+        count = len(hardcoverBooks)
+        logger.info(f"Fetched {count} book{'s' if count != 1 else ''} from Hardcover API")
+        logger.debug(f"Hardcover books: {hardcoverBooks}")
+    except CalibreError as e:
+        logger.error(f"Error fetching data from Calibre: {e}")
+    except requests.RequestException as e:
+        logger.error(f"Error fetching data from Hardcover API: {e}")
 
 
 if __name__ == "__main__":

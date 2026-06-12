@@ -47,7 +47,7 @@ class Calibre:
             conn.row_factory = sqlite3.Row
         except Exception as e:
             logger.error(f"Error connecting to Calibre database: {e}")
-            raise
+            raise CalibreError(f"Error connecting to Calibre database: {e}") from e
         cursor = conn.cursor()
         query = """
             SELECT
