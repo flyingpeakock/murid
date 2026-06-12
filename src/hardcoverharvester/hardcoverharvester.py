@@ -35,7 +35,7 @@ def getArgParser(description: str) -> argparse.ArgumentParser:
         help="path to config file",
         default="config.yaml",
         dest="config_file",
-        type=argparse.FileType("r"),
+        type=str,
     )
 
     return arg_parser
@@ -52,9 +52,16 @@ Downloads are sent to qBittorrent and then added to Calibre.
     logger.info(f"Starting HardcoverHarvester v{__version__}")
 
     try:
-        config = Config(args.config_file)
+        with open(args.config_file, "r") as f:
+            config = Config(f)
     except ConfigError as e:
         logger.error(f"Error loading config: {e}")
+        return
+    except FileNotFoundError:
+        logger.error(f"Config file not found: {args.config_file}")
+        return
+    except Exception as e:
+        logger.error(f"Unexpected error loading config: {e}")
         return
 
     calibre = Calibre(config.get("calibre_db_path"))

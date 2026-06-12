@@ -93,9 +93,7 @@ class Hardcover:
             book = item.get("book", {})
 
             authors = [
-                c["author"]["name"]
-                for c in book.get("contributions", [])
-                if c.get("author")
+                c["author"]["name"] for c in book.get("contributions", []) if c.get("author")
             ]
 
             editions = book.get("editions", [])

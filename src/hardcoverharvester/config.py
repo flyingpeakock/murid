@@ -1,8 +1,8 @@
 import yaml
-import argparse
 import logging
 import os
 from typing import Any
+from io import StringIO
 
 logger = logging.getLogger("HardcoverHarvester")
 
@@ -13,6 +13,14 @@ class _Missing:
 
 
 _MISSING = _Missing()
+
+
+_defaults = {
+    "users": _MISSING,
+    "redact_sensitive_data": True,
+    "calibre_db_path": _MISSING,
+    "calibredb_executable": "calibredb",
+}
 
 
 class ConfigError(Exception):
@@ -33,17 +41,17 @@ class EnvLoader(yaml.SafeLoader):
 
 
 class Config:
-    def __init__(self, config_file: argparse.FileType) -> None:
-        self._defaults = {
-            "users": _MISSING,
-            "redact_sensitive_data": True,
-            "calibre_db_path": _MISSING,
-        }
+    def __init__(self, config_file: StringIO) -> None:
         try:
             config = yaml.load(config_file, Loader=EnvLoader)
         except yaml.YAMLError as e:
             raise ConfigError(f"Error parsing config file: {e}")
-        self._config = self._sanitize(self._defaults | (config if config is not None else {}))
+        self._config = self._sanitize(_defaults | (config if config is not None else {}))
+
+        for key in _defaults:
+            if config is None or key not in config:
+                logger.warning(f"Using default value for config item '{key}'")
+
         self.validate()
         logger.debug(f"Config loaded: {self}")
 
@@ -110,7 +118,7 @@ class Config:
         if not os.path.isfile(self.get("calibre_db_path")):
             raise ConfigError("Calibre database file not found")
 
-        expected_keys = set(self._defaults.keys())
+        expected_keys = set(_defaults.keys())
         for key in self._config.keys():
             if key not in expected_keys:
                 logger.warning(f"Unexpected config item '{key}' found in config file")

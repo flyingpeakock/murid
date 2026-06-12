@@ -71,6 +71,7 @@
             arg = project.renderers.withPackages {inherit python;};
             pythonEnv = python.withPackages arg;
           in [
+            pkgs.calibre
             pkgs.alejandra
             pkgs.hatch
             pkgs.pyenv

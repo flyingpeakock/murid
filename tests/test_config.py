@@ -10,12 +10,12 @@ from hardcoverharvester.config import (
     Config,
     ConfigError,
     EnvLoader,
+    _defaults,
 )
 
 missing = object()
-base = {
+base = _defaults.copy() | {
     "users": [{"id": 1234, "api_key": "secret123"}],
-    "redact_sensitive_data": True,
     "calibre_db_path": "metadata.db",
 }
 
@@ -237,3 +237,13 @@ def test_calibre_db_path_must_exist(build_config):
 def test_calibre_db_path_must_exist_on_filesystem(build_config):
     with pytest.raises(ConfigError, match="Calibre database file not found"):
         build_config(calibre_db_path="not-exist.db")
+
+
+def test_calibredb_executable_path_defaults_to_calibredb(build_config):
+    config = build_config()
+    assert config.get("calibredb_executable") == "calibredb"
+
+
+def test_calibredb_executable_path_can_be_overridden(build_config):
+    config = build_config(calibredb_executable="/custom/path/calibredb")
+    assert config.get("calibredb_executable") == "/custom/path/calibredb"

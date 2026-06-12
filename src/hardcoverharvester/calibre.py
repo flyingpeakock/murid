@@ -1,12 +1,39 @@
 import sqlite3
 import logging
+import subprocess
+import os
 
 logger = logging.getLogger("HardcoverHarvester")
 
 
+class CalibreError(Exception):
+    pass
+
+
 class Calibre:
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, db_executable: str = "calibredb") -> None:
         self.db_path = db_path
+        self.db_executable = db_executable
+        self.library_path = os.path.dirname(db_path)
+        self.validate()
+
+    def validate(self) -> None:
+        try:
+            subprocess.run(
+                [self.db_executable, "--version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except FileNotFoundError:
+            logger.error(f"Calibre executable not found: {self.db_executable}")
+            raise CalibreError(f"Calibre executable not found: {self.db_executable}")
+        try:
+            conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
+            conn.close()
+        except Exception as e:
+            logger.error(f"Error connecting to Calibre database: {e}")
+            raise CalibreError(f"Error connecting to Calibre database: {e}")
 
     def get_books(self) -> list[dict]:
         try:
