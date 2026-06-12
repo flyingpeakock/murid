@@ -1,7 +1,7 @@
 # test_config.py
 
-from io import StringIO
 import logging
+from io import StringIO
 
 import pytest
 import yaml

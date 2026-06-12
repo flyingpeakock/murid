@@ -49,6 +49,16 @@ Issues = "https://git.phlipphlop.me/phlipphlop/HardcoverHarvester/issues"
 
 [tool.ruff]
 line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+  "E",  # pycodestyle errors
+  "W",  # warnings
+  "F",  # pyflakes (unused imports, etc.)
+  "I",  # import sorting
+  "B",  # bugbear (potentially buggy code)
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

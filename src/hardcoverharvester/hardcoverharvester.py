@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 
-from . import __version__
-from .hardcover import Hardcover
-from .config import Config, ConfigError
-from .calibre import Calibre
-
 import argparse
 import logging
-from rich_argparse import RichHelpFormatter
+
 from rich.logging import RichHandler
+from rich_argparse import RichHelpFormatter
+
+from . import __version__
+from .calibre import Calibre
+from .config import Config, ConfigError
+from .hardcover import Hardcover
 
 logger = logging.getLogger("HardcoverHarvester")
 
@@ -66,8 +67,9 @@ Downloads are sent to qBittorrent and then added to Calibre.
 
     calibre = Calibre(config.get("calibre_db_path"))
     calibreBooks = calibre.get_books()
+    count = len(calibreBooks)
     logger.info(
-        f"Fetched {len(calibreBooks)} book{'s' if len(calibreBooks) != 1 else ''} from Calibre database"
+        f"Fetched {count} book{'s' if count != 1 else ''} from Calibre database"
     )
 
     hardcoverObjects = []
@@ -76,8 +78,9 @@ Downloads are sent to qBittorrent and then added to Calibre.
         logger.debug(f"Processing user_id: {user['id']}")
         hardcoverObjects.append(Hardcover(user["api_key"], user["id"]))
         hardcoverBooks.extend(hardcoverObjects[-1].get_books())
+    count = len(hardcoverBooks)
     logger.info(
-        f"Fetched {len(hardcoverBooks)} book{'s' if len(hardcoverBooks) != 1 else ''} from Hardcover API"
+        f"Fetched {count} book{'s' if count != 1 else ''} from Hardcover API"
     )
     logger.debug(f"Hardcover books: {hardcoverBooks}")
 

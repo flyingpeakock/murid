@@ -1,7 +1,7 @@
-import sqlite3
 import logging
-import subprocess
 import os
+import sqlite3
+import subprocess
 
 logger = logging.getLogger("HardcoverHarvester")
 
@@ -25,15 +25,15 @@ class Calibre:
                 stderr=subprocess.PIPE,
                 text=True,
             )
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             logger.error(f"Calibre executable not found: {self.db_executable}")
-            raise CalibreError(f"Calibre executable not found: {self.db_executable}")
+            raise CalibreError(f"Calibre executable not found: {self.db_executable}") from e
         try:
             conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
             conn.close()
         except Exception as e:
             logger.error(f"Error connecting to Calibre database: {e}")
-            raise CalibreError(f"Error connecting to Calibre database: {e}")
+            raise CalibreError(f"Error connecting to Calibre database: {e}") from e
 
     def get_books(self) -> list[dict]:
         try:

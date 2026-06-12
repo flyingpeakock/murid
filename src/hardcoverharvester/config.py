@@ -1,8 +1,9 @@
-import yaml
 import logging
 import os
-from typing import Any
 from io import StringIO
+from typing import Any
+
+import yaml
 
 logger = logging.getLogger("HardcoverHarvester")
 
@@ -36,7 +37,7 @@ class EnvLoader(yaml.SafeLoader):
         env_var = loader.construct_scalar(node)
         value = os.getenv(env_var)
         if value is None:
-            raise ConfigError(f"Environment variable '{env_var}' not found")
+            raise ConfigError(f"Environment variable '{env_var}' not found") from None
         return value
 
 
@@ -45,7 +46,7 @@ class Config:
         try:
             config = yaml.load(config_file, Loader=EnvLoader)
         except yaml.YAMLError as e:
-            raise ConfigError(f"Error parsing config file: {e}")
+            raise ConfigError(f"Error parsing config file: {e}") from e
         self._config = self._sanitize(_defaults | (config if config is not None else {}))
 
         for key in _defaults:
