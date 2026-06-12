@@ -7,7 +7,7 @@ from rich.logging import RichHandler
 from rich_argparse import RichHelpFormatter
 
 from . import __version__
-from .calibre import Calibre
+from .calibre import Calibre, CalibreError
 from .config import Config, ConfigError
 from .hardcover import Hardcover
 
@@ -57,15 +57,20 @@ Downloads are sent to qBittorrent and then added to Calibre.
             config = Config(f)
     except ConfigError as e:
         logger.error(f"Error loading config: {e}")
-        return
-    except FileNotFoundError:
+        raise SystemExit(1) from e
+    except FileNotFoundError as e:
         logger.error(f"Config file not found: {args.config_file}")
-        return
+        raise SystemExit(1) from e
     except Exception as e:
         logger.error(f"Unexpected error loading config: {e}")
-        return
+        raise SystemExit(1) from e
 
-    calibre = Calibre(config.get("calibre_db_path"))
+    try:
+        calibre = Calibre(config.get("calibre_db_path"))
+    except CalibreError as e:
+        logger.error(f"Error initializing Calibre: {e}")
+        raise SystemExit(1) from e
+
     calibreBooks = calibre.get_books()
     count = len(calibreBooks)
     logger.info(
@@ -83,6 +88,8 @@ Downloads are sent to qBittorrent and then added to Calibre.
         f"Fetched {count} book{'s' if count != 1 else ''} from Hardcover API"
     )
     logger.debug(f"Hardcover books: {hardcoverBooks}")
+
+    return 0
 
 
 if __name__ == "__main__":
