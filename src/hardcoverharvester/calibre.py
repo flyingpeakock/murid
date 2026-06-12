@@ -28,6 +28,10 @@ class Calibre:
         except FileNotFoundError as e:
             logger.error(f"Calibre executable not found: {self.db_executable}")
             raise CalibreError(f"Calibre executable not found: {self.db_executable}") from e
+        except Exception as e:
+            logger.error(f"Error checking Calibre executable: {e}")
+            raise CalibreError(f"Error checking Calibre executable: {e}") from e
+
         try:
             conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
             conn.close()
