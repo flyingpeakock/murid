@@ -21,6 +21,7 @@ _defaults = {
     "redact_sensitive_data": True,
     "calibre_db_path": _MISSING,
     "calibredb_executable": "calibredb",
+    "matcher_threshold": 0.92,
 }
 
 
@@ -118,6 +119,9 @@ class Config:
 
         if not os.path.isfile(self.get("calibre_db_path")):
             raise ConfigError("Calibre database file not found")
+
+        if not isinstance(self.get("matcher_threshold"), float):
+            raise ConfigError("Config item 'matcher_threshold' must be a float")
 
         expected_keys = set(_defaults.keys())
         for key in self._config.keys():

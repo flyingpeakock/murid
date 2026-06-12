@@ -247,3 +247,21 @@ def test_calibredb_executable_path_defaults_to_calibredb(build_config):
 def test_calibredb_executable_path_can_be_overridden(build_config):
     config = build_config(calibredb_executable="/custom/path/calibredb")
     assert config.get("calibredb_executable") == "/custom/path/calibredb"
+
+
+def test_matcher_threshold_defaults_to_0_92(build_config):
+    config = build_config()
+    assert config.get("matcher_threshold") == 0.92
+
+
+def test_matcher_threshold_must_be_float(build_config):
+    with pytest.raises(ConfigError, match="Config item 'matcher_threshold' must be a float"):
+        build_config(matcher_threshold="not-a-float")
+
+    with pytest.raises(ConfigError, match="Config item 'matcher_threshold' must be a float"):
+        build_config(matcher_threshold=1)
+
+
+def test_matcher_threshold_can_be_set(build_config):
+    config = build_config(matcher_threshold=0.85)
+    assert config.get("matcher_threshold") == 0.85

@@ -9,6 +9,7 @@ from . import __version__
 from .calibre import Calibre, CalibreError
 from .config import Config, ConfigError
 from .hardcover import Hardcover
+from .harvester import BookMatcher
 
 logger = logging.getLogger("HardcoverHarvester")
 
@@ -84,6 +85,21 @@ Downloads are sent to qBittorrent and then added to Calibre.
         logger.error(f"Error fetching data from Calibre: {e}")
     except requests.RequestException as e:
         logger.error(f"Error fetching data from Hardcover API: {e}")
+
+    matcher = BookMatcher(config.get("matcher_threshold"))
+    matches = matcher.match_books(
+        calibreBooks,
+        hardcoverBooks,
+    )
+    count = len(matches)
+    logger.info(f"{count} hardcover book{'s' if count != 1 else ''} already in calibre")
+    if count > 0:
+        logger.debug(f"Matched books: {matches}")
+
+    matched_hardcover_ids = {h.id for _, h, _ in matches}
+    to_fetch = [h for h in hardcoverBooks if h.id not in matched_hardcover_ids]
+    if to_fetch:
+        logger.debug(f"Wanted books: {to_fetch}")
 
 
 if __name__ == "__main__":

@@ -53,3 +53,14 @@ class BookMatcher:
 
     def is_match(self, a: Book, b: Book) -> bool:
         return self.similarity(a, b) >= self.threshold
+
+    def match_books(
+        self, books_a: list[Book], books_b: list[Book]
+    ) -> list[tuple[Book, Book, float]]:
+        matches = []
+        for book_a in books_a:
+            for book_b in books_b:
+                sim = self.similarity(book_a, book_b)
+                if sim >= self.threshold:
+                    matches.append((book_a, book_b, sim))
+        return matches
