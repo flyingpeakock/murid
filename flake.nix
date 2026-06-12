@@ -54,6 +54,7 @@
           deadnix.enable = true;
           flake-checker.enable = true;
           statix.enable = true;
+          ruff.enable = true;
         };
 
         devShells.default = pkgs.mkShell {

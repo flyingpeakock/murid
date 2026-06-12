@@ -54,7 +54,11 @@ Downloads are sent to qBittorrent and then added to Calibre.
 
     logger.info(f"Starting HardcoverHarvester v{__version__}")
 
-    config = Config(args.config_file)
+    try:
+        config = Config(args.config_file)
+    except ConfigError as e:
+        logger.error(f"Error loading config: {e}")
+        return
 
     books = []
     for user in config.get("users"):

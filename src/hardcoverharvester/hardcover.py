@@ -58,7 +58,9 @@ class Hardcover:
         data = self.fetch_data()
         books.extend(data["data"]["user_books"])
         if len(books) > 0:
-            logger.debug(f"Books extracted: {[book['book']['title'] for book in books]}")
+            logger.debug(
+                f"Books extracted: {[book['book']['title'] for book in books]}"
+            )
         else:
             logger.warning("No books found for this user.")
         return books
