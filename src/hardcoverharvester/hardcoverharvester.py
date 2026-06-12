@@ -72,6 +72,7 @@ Downloads are sent to qBittorrent and then added to Calibre.
     logger.info(
         f"Fetched {len(hardcoverBooks)} book{'s' if len(hardcoverBooks) != 1 else ''} from Hardcover API"
     )
+    logger.debug(f"Hardcover books: {hardcoverBooks}")
 
 
 if __name__ == "__main__":
