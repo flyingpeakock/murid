@@ -104,6 +104,8 @@ class Config:
                 raise ConfigError("Each user must have an 'id' key")
             if "api_key" not in user:
                 raise ConfigError("Each user must have an 'api_key' key")
+            if not isinstance(user["id"], int):
+                raise ConfigError("User 'id' must be an integer")
 
         if not isinstance(self.get("redact_sensitive_data"), bool):
             raise ConfigError("Config item 'redact_sensitive_data' must be a boolean")

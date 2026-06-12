@@ -19,7 +19,7 @@ def make_config(yaml_text: str) -> Config:
 
 VALID_CONFIG = """
 users:
-  - id: user1
+  - id: 1234
     api_key: secret123
 """
 
@@ -29,7 +29,7 @@ def test_load_valid_config():
 
     assert config.get("users") == [
         {
-            "id": "user1",
+            "id": 1234,
             "api_key": "secret123",
         }
     ]
@@ -50,7 +50,7 @@ def test_missing_users_raises():
 def test_get_existing_key():
     config = make_config(VALID_CONFIG)
 
-    assert config.get("users")[0]["id"] == "user1"
+    assert config.get("users")[0]["id"] == 1234
 
 
 def test_get_default_value():
@@ -98,7 +98,7 @@ users:
 def test_user_requires_api_key():
     yaml_text = """
 users:
-  - id: user1
+  - id: 123410
 """
 
     with pytest.raises(ConfigError, match="Each user must have an 'api_key' key"):
@@ -108,7 +108,7 @@ users:
 def test_redact_sensitive_data_must_be_boolean():
     yaml_text = """
 users:
-  - id: user1
+  - id: 1234
     api_key: secret
 redact_sensitive_data: "yes"
 """
@@ -125,7 +125,7 @@ def test_env_tag_loads_environment_variable(monkeypatch):
 
     yaml_text = """
 users:
-  - id: user1
+  - id: 1234
     api_key: !ENV API_KEY
 """
 
@@ -137,7 +137,7 @@ users:
 def test_env_tag_missing_variable_raises():
     yaml_text = """
 users:
-  - id: user1
+  - id: 1234
     api_key: !ENV DOES_NOT_EXIST
 """
 
@@ -239,7 +239,7 @@ def test_str_redacts_api_keys():
 def test_invalid_yaml_raises_config_error():
     yaml_text = """
 users:
-  - id: user1
+  - id: 1234
     api_key: secret
     [
 """
@@ -251,7 +251,7 @@ users:
 def test_unexpected_key_logs_warning(caplog):
     yaml_text = """
 users:
-  - id: user1
+  - id: 1234
     api_key: secret
 extra_key: value
 """
@@ -268,3 +268,12 @@ def test_env_loader_directly(monkeypatch):
     data = yaml.load("key: !ENV TEST_VAR", Loader=EnvLoader)
 
     assert data["key"] == "value"
+
+def test_user_id_must_be_int():
+    yaml_text = """
+users:
+    - id: "not-an-int"
+      api_key: secret
+"""
+    with pytest.raises(ConfigError, match="User 'id' must be an integer"):
+        make_config(yaml_text)
