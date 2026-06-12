@@ -37,14 +37,13 @@ class Config:
         self._defaults = {
             "users": _MISSING,
             "redact_sensitive_data": True,
+            "calibre_db_path": _MISSING,
         }
         try:
             config = yaml.load(config_file, Loader=EnvLoader)
         except yaml.YAMLError as e:
             raise ConfigError(f"Error parsing config file: {e}")
-        self._config = self._sanitize(
-            self._defaults | (config if config is not None else {})
-        )
+        self._config = self._sanitize(self._defaults | (config if config is not None else {}))
         self.validate()
         logger.debug(f"Config loaded: {self}")
 
@@ -69,9 +68,7 @@ class Config:
         elif isinstance(value, list):
             return [self._sanitize(item) for item in value]
         elif isinstance(value, dict):
-            return {
-                self._sanitize(key): self._sanitize(val) for key, val in value.items()
-            }
+            return {self._sanitize(key): self._sanitize(val) for key, val in value.items()}
         else:
             return value
 
@@ -109,6 +106,9 @@ class Config:
 
         if not isinstance(self.get("redact_sensitive_data"), bool):
             raise ConfigError("Config item 'redact_sensitive_data' must be a boolean")
+
+        if not os.path.isfile(self.get("calibre_db_path")):
+            raise ConfigError("Calibre database file not found")
 
         expected_keys = set(self._defaults.keys())
         for key in self._config.keys():

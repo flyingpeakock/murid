@@ -2,11 +2,11 @@
 
 from . import __version__
 from .hardcover import Hardcover
-from .config import Config
+from .config import Config, ConfigError
+from .calibre import Calibre
 
 import argparse
 import logging
-import yaml
 from rich_argparse import RichHelpFormatter
 from rich.logging import RichHandler
 
@@ -14,15 +14,12 @@ logger = logging.getLogger("HardcoverHarvester")
 
 
 def setupLogger(logLevel: str) -> None:
-    FORMAT = "%(message)s"
     logger.setLevel(logLevel)
     logger.addHandler(RichHandler(rich_tracebacks=True, tracebacks_show_locals=True))
 
 
 def getArgParser(description: str) -> argparse.ArgumentParser:
-    arg_parser = argparse.ArgumentParser(
-        description=description, formatter_class=RichHelpFormatter
-    )
+    arg_parser = argparse.ArgumentParser(description=description, formatter_class=RichHelpFormatter)
     arg_parser.add_argument("--version", "-v", action="version", version=__version__)
     arg_parser.add_argument(
         "--log-level",
@@ -60,13 +57,20 @@ Downloads are sent to qBittorrent and then added to Calibre.
         logger.error(f"Error loading config: {e}")
         return
 
-    books = []
+    calibre = Calibre(config.get("calibre_db_path"))
+    calibreBooks = calibre.get_books()
+    logger.info(
+        f"Fetched {len(calibreBooks)} book{'s' if len(calibreBooks) != 1 else ''} from Calibre database"
+    )
+
+    hardcoverObjects = []
+    hardcoverBooks = []
     for user in config.get("users"):
         logger.debug(f"Processing user_id: {user['id']}")
-        hardcover = Hardcover(user["api_key"], user["id"])
-        books.extend(hardcover.get_books())
+        hardcoverObjects.append(Hardcover(user["api_key"], user["id"]))
+        hardcoverBooks.extend(hardcoverObjects[-1].get_books())
     logger.info(
-        f"Fetched {len(books)} book{'s' if len(books) != 1 else ''} from Hardcover API"
+        f"Fetched {len(hardcoverBooks)} book{'s' if len(hardcoverBooks) != 1 else ''} from Hardcover API"
     )
 
 

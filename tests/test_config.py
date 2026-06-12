@@ -12,20 +12,45 @@ from hardcoverharvester.config import (
     EnvLoader,
 )
 
+missing = object()
+base = {
+    "users": [{"id": 1234, "api_key": "secret123"}],
+    "redact_sensitive_data": True,
+    "calibre_db_path": "metadata.db",
+}
+
+
+@pytest.fixture
+def build_config(tmp_path):
+    def _make(**overrides):
+        data = base.copy()
+        for key, value in overrides.items():
+            if value is missing:
+                data.pop(key, None)
+            else:
+                data[key] = value
+
+        # Materialize file
+        if (
+            "calibre_db_path" in data
+            and data["calibre_db_path"] is not missing
+            and data["calibre_db_path"] != "not-exist.db"
+        ):
+            db_path = tmp_path / data["calibre_db_path"]
+            db_path.write_text("")
+            data["calibre_db_path"] = str(db_path)
+
+        return Config(StringIO(yaml.dump(data)))
+
+    return _make
+
 
 def make_config(yaml_text: str) -> Config:
     return Config(StringIO(yaml_text))
 
 
-VALID_CONFIG = """
-users:
-  - id: 1234
-    api_key: secret123
-"""
-
-
-def test_load_valid_config():
-    config = make_config(VALID_CONFIG)
+def test_load_valid_config(build_config):
+    config = build_config()
 
     assert config.get("users") == [
         {
@@ -36,131 +61,83 @@ def test_load_valid_config():
     assert config.get("redact_sensitive_data") is True
 
 
-def test_default_redact_sensitive_data():
-    config = make_config(VALID_CONFIG)
-
+def test_default_redact_sensitive_data(build_config):
+    config = build_config(redact_sensitive_data=missing)
     assert config.get("redact_sensitive_data") is True
 
 
-def test_missing_users_raises():
+def test_missing_users_raises(build_config):
     with pytest.raises(ConfigError, match="Config item 'users' is missing"):
-        make_config("{}")
+        build_config(users=missing)
 
 
-def test_get_existing_key():
-    config = make_config(VALID_CONFIG)
-
+def test_get_existing_key(build_config):
+    config = build_config()
     assert config.get("users")[0]["id"] == 1234
 
 
-def test_get_default_value():
-    config = make_config(VALID_CONFIG)
-
+def test_get_default_value(build_config):
+    config = build_config()
     assert config.get("missing_key", "default") == "default"
 
 
-def test_get_missing_key_raises():
-    config = make_config(VALID_CONFIG)
-
+def test_get_missing_key_raises(build_config):
+    config = build_config()
     with pytest.raises(KeyError, match="Config item 'missing_key' not found"):
         config.get("missing_key")
 
 
-def test_users_must_be_list():
-    yaml_text = """
-users: not-a-list
-"""
-
+def test_users_must_be_list(build_config):
     with pytest.raises(ConfigError, match="Config item 'users' must be a list"):
-        make_config(yaml_text)
+        build_config(users="not-a-list")
 
 
-def test_user_must_be_dict():
-    yaml_text = """
-users:
-  - not-a-dict
-"""
-
+def test_user_must_be_dict(build_config):
     with pytest.raises(ConfigError, match="Each user must be a dict"):
-        make_config(yaml_text)
+        build_config(users=["not-a-dict"])
 
 
-def test_user_requires_id():
-    yaml_text = """
-users:
-  - api_key: secret
-"""
-
+def test_user_requires_id(build_config):
     with pytest.raises(ConfigError, match="Each user must have an 'id' key"):
-        make_config(yaml_text)
+        build_config(users=[{"api_key": "secret"}])
 
 
-def test_user_requires_api_key():
-    yaml_text = """
-users:
-  - id: 123410
-"""
-
+def test_user_requires_api_key(build_config):
     with pytest.raises(ConfigError, match="Each user must have an 'api_key' key"):
-        make_config(yaml_text)
+        build_config(users=[{"id": 123410}])
 
 
-def test_redact_sensitive_data_must_be_boolean():
-    yaml_text = """
-users:
-  - id: 1234
-    api_key: secret
-redact_sensitive_data: "yes"
-"""
-
+def test_redact_sensitive_data_must_be_boolean(build_config):
     with pytest.raises(
         ConfigError,
         match="Config item 'redact_sensitive_data' must be a boolean",
     ):
-        make_config(yaml_text)
+        build_config(redact_sensitive_data="yes")
 
 
-def test_env_tag_loads_environment_variable(monkeypatch):
+def test_env_tag_loads_environment_variable(monkeypatch, build_config):
     monkeypatch.setenv("API_KEY", "super-secret")
-
-    yaml_text = """
-users:
-  - id: 1234
-    api_key: !ENV API_KEY
-"""
-
-    config = make_config(yaml_text)
-
+    config = build_config(users=[{"id": 1234, "api_key": "!ENV API_KEY"}])
     assert config.get("users")[0]["api_key"] == "super-secret"
 
 
-def test_env_tag_missing_variable_raises():
-    yaml_text = """
-users:
-  - id: 1234
-    api_key: !ENV DOES_NOT_EXIST
-"""
-
+def test_env_tag_missing_variable_raises(build_config):
     with pytest.raises(
         ConfigError,
         match="Environment variable 'DOES_NOT_EXIST' not found",
     ):
-        make_config(yaml_text)
+        build_config(users=[{"id": 1234, "api_key": "!ENV DOES_NOT_EXIST"}])
 
 
-def test_sanitize_inline_env_string(monkeypatch):
+def test_sanitize_inline_env_string(monkeypatch, build_config):
     monkeypatch.setenv("TOKEN", "abc123")
-
-    config = make_config(VALID_CONFIG)
-
+    config = build_config()
     assert config._sanitize("!ENV TOKEN") == "abc123"
 
 
-def test_sanitize_inline_env_string_missing(monkeypatch):
+def test_sanitize_inline_env_string_missing(monkeypatch, build_config):
     monkeypatch.delenv("TOKEN", raising=False)
-
-    config = make_config(VALID_CONFIG)
-
+    config = build_config()
     with pytest.raises(
         ConfigError,
         match="Environment variable 'TOKEN' not found",
@@ -168,15 +145,13 @@ def test_sanitize_inline_env_string_missing(monkeypatch):
         config._sanitize("!ENV TOKEN")
 
 
-def test_sanitize_trims_strings():
-    config = make_config(VALID_CONFIG)
-
+def test_sanitize_trims_strings(build_config):
+    config = build_config()
     assert config._sanitize("  hello  ") == "hello"
 
 
-def test_redact_dictionary():
-    config = make_config(VALID_CONFIG)
-
+def test_redact_dictionary(build_config):
+    config = build_config()
     data = {
         "api_key": "secret",
         "nested": {
@@ -184,9 +159,7 @@ def test_redact_dictionary():
             "value": 123,
         },
     }
-
     redacted = config.redact(data)
-
     assert redacted == {
         "api_key": "**REDACTED**",
         "nested": {
@@ -196,8 +169,8 @@ def test_redact_dictionary():
     }
 
 
-def test_redact_list():
-    config = make_config(VALID_CONFIG)
+def test_redact_list(build_config):
+    config = build_config()
 
     data = [
         {"api_key": "secret"},
@@ -212,26 +185,15 @@ def test_redact_list():
     ]
 
 
-def test_redaction_can_be_disabled():
-    yaml_text = """
-users:
-  - id: 123
-    api_key: secret
-redact_sensitive_data: false
-"""
-
-    config = make_config(yaml_text)
-
+def test_redaction_can_be_disabled(build_config):
+    config = build_config(redact_sensitive_data=False)
     data = {"api_key": "secret"}
-
     assert config.redact(data) == data
 
 
-def test_str_redacts_api_keys():
-    config = make_config(VALID_CONFIG)
-
+def test_str_redacts_api_keys(build_config):
+    config = build_config()
     output = str(config)
-
     assert "**REDACTED**" in output
     assert "secret123" not in output
 
@@ -243,21 +205,13 @@ users:
     api_key: secret
     [
 """
-
     with pytest.raises(ConfigError, match="Error parsing config file"):
         make_config(yaml_text)
 
 
-def test_unexpected_key_logs_warning(caplog):
-    yaml_text = """
-users:
-  - id: 1234
-    api_key: secret
-extra_key: value
-"""
-
+def test_unexpected_key_logs_warning(caplog, build_config):
     with caplog.at_level(logging.WARNING):
-        make_config(yaml_text)
+        build_config(extra_key="value")
 
     assert "Unexpected config item 'extra_key'" in caplog.text
 
@@ -269,11 +223,17 @@ def test_env_loader_directly(monkeypatch):
 
     assert data["key"] == "value"
 
-def test_user_id_must_be_int():
-    yaml_text = """
-users:
-    - id: "not-an-int"
-      api_key: secret
-"""
+
+def test_user_id_must_be_int(build_config):
     with pytest.raises(ConfigError, match="User 'id' must be an integer"):
-        make_config(yaml_text)
+        build_config(users=[{"id": "not-an-int", "api_key": "secret"}])
+
+
+def test_calibre_db_path_must_exist(build_config):
+    with pytest.raises(ConfigError, match="Config item 'calibre_db_path' is missing"):
+        build_config(calibre_db_path=missing)
+
+
+def test_calibre_db_path_must_exist_on_filesystem(build_config):
+    with pytest.raises(ConfigError, match="Calibre database file not found"):
+        build_config(calibre_db_path="not-exist.db")
