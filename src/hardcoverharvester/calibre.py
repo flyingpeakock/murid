@@ -3,6 +3,8 @@ import os
 import sqlite3
 import subprocess
 
+from .harvester import Book
+
 logger = logging.getLogger("HardcoverHarvester")
 
 
@@ -39,7 +41,7 @@ class Calibre:
             logger.error(f"Error connecting to Calibre database: {e}")
             raise CalibreError(f"Error connecting to Calibre database: {e}") from e
 
-    def get_books(self) -> list[dict]:
+    def get_books(self) -> list[Book]:
         try:
             conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
@@ -73,11 +75,12 @@ class Calibre:
         rows = cursor.fetchall()
         conn.close()
         return [
-            {
-                "id": row["id"],
-                "title": row["title"],
-                "authors": row["authors"],
-                "isbn": row["isbn"],
-            }
+            Book(
+                id=row["id"],
+                title=row["title"],
+                # authors=row["authors"],
+                authors=[a.strip() for a in row["authors"].split(",")] if row["authors"] else [],
+                isbn=row["isbn"],
+            )
             for row in rows
         ]

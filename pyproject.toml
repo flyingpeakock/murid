@@ -19,7 +19,8 @@ dependencies = [
   "rich",
   "rich_argparse",
   "pyyaml",
-  "requests"
+  "requests",
+  "rapidfuzz"
 ]
 
 dynamic = [ "version" ]

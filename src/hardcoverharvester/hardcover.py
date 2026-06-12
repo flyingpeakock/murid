@@ -2,6 +2,8 @@ import logging
 
 import requests
 
+from .harvester import Book
+
 logger = logging.getLogger("HardcoverHarvester")
 
 
@@ -84,11 +86,11 @@ class Hardcover:
 
         return None
 
-    def get_books(self) -> list[dict]:
+    def get_books(self) -> list[Book]:
         data = self.fetch_data()
         items = data.get("data", {}).get("user_books", [])
 
-        books: list[dict] = []
+        books: list[Book] = []
 
         for item in items:
             book = item.get("book", {})
@@ -101,18 +103,18 @@ class Hardcover:
             isbn = self._extract_isbn(editions)
 
             books.append(
-                {
-                    "id": book.get("id"),
-                    "title": book.get("title"),
-                    "authors": authors,
-                    "isbn": isbn,
-                }
+                Book(
+                    id=book.get("id"),
+                    title=book.get("title"),
+                    authors=authors,
+                    isbn=isbn,
+                )
             )
 
         if books:
             logger.debug(
                 "Books extracted: %s",
-                [b["title"] for b in books],
+                [b.title for b in books],
             )
         else:
             logger.warning("No books found for this user.")

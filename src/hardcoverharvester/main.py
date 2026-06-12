@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import argparse
 import logging
 
@@ -73,9 +71,7 @@ Downloads are sent to qBittorrent and then added to Calibre.
 
     calibreBooks = calibre.get_books()
     count = len(calibreBooks)
-    logger.info(
-        f"Fetched {count} book{'s' if count != 1 else ''} from Calibre database"
-    )
+    logger.info(f"Fetched {count} book{'s' if count != 1 else ''} from Calibre database")
 
     hardcoverObjects = []
     hardcoverBooks = []
@@ -84,12 +80,8 @@ Downloads are sent to qBittorrent and then added to Calibre.
         hardcoverObjects.append(Hardcover(user["api_key"], user["id"]))
         hardcoverBooks.extend(hardcoverObjects[-1].get_books())
     count = len(hardcoverBooks)
-    logger.info(
-        f"Fetched {count} book{'s' if count != 1 else ''} from Hardcover API"
-    )
+    logger.info(f"Fetched {count} book{'s' if count != 1 else ''} from Hardcover API")
     logger.debug(f"Hardcover books: {hardcoverBooks}")
-
-    return 0
 
 
 if __name__ == "__main__":
