@@ -1,15 +1,11 @@
 import argparse
 import logging
 
-import requests
 from rich.logging import RichHandler
 from rich_argparse import RichHelpFormatter
 
 from . import __version__
-from .calibre import Calibre, CalibreError
-from .config import Config, ConfigError
-from .hardcover import Hardcover
-from .harvester import BookMatcher
+from .harvester import HardcoverHarvesterApp
 
 logger = logging.getLogger("HardcoverHarvester")
 
@@ -52,54 +48,8 @@ Downloads are sent to qBittorrent and then added to Calibre.
 
     logger.info(f"Starting HardcoverHarvester v{__version__}")
 
-    try:
-        with open(args.config_file, "r") as f:
-            config = Config(f)
-    except ConfigError as e:
-        logger.error(f"Error loading config: {e}")
-        raise SystemExit(1) from e
-    except FileNotFoundError as e:
-        logger.error(f"Config file not found: {args.config_file}")
-        raise SystemExit(1) from e
-    except Exception as e:
-        logger.error(f"Unexpected error loading config: {e}")
-        raise SystemExit(1) from e
-
-    try:
-        calibre = Calibre(config.get("calibre_db_path"))
-    except CalibreError as e:
-        logger.error(f"Error initializing Calibre: {e}")
-        raise SystemExit(1) from e
-    hardcoverObjects = [Hardcover(user["api_key"], user["id"]) for user in config.get("users")]
-
-    try:
-        calibreBooks = calibre.get_books()
-        count = len(calibreBooks)
-        logger.info(f"Fetched {count} book{'s' if count != 1 else ''} from Calibre database")
-
-        hardcoverBooks = [book for hardcover in hardcoverObjects for book in hardcover.get_books()]
-        count = len(hardcoverBooks)
-        logger.info(f"Fetched {count} book{'s' if count != 1 else ''} from Hardcover API")
-        logger.debug(f"Hardcover books: {hardcoverBooks}")
-    except CalibreError as e:
-        logger.error(f"Error fetching data from Calibre: {e}")
-    except requests.RequestException as e:
-        logger.error(f"Error fetching data from Hardcover API: {e}")
-
-    matcher = BookMatcher(config.get("matcher_threshold"))
-    matches = matcher.match_books(
-        calibreBooks,
-        hardcoverBooks,
-    )
-    count = len(matches)
-    logger.info(f"{count} hardcover book{'s' if count != 1 else ''} already in calibre")
-    if count > 0:
-        logger.debug(f"Matched books: {matches}")
-
-    matched_hardcover_ids = {h.id for _, h, _ in matches}
-    to_fetch = [h for h in hardcoverBooks if h.id not in matched_hardcover_ids]
-    if to_fetch:
-        logger.debug(f"Wanted books: {to_fetch}")
+    app = HardcoverHarvesterApp(args)
+    app.run()
 
 
 if __name__ == "__main__":

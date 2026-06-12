@@ -1,14 +1,59 @@
-from dataclasses import dataclass
+import logging
 
 from rapidfuzz import fuzz
 
+from . import Book
+from .calibre import Calibre, CalibreError
+from .config import Config, ConfigError
+from .hardcover import Hardcover
 
-@dataclass
-class Book:
-    title: str
-    authors: list[str]
-    id: int
-    isbn: str | None
+logger = logging.getLogger("HardcoverHarvester")
+
+
+class HardcoverHarvesterApp:
+    def __init__(self, args):
+        self.args = args
+        self.config = None
+        self.calibre = None
+        self.hardcover_clients = []
+        self.matcher = None
+
+    def run(self):
+        self.config = load_config(self.args.config_file)
+        self.calibre = init_calibre(self.config)
+        self.hardcover_clients = init_hardcover_clients(self.config)
+        self.matcher = BookMatcher(self.config.get("matcher_threshold"))
+
+        calibre_books = self.fetch_calibre_books()
+        hardcover_books = self.fetch_hardcover_books()
+
+        matches = self.match_books(calibre_books, hardcover_books)
+        self.process_matches(matches, hardcover_books)
+
+    def fetch_calibre_books(self):
+        books = self.calibre.get_books()
+        logger.info(f"Fetched {len(books)} books from Calibre database")
+        return books
+
+    def fetch_hardcover_books(self):
+        books = [book for client in self.hardcover_clients for book in client.get_books()]
+        logger.info(f"Fetched {len(books)} books from Hardcover API")
+        logger.debug(f"Hardcover books: {books}")
+        return books
+
+    def match_books(self, calibre_books, hardcover_books):
+        matches = self.matcher.match_books(calibre_books, hardcover_books)
+        logger.info(f"{len(matches)} books already in Calibre")
+        if matches:
+            logger.debug(f"Matched books: {matches}")
+        return matches
+
+    def process_matches(self, matches, hardcover_books):
+        matched_ids = {h.id for _, h, _ in matches}
+        to_fetch = [h for h in hardcover_books if h.id not in matched_ids]
+
+        if to_fetch:
+            logger.debug(f"Wanted books: {to_fetch}")
 
 
 class BookMatcher:
@@ -64,3 +109,30 @@ class BookMatcher:
                 if sim >= self.threshold:
                     matches.append((book_a, book_b, sim))
         return matches
+
+
+def load_config(path: str):
+    try:
+        with open(path, "r") as f:
+            return Config(f)
+    except ConfigError as e:
+        logger.error(f"Error loading config: {e}")
+        raise SystemExit(1) from e
+    except FileNotFoundError as e:
+        logger.error(f"Config file not found: {path}")
+        raise SystemExit(1) from e
+    except Exception as e:
+        logger.error(f"Unexpected error loading config: {e}")
+        raise SystemExit(1) from e
+
+
+def init_calibre(config):
+    try:
+        return Calibre(config.get("calibre_db_path"))
+    except CalibreError as e:
+        logger.error(f"Error initializing Calibre: {e}")
+        raise SystemExit(1) from e
+
+
+def init_hardcover_clients(config):
+    return [Hardcover(user["api_key"], user["id"]) for user in config.get("users")]

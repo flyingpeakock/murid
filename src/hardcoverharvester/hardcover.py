@@ -2,7 +2,7 @@ import logging
 
 import requests
 
-from .harvester import Book
+from . import Book
 
 logger = logging.getLogger("HardcoverHarvester")
 

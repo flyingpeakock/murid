@@ -3,7 +3,7 @@ import os
 import sqlite3
 import subprocess
 
-from .harvester import Book
+from . import Book
 
 logger = logging.getLogger("HardcoverHarvester")
 
