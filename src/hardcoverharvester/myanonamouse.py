@@ -83,12 +83,11 @@ class MyAnonamouse:
     def get_torrent(self, torrent_id: int) -> Torrent | None:
         results = self.search(
             "",
-            per_page=1,
             include_description=True,
         )
 
         return next(
-            (t for t in results if t.id == torrent_id),
+            (t for t in results if t.book.id == torrent_id),
             None,
         )
 
