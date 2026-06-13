@@ -69,6 +69,7 @@ class HardcoverHarvesterApp:
             self.mam.search_ebook(book.title, book.authors[0] if book.authors else None)
             for book in books
         ]
+        logger.debug("Search results for missing books:\n%s", pretty_repr(found))
         return found
 
 
@@ -140,7 +141,6 @@ class BookMatcher:
                 logger.debug(f"No match for {book_b.title}. Best similarity: {best_score:.2f}")
 
         return matches
-
 
 
 def load_config(path: str):

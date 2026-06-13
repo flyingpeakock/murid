@@ -4,7 +4,7 @@ from typing import Any
 
 import requests
 
-from . import Torrent
+from . import Book, Torrent
 
 logger = logging.getLogger("HardcoverHarvester")
 
@@ -95,8 +95,12 @@ class MyAnonamouse:
     @staticmethod
     def _parse_torrent(data: dict[str, Any]) -> Torrent:
         return Torrent(
-            id=int(data["id"]),
-            title=data.get("name", ""),
+            book=Book(
+                title=data.get("title", ""),
+                authors=[a.strip() for _, a in json.loads(data.get("author_info", "{}")).items()],
+                id=int(data.get("id", 0)),
+                isbn=data.get("isbn", None),
+            ),
             category=int(data.get("category", 0)),
             category_name=data.get("catname", ""),
             main_category=int(data.get("main_cat", 0)),
@@ -106,9 +110,9 @@ class MyAnonamouse:
             freeleech=bool(int(data.get("free", 0))),
             vip=bool(int(data.get("vip", 0))),
             download_hash=data.get("dl"),
-            author_info=json.loads(data.get("author_info", "{}")),
             narrator_info=json.loads(data.get("narrator_info", "{}")),
             series_info=json.loads(data.get("series_info", "{}")),
+            language=data.get("lang_code", None),
             raw=data,
         )
 

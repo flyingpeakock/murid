@@ -17,8 +17,7 @@ class Book:
 
 @dataclass(slots=True)
 class Torrent:
-    id: int
-    title: str
+    book: Book
     category: int
     category_name: str
     main_category: int
@@ -28,9 +27,9 @@ class Torrent:
     freeleech: bool
     vip: bool
     download_hash: str | None = None
-    author_info: dict[str, str] | None = None
     narrator_info: dict[str, str] | None = None
     series_info: dict[str, Any] | None = None
+    language: str | None = None
     raw: dict[str, Any] | None = None
 
     @property
