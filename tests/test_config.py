@@ -17,6 +17,7 @@ missing = object()
 base = _defaults.copy() | {
     "users": [{"id": 1234, "api_key": "secret123"}],
     "calibre_db_path": "metadata.db",
+    "mam_id": "abc123",
 }
 
 
@@ -265,3 +266,13 @@ def test_matcher_threshold_must_be_float(build_config):
 def test_matcher_threshold_can_be_set(build_config):
     config = build_config(matcher_threshold=0.85)
     assert config.get("matcher_threshold") == 0.85
+
+
+def test_mam_id_must_exist(build_config):
+    with pytest.raises(ConfigError, match="Config item 'mam_id' is missing"):
+        build_config(mam_id=missing)
+
+
+def test_mam_id_can_be_set(build_config):
+    config = build_config(mam_id="new_mam_id")
+    assert config.get("mam_id") == "new_mam_id"

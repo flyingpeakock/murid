@@ -22,6 +22,7 @@ _defaults = {
     "calibre_db_path": _MISSING,
     "calibredb_executable": "calibredb",
     "matcher_threshold": 0.92,
+    "mam_id": _MISSING,
 }
 
 
@@ -52,7 +53,7 @@ class Config:
 
         for key in _defaults:
             if config is None or key not in config:
-                logger.warning(f"Using default value for config item '{key}'")
+                logger.info(f"Using default value for config item '{key}'")
 
         self.validate()
         logger.debug(f"Config loaded: {self}")
@@ -85,7 +86,7 @@ class Config:
     def redact(self, data: Any) -> dict:
         if self.get("redact_sensitive_data") is False:
             return data
-        sensitive_keys = ["api_key"]
+        sensitive_keys = ["api_key", "mam_id"]
         if isinstance(data, dict):
             return {
                 key: ("**REDACTED**" if key in sensitive_keys else self.redact(value))

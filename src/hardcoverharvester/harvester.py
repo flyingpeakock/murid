@@ -2,10 +2,11 @@ import logging
 
 from rapidfuzz import fuzz
 
-from . import Book
+from . import Book, Torrent
 from .calibre import Calibre, CalibreError
 from .config import Config, ConfigError
 from .hardcover import Hardcover
+from .myanonamouse import MyAnonamouse
 
 logger = logging.getLogger("HardcoverHarvester")
 
@@ -16,6 +17,7 @@ class HardcoverHarvesterApp:
         self.config = None
         self.calibre = None
         self.hardcover_clients = []
+        self.mam = None
         self.matcher = None
 
     def run(self):
@@ -23,12 +25,15 @@ class HardcoverHarvesterApp:
         self.calibre = init_calibre(self.config)
         self.hardcover_clients = init_hardcover_clients(self.config)
         self.matcher = BookMatcher(self.config.get("matcher_threshold"))
+        self.mam = init_MyAnonamouse_client(self.config.get("mam_id"))
 
         calibre_books = self.fetch_calibre_books()
         hardcover_books = self.fetch_hardcover_books()
 
         matches = self.match_books(calibre_books, hardcover_books)
-        self.process_matches(matches, hardcover_books)
+        toFetch = self.process_matches(matches, hardcover_books)
+        torrents = self.search_mam_for_books(toFetch)
+        logger.debug(f"Found {len(torrents)} torrents for wanted books: {torrents}")
 
     def fetch_calibre_books(self):
         books = self.calibre.get_books()
@@ -53,7 +58,17 @@ class HardcoverHarvesterApp:
         to_fetch = [h for h in hardcover_books if h.id not in matched_ids]
 
         if to_fetch:
+            count = len(to_fetch)
+            logger.info(f"{count} book{'' if count == 1 else 's'} missing from Calibre")
             logger.debug(f"Wanted books: {to_fetch}")
+        return to_fetch
+
+    def search_mam_for_books(self, books) -> list[Torrent]:
+        found = [
+            self.mam.search_ebook(book.title, book.authors[0] if book.authors else None)
+            for book in books
+        ]
+        return found
 
 
 class BookMatcher:
@@ -136,3 +151,7 @@ def init_calibre(config):
 
 def init_hardcover_clients(config):
     return [Hardcover(user["api_key"], user["id"]) for user in config.get("users")]
+
+
+def init_MyAnonamouse_client(mam_id: str):
+    return MyAnonamouse(mam_id)
