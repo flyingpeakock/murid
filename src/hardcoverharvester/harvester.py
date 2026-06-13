@@ -7,6 +7,7 @@ from .calibre import Calibre, CalibreError
 from .config import Config, ConfigError
 from .hardcover import Hardcover
 from .myanonamouse import MyAnonamouse
+from .qbittorrent import Qbittorrent
 
 logger = logging.getLogger("HardcoverHarvester")
 
@@ -26,6 +27,7 @@ class HardcoverHarvesterApp:
         self.hardcover_clients = init_hardcover_clients(self.config)
         self.matcher = BookMatcher(self.config.get("matcher_threshold"))
         self.mam = init_MyAnonamouse_client(self.config.get("mam_id"))
+        self.qbit = init_qbittorrent(self.config.get("qbittorrent"))
 
         calibre_books = self.fetch_calibre_books()
         hardcover_books = self.fetch_hardcover_books()
@@ -204,3 +206,7 @@ def init_hardcover_clients(config):
 
 def init_MyAnonamouse_client(mam_id: str):
     return MyAnonamouse(mam_id)
+
+
+def init_qbittorrent(qbittorrent_config: dict):
+    return Qbittorrent(qbittorrent_config)

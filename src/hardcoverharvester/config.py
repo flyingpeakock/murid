@@ -142,19 +142,21 @@ class Config:
             raise ConfigError("Config item 'qbittorrent' must be a dict")
 
         qbit = self.get("qbittorrent")
-        required_qbit_keys = ["url", "username", "password"]
+        required_qbit_keys = ["host", "username", "password", "port"]
 
         for key in required_qbit_keys:
             if key not in qbit:
                 raise ConfigError(f"Config item 'qbittorrent' must have a '{key}' key")
-            if not isinstance(qbit[key], str):
+            if not isinstance(qbit[key], str) and key != "port":
                 raise ConfigError(f"Config item 'qbittorrent.{key}' must be a string")
+            if key == "port" and not isinstance(qbit[key], int):
+                raise ConfigError("Config item 'qbittorrent.port' must be an integer")
 
-        if qbit["url"].endswith("/"):
-            qbit["url"] = qbit["url"].rstrip("/")
-        if not qbit["url"].startswith("http://") and not qbit["url"].startswith("https://"):
+        if qbit["host"].endswith("/"):
+            qbit["host"] = qbit["host"].rstrip("/")
+        if not qbit["host"].startswith("http://") and not qbit["host"].startswith("https://"):
             raise ConfigError(
-                "Config item 'qbittorrent.url' must start with 'http://' or 'https://'"
+                "Config item 'qbittorrent.host' must start with 'http://' or 'https://'"
             )
 
         expected_keys = set(_defaults.keys())
