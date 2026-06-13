@@ -12,7 +12,7 @@ class Book:
     title: str
     authors: list[str]
     id: int
-    isbn: str | None
+    isbn: list[str | None]
 
 
 @dataclass(slots=True)

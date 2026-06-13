@@ -52,7 +52,7 @@ class HardcoverHarvesterApp:
         if matches:
             logger.debug(
                 "Hardcover books already in calibre db:\n%s",
-                "\n".join([match.title for match, _, _ in matches])
+                "\n".join([match.title for match, _, _ in matches]),
             )
         return matches
 
@@ -77,7 +77,7 @@ class HardcoverHarvesterApp:
                 (book, tor_list) = tor
                 logger.debug(
                     f"Torrents found for {book.title}:\n%s",
-                    [torrent.download_url for torrent in tor_list]
+                    [torrent.download_url for torrent in tor_list],
                 )
         return found
 
@@ -142,7 +142,7 @@ class BookMatcher:
 
     def similarity(self, a: Book, b: Book) -> float:
         # Strong signal: ISBN match
-        if a.isbn and b.isbn and a.isbn == b.isbn:
+        if set(filter(None, a.isbn)) & set(filter(None, b.isbn)):
             return 1.0
 
         t = self.title_similarity(a.title, b.title)

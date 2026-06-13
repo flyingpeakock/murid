@@ -85,7 +85,7 @@ class Calibre:
                 title=row["title"],
                 # authors=row["authors"],
                 authors=[a.strip() for a in row["authors"].split(",")] if row["authors"] else [],
-                isbn=row["isbn"],
+                isbn=[row["isbn"]],
             )
             for row in rows
         ]

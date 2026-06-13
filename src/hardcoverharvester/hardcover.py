@@ -8,6 +8,10 @@ from . import Book
 logger = logging.getLogger("HardcoverHarvester")
 
 
+class HardcoverError(Exception):
+    pass
+
+
 class Hardcover:
     def __init__(self, api: str, user_id: str) -> None:
         self.url = "https://api.hardcover.app/v1/graphql"
@@ -60,33 +64,33 @@ class Hardcover:
             response.raise_for_status()
         except requests.RequestException as e:
             logger.error(f"Error fetching data from Hardcover API: {e}")
-            raise
+            raise HardcoverError(f"Error fetching data from Hardcover API: {e}") from e
 
         data = response.json()
 
         if "errors" in data:
             logger.error(f"GraphQL errors: {data['errors']}")
-            raise Exception(f"GraphQL errors: {data['errors']}")
+            raise HardcoverError(f"GraphQL errors: {data['errors']}")
 
         logger.debug("Hardcover data fetched successfully")
-        logger.debug(f"Raw data:\n{pretty_repr(data)}")
         return data
 
     @staticmethod
-    def _extract_isbn(editions: list[dict] | None) -> str | None:
+    def _extract_isbn(editions: list[dict] | None) -> list[str | None]:
         if not editions:
-            return None
+            return []
 
+        isbns = []
         for edition in editions:
             isbn13 = edition.get("isbn_13")
             isbn10 = edition.get("isbn_10")
 
             if isbn13:
-                return isbn13
+                isbns.append(isbn13)
             if isbn10:
-                return isbn10
+                isbns.append(isbn10)
 
-        return None
+        return isbns
 
     def get_books(self) -> list[Book]:
         data = self.fetch_data()

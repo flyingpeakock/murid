@@ -279,21 +279,26 @@ def test_mam_id_can_be_set(build_config):
     config = build_config(mam_id="new_mam_id")
     assert config.get("mam_id") == "new_mam_id"
 
+
 def test_lang_codes_defaults_to_ENG(build_config):
     config = build_config()
     assert config.get("lang_codes") == ["ENG"]
+
 
 def test_lang_codes_can_be_overridden(build_config):
     config = build_config(lang_codes=["SWE"])
     assert config.get("lang_codes") == ["SWE"]
 
+
 def test_lang_codes_must_be_list(build_config):
     with pytest.raises(ConfigError, match="Config item 'lang_codes' must be a list"):
         build_config(lang_codes="not-a-list")
 
+
 def test_lang_codes_list_items_must_be_strings(build_config):
     with pytest.raises(ConfigError, match="Config item 'lang_codes' must be a list of strings"):
         build_config(lang_codes=[123, "SWE"])
+
 
 def test_lang_codes_cannot_be_empty(build_config):
     with pytest.raises(ConfigError, match="Config item 'lang_codes' must be a non-empty list"):

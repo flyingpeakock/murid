@@ -110,7 +110,7 @@ def test_get_books_single(tmp_path):
     assert books[0].id == 1
     assert books[0].title == "Dune"
     assert books[0].authors == ["Frank Herbert"]
-    assert books[0].isbn == "1234567890"
+    assert books[0].isbn == ["1234567890"]
 
 
 def test_multiple_authors(tmp_path):

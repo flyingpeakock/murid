@@ -99,7 +99,7 @@ class MyAnonamouse:
                 title=data.get("title", ""),
                 authors=[a.strip() for _, a in json.loads(data.get("author_info", "{}")).items()],
                 id=int(data.get("id", 0)),
-                isbn=data.get("isbn", None),
+                isbn=[data.get("isbn", None)],
             ),
             category=int(data.get("category", 0)),
             category_name=data.get("catname", ""),
