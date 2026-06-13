@@ -34,9 +34,8 @@ class HardcoverHarvesterApp:
 
         matches = self.match_books(calibre_books, hardcover_books)
         toFetch = self.process_matches(matches, hardcover_books)
-        logger.debug(
-            f"Torrents to download:\n{'\n'.join([torrent.download_url for torrent in toFetch])}"
-        )
+        torrentFiles = [(self.mam.download_torrent(torrent), torrent.book) for torrent in toFetch]
+        self.qbit.add_torrents(torrentFiles)
 
     def fetch_calibre_books(self):
         books = self.calibre.get_books()

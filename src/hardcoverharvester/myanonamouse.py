@@ -16,6 +16,7 @@ class MAMError(Exception):
 class MyAnonamouse:
     BASE_URL = "https://www.myanonamouse.net"
     SEARCH_URL = f"{BASE_URL}/tor/js/loadSearchJSONbasic.php"
+    DOWNLOAD_URL = f"{BASE_URL}/tor/download.php"
 
     def __init__(self, mam_id: str) -> None:
         self.session = requests.Session()
@@ -128,6 +129,16 @@ class MyAnonamouse:
         else:
             logger.info(f"Found {len(result)} results for {query}")
         return result
+
+    def download_torrent(self, torrent: Torrent) -> bytes | None:
+        try:
+            response = self.session.get(f"{self.DOWNLOAD_URL}/?tid={torrent.book.id}")
+            response.raise_for_status()
+            logger.debug(f"Torrent for {torrent.book.title} downloaded successfully")
+            return response.content
+        except requests.RequestException as e:
+            logger.error(f"Error downloading torrent for {torrent.book.title}: {e}")
+            return None
 
 
 def parse_size(size: str) -> int:
