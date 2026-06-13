@@ -26,7 +26,7 @@ class Hardcover:
         query = """
         query GetUserBooks($user_id: Int!) {
           user_books(
-            where: { user_id: { _eq: $user_id } }
+              where: { user_id: { _eq: $user_id }, status_id: { _eq: 1 } }
             distinct_on: book_id
           ) {
             book {
@@ -69,6 +69,7 @@ class Hardcover:
             raise Exception(f"GraphQL errors: {data['errors']}")
 
         logger.debug("Hardcover data fetched successfully")
+        logger.debug(f"Raw data:\n{pretty_repr(data)}")
         return data
 
     @staticmethod
