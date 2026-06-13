@@ -89,3 +89,28 @@ class Calibre:
             )
             for row in rows
         ]
+
+    def add_book(self, book: Book, path: str) -> None:
+        args = [
+            self.db_executable,
+            "add",
+            "--with-library",
+            self.library_path,
+            "--auto-merge",
+            "--title",
+            book.title,
+            "--authors",
+            ", ".join(book.authors),
+            path,
+        ]
+        try:
+            self.run(
+                args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except Exception as e:
+            logger.error(f"Error adding book to Calibre: {e}")
+            raise CalibreError(f"Error adding book to Calibre: {e}") from e
+        logger.info(f"Added book to Calibre: {book.title} by {', '.join(book.authors)}")

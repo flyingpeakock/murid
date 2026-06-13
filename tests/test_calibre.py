@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from hardcoverharvester.calibre import Calibre, CalibreError
+from hardcoverharvester.calibre import Book, Calibre, CalibreError
 
 
 def create_db(path: Path):
@@ -150,3 +150,110 @@ def test_run_failure(tmp_path):
 
     with pytest.raises(CalibreError):
         Calibre(str(db), run=boom)
+
+
+def test_add_book(tmp_path):
+    db = tmp_path / "calibre.db"
+    create_db(db)
+
+    calls = []
+
+    def fake_run(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    calibre = Calibre(
+        str(db),
+        run=fake_run,
+    )
+
+    book = Book(
+        id=1,
+        title="Dune",
+        authors=["Frank Herbert"],
+        isbn=["9780441172719"],
+    )
+
+    calibre.add_book(book, "/tmp/dune.epub")
+
+    assert len(calls) == 2
+
+    args, kwargs = calls[1]  # first call is validate()
+
+    assert args[0] == [
+        "calibredb",
+        "add",
+        "--with-library",
+        str(tmp_path),
+        "--auto-merge",
+        "--title",
+        "Dune",
+        "--authors",
+        "Frank Herbert",
+        "/tmp/dune.epub",
+    ]
+
+
+def test_add_book_multiple_authors(tmp_path):
+    db = tmp_path / "calibre.db"
+    create_db(db)
+
+    calls = []
+
+    def fake_run(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    calibre = Calibre(
+        str(db),
+        run=fake_run,
+    )
+
+    book = Book(
+        id=1,
+        title="Good Omens",
+        authors=["Neil Gaiman", "Terry Pratchett"],
+        isbn=[],
+    )
+
+    calibre.add_book(book, "/tmp/book.epub")
+
+    args, _ = calls[1]
+
+    assert "--authors" in args[0]
+
+    idx = args[0].index("--authors")
+    assert args[0][idx + 1] == "Neil Gaiman, Terry Pratchett"
+
+
+def test_add_book_failure(tmp_path):
+    db = tmp_path / "calibre.db"
+    create_db(db)
+
+    call_count = 0
+
+    def fake_run(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+
+        # validate() succeeds
+        if call_count == 1:
+            return
+
+        raise RuntimeError("boom")
+
+    calibre = Calibre(
+        str(db),
+        run=fake_run,
+    )
+
+    book = Book(
+        id=1,
+        title="Dune",
+        authors=["Frank Herbert"],
+        isbn=[],
+    )
+
+    with pytest.raises(
+        CalibreError,
+        match="Error adding book to Calibre",
+    ):
+        calibre.add_book(book, "/tmp/dune.epub")
