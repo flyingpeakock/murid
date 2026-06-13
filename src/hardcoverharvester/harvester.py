@@ -62,7 +62,6 @@ class HardcoverHarvesterApp:
         if to_fetch:
             count = len(to_fetch)
             logger.info(f"{count} book{'' if count == 1 else 's'} missing from Calibre")
-            logger.debug("Wanted books:\n%s", pretty_repr(to_fetch))
         return to_fetch
 
     def search_mam_for_books(self, books) -> list[Torrent]:
@@ -117,15 +116,31 @@ class BookMatcher:
         return self.similarity(a, b) >= self.threshold
 
     def match_books(
-        self, books_a: list[Book], books_b: list[Book]
+        self,
+        books_a: list[Book],
+        books_b: list[Book],
     ) -> list[tuple[Book, Book, float]]:
+
         matches = []
-        for book_a in books_a:
-            for book_b in books_b:
+
+        for book_b in books_b:
+            best_match = None
+            best_score = 0.0
+
+            for book_a in books_a:
                 sim = self.similarity(book_a, book_b)
-                if sim >= self.threshold:
-                    matches.append((book_a, book_b, sim))
+
+                if sim > best_score:
+                    best_score = sim
+                    best_match = book_a
+
+            if best_match and best_score >= self.threshold:
+                matches.append((best_match, book_b, best_score))
+            else:
+                logger.debug(f"No match for {book_b.title}. Best similarity: {best_score:.2f}")
+
         return matches
+
 
 
 def load_config(path: str):
