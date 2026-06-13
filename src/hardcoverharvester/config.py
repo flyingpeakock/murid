@@ -23,6 +23,7 @@ _defaults = {
     "calibredb_executable": "calibredb",
     "matcher_threshold": 0.85,
     "mam_id": _MISSING,
+    "lang_codes": ["ENG"],
 }
 
 
@@ -125,6 +126,16 @@ class Config:
 
         if not isinstance(self.get("matcher_threshold"), float):
             raise ConfigError("Config item 'matcher_threshold' must be a float")
+
+        if not isinstance(self.get("lang_codes"), list):
+            raise ConfigError("Config item 'lang_codes' must be a list")
+
+        for lang in self.get("lang_codes"):
+            if not isinstance(lang, str):
+                raise ConfigError("Config item 'lang_codes' must be a list of strings")
+
+        if len(self.get("lang_codes")) == 0:
+            raise ConfigError("Config item 'lang_codes' must be a non-empty list")
 
         expected_keys = set(_defaults.keys())
         for key in self._config.keys():

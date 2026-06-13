@@ -101,7 +101,7 @@ class HardcoverHarvesterApp:
             x
             for book, tor_list in potential_torrents
             for x in [self.get_best_torrent_for_book(book, tor_list)]
-            if x
+            if x and (x.language in self.config.get("lang_codes") or x.language is None)
         ]
         logger.info(
             "Torrents selected for download:\n"
