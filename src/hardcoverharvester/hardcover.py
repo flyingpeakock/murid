@@ -68,7 +68,7 @@ class Hardcover:
             logger.error(f"GraphQL errors: {data['errors']}")
             raise Exception(f"GraphQL errors: {data['errors']}")
 
-        logger.debug("Data fetched successfully")
+        logger.debug("Hardcover data fetched successfully")
         return data
 
     @staticmethod
@@ -114,7 +114,7 @@ class Hardcover:
 
         if books:
             logger.debug(
-                "Books extracted:\n%s",
+                "Books fetched from hardcover:\n%s",
                 pretty_repr([b.title for b in books]),
             )
         else:

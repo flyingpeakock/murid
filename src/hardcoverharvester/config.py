@@ -58,7 +58,7 @@ class Config:
                 )
 
         self.validate()
-        logger.debug(f"Config loaded: {self}")
+        logger.debug(f"Config loaded:\n{self}")
 
     def get(self, key: str, default: Any = _MISSING) -> Any:
         if key in self._config:

@@ -60,7 +60,7 @@ class MyAnonamouse:
         if include_description:
             payload["description"] = "true"
 
-        logger.info(f"Searching MyAnonamouse for {text}")
+        logger.debug(f"Searching MyAnonamouse for {text}")
         try:
             response = self.session.post(
                 self.SEARCH_URL,

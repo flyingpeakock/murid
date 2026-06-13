@@ -1,7 +1,6 @@
 import logging
 
 from rapidfuzz import fuzz
-from rich.pretty import pretty_repr
 
 from . import Book, Torrent
 from .calibre import Calibre, CalibreError
@@ -33,9 +32,9 @@ class HardcoverHarvesterApp:
 
         matches = self.match_books(calibre_books, hardcover_books)
         toFetch = self.process_matches(matches, hardcover_books)
-        torrents = self.search_mam_for_books(toFetch)
-        if len(torrents) == 0:
-            logger.warning("No torrents found for wanted books")
+        potentialTorrents = self.search_mam_for_books(toFetch)
+        torrents_to_download = self.process_potential_torrents(potentialTorrents)
+        logger.debug(f"Torrents to download:\n{torrents_to_download}")
 
     def fetch_calibre_books(self):
         books = self.calibre.get_books()
@@ -45,14 +44,16 @@ class HardcoverHarvesterApp:
     def fetch_hardcover_books(self):
         books = [book for client in self.hardcover_clients for book in client.get_books()]
         logger.info(f"Fetched {len(books)} books from Hardcover API")
-        logger.debug("Hardcover books:\n%s", pretty_repr(books))
         return books
 
     def match_books(self, calibre_books, hardcover_books):
         matches = self.matcher.match_books(calibre_books, hardcover_books)
         logger.info(f"{len(matches)} books already in Calibre")
         if matches:
-            logger.debug("Matched books:\n%s", pretty_repr(matches))
+            logger.debug(
+                "Hardcover books already in calibre db:\n%s",
+                "\n".join([match.title for match, _, _ in matches])
+            )
         return matches
 
     def process_matches(self, matches, hardcover_books):
@@ -66,11 +67,47 @@ class HardcoverHarvesterApp:
 
     def search_mam_for_books(self, books) -> list[Torrent]:
         found = [
-            self.mam.search_ebook(book.title, book.authors[0] if book.authors else None)
+            (book, self.mam.search_ebook(book.title, book.authors[0] if book.authors else None))
             for book in books
         ]
-        logger.debug("Search results for missing books:\n%s", pretty_repr(found))
+        if len(found) == 0:
+            logger.warning("No torrents found for wanted books")
+        else:
+            for tor in found:
+                (book, tor_list) = tor
+                logger.debug(
+                    f"Torrents found for {book.title}:\n%s",
+                    [torrent.download_url for torrent in tor_list]
+                )
         return found
+
+    def get_best_torrent_for_book(self, book: Book, torrents: list[Torrent]) -> Torrent | None:
+        torrent_books = [t.book for t in torrents]
+        best_match, score = self.matcher.best_match(book, torrent_books)
+        if best_match and score >= self.matcher.threshold:
+            ret = next(t for t in torrents if t.book == best_match)
+            logger.debug(
+                f"Best torrent for {book.title} is {ret.download_url} with similarity {score:.2f}"
+            )
+            return ret
+        else:
+            logger.info(f"No good torrent match for {book.title}. Best similarity: {score:.2f}")
+            return None
+
+    def process_potential_torrents(
+        self, potential_torrents: list[tuple[Book, list[Torrent]]]
+    ) -> list[Torrent]:
+        torrents_to_download = [
+            x
+            for book, tor_list in potential_torrents
+            for x in [self.get_best_torrent_for_book(book, tor_list)]
+            if x
+        ]
+        logger.info(
+            "Torrents selected for download:\n"
+            f"{'\n'.join([torrent.download_url for torrent in torrents_to_download])}"
+        )
+        return torrents_to_download
 
 
 class BookMatcher:
@@ -116,6 +153,18 @@ class BookMatcher:
     def is_match(self, a: Book, b: Book) -> bool:
         return self.similarity(a, b) >= self.threshold
 
+    def best_match(self, book: Book, candidates: list[Book]) -> tuple[Book | None, float]:
+        best_match = None
+        best_score = 0.0
+
+        for candidate in candidates:
+            sim = self.similarity(book, candidate)
+            if sim > best_score:
+                best_score = sim
+                best_match = candidate
+
+        return best_match, best_score
+
     def match_books(
         self,
         books_a: list[Book],
@@ -125,20 +174,13 @@ class BookMatcher:
         matches = []
 
         for book_b in books_b:
-            best_match = None
-            best_score = 0.0
-
-            for book_a in books_a:
-                sim = self.similarity(book_a, book_b)
-
-                if sim > best_score:
-                    best_score = sim
-                    best_match = book_a
-
-            if best_match and best_score >= self.threshold:
-                matches.append((best_match, book_b, best_score))
+            match, score = self.best_match(book_b, books_a)
+            if match and score >= self.threshold:
+                matches.append((match, book_b, score))
             else:
-                logger.debug(f"No match for {book_b.title}. Best similarity: {best_score:.2f}")
+                logger.debug(
+                    f"No match for {book_b.title} in calibre db. Best similarity: {score:.2f}"
+                )
 
         return matches
 
