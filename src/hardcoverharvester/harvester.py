@@ -32,9 +32,9 @@ class HardcoverHarvesterApp:
 
         matches = self.match_books(calibre_books, hardcover_books)
         toFetch = self.process_matches(matches, hardcover_books)
-        potentialTorrents = self.search_mam_for_books(toFetch)
-        torrents_to_download = self.process_potential_torrents(potentialTorrents)
-        logger.debug(f"Torrents to download:\n{torrents_to_download}")
+        logger.debug(
+            f"Torrents to download:\n{'\n'.join([torrent.download_url for torrent in toFetch])}"
+        )
 
     def fetch_calibre_books(self):
         books = self.calibre.get_books()
@@ -58,14 +58,12 @@ class HardcoverHarvesterApp:
 
     def process_matches(self, matches, hardcover_books):
         matched_ids = {h.id for _, h, _ in matches}
-        to_fetch = [h for h in hardcover_books if h.id not in matched_ids]
+        books = [h for h in hardcover_books if h.id not in matched_ids]
 
-        if to_fetch:
-            count = len(to_fetch)
+        if books:
+            count = len(books)
             logger.info(f"{count} book{'' if count == 1 else 's'} missing from Calibre")
-        return to_fetch
 
-    def search_mam_for_books(self, books) -> list[Torrent]:
         found = [
             (book, self.mam.search_ebook(book.title, book.authors[0] if book.authors else None))
             for book in books
@@ -79,7 +77,14 @@ class HardcoverHarvesterApp:
                     f"Torrents found for {book.title}:\n%s",
                     [torrent.download_url for torrent in tor_list],
                 )
-        return found
+
+        torrents_to_download = [
+            x
+            for book, tor_list in found
+            for x in [self.get_best_torrent_for_book(book, tor_list)]
+            if x and (x.language in self.config.get("lang_codes") or x.language is None)
+        ]
+        return torrents_to_download
 
     def get_best_torrent_for_book(self, book: Book, torrents: list[Torrent]) -> Torrent | None:
         torrent_books = [t.book for t in torrents]
@@ -93,21 +98,6 @@ class HardcoverHarvesterApp:
         else:
             logger.info(f"No good torrent match for {book.title}. Best similarity: {score:.2f}")
             return None
-
-    def process_potential_torrents(
-        self, potential_torrents: list[tuple[Book, list[Torrent]]]
-    ) -> list[Torrent]:
-        torrents_to_download = [
-            x
-            for book, tor_list in potential_torrents
-            for x in [self.get_best_torrent_for_book(book, tor_list)]
-            if x and (x.language in self.config.get("lang_codes") or x.language is None)
-        ]
-        logger.info(
-            "Torrents selected for download:\n"
-            f"{'\n'.join([torrent.download_url for torrent in torrents_to_download])}"
-        )
-        return torrents_to_download
 
 
 class BookMatcher:
