@@ -155,6 +155,7 @@ def test_redact_dictionary(build_config):
     config = build_config()
     data = {
         "api_key": "secret",
+        "mam_id": "mam-secret",
         "nested": {
             "api_key": "another-secret",
             "value": 123,
@@ -163,6 +164,7 @@ def test_redact_dictionary(build_config):
     redacted = config.redact(data)
     assert redacted == {
         "api_key": "**REDACTED**",
+        "mam_id": "**REDACTED**",
         "nested": {
             "api_key": "**REDACTED**",
             "value": 123,
