@@ -23,6 +23,8 @@ base = _defaults.copy() | {
         "username": "admin",
         "password": "adminadmin",
         "port": 8080,
+        "verify_cert": False,
+        "category": "hardcoverharvester",
     },
 }
 
@@ -317,24 +319,24 @@ def test_qbittorrent_config_must_be_dict(build_config):
 
 
 def test_qbittorrent_config_requires_host(build_config):
-    with pytest.raises(ConfigError, match="Config item 'qbittorrent' must have a 'host' key"):
+    with pytest.raises(ConfigError, match="Config item 'qbittorrent.host' must be a string"):
         build_config(qbittorrent={"username": "admin", "password": "adminadmin", "port": 8080})
 
 
 def test_qbittorrent_config_requires_username(build_config):
-    with pytest.raises(ConfigError, match="Config item 'qbittorrent' must have a 'username' key"):
+    with pytest.raises(ConfigError, match="Config item 'qbittorrent.username' must be a string"):
         build_config(
             qbittorrent={"host": "http://localhost", "password": "adminadmin", "port": 8080}
         )
 
 
 def test_qbittorrent_config_requires_password(build_config):
-    with pytest.raises(ConfigError, match="Config item 'qbittorrent' must have a 'password' key"):
+    with pytest.raises(ConfigError, match="Config item 'qbittorrent.password' must be a string"):
         build_config(qbittorrent={"host": "http://localhost", "username": "admin", "port": 8080})
 
 
 def test_qbittorrent_config_requires_port(build_config):
-    with pytest.raises(ConfigError, match="Config item 'qbittorrent' must have a 'port' key"):
+    with pytest.raises(ConfigError, match="Config item 'qbittorrent.port' must be an integer"):
         build_config(
             qbittorrent={"host": "http://localhost", "username": "admin", "password": "adminadmin"}
         )
@@ -372,6 +374,65 @@ def test_qbittorrent_host_trims_trailing_slash(build_config):
             "username": "admin",
             "password": "adminadmin",
             "port": 8080,
+            "verify_cert": False,
+            "category": "hardcoverharvester",
         }
     )
     assert config.get("qbittorrent")["host"] == "http://localhost"
+
+
+def test_qbittorrent_verify_cert_must_be_boolean(build_config):
+    with pytest.raises(
+        ConfigError, match="Config item 'qbittorrent.verify_cert' must be a boolean"
+    ):
+        build_config(
+            qbittorrent={
+                "host": "http://localhost",
+                "username": "admin",
+                "password": "adminadmin",
+                "port": 8080,
+                "verify_cert": "yes",
+            }
+        )
+
+
+def test_qbittorrent_category_must_be_string(build_config):
+    with pytest.raises(ConfigError, match="Config item 'qbittorrent.category' must be a string"):
+        build_config(
+            qbittorrent={
+                "host": "http://localhost",
+                "username": "admin",
+                "password": "adminadmin",
+                "port": 8080,
+                "verify_cert": False,
+                "category": 123,
+            }
+        )
+
+
+def test_qbittorrent_category_can_be_set(build_config):
+    config = build_config(
+        qbittorrent={
+            "host": "http://localhost",
+            "username": "admin",
+            "password": "adminadmin",
+            "port": 8080,
+            "verify_cert": False,
+            "category": "books",
+        }
+    )
+    assert config.get("qbittorrent")["category"] == "books"
+
+
+def test_qbittorrent_verify_cert_can_be_set(build_config):
+    config = build_config(
+        qbittorrent={
+            "host": "http://localhost",
+            "username": "admin",
+            "password": "adminadmin",
+            "port": 8080,
+            "category": "hardcoverharvester",
+            "verify_cert": False,
+        }
+    )
+    assert config.get("qbittorrent")["verify_cert"] is False

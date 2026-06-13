@@ -24,7 +24,14 @@ _defaults = {
     "matcher_threshold": 0.85,
     "mam_id": _MISSING,
     "lang_codes": ["ENG"],
-    "qbittorrent": _MISSING,
+    "qbittorrent": {
+        "host": _MISSING,
+        "username": _MISSING,
+        "password": _MISSING,
+        "port": _MISSING,
+        "verify_cert": True,
+        "category": "hardcoverharvester",
+    },
 }
 
 
@@ -51,7 +58,7 @@ class Config:
             config = yaml.load(config_file, Loader=EnvLoader)
         except yaml.YAMLError as e:
             raise ConfigError(f"Error parsing config file: {e}") from e
-        self._config = self._sanitize(_defaults | (config if config is not None else {}))
+        self._config = self._sanitize(deep_merge(_defaults, config if config is not None else {}))
 
         for key in _defaults:
             if config is None or key not in config:
@@ -159,6 +166,12 @@ class Config:
                 "Config item 'qbittorrent.host' must start with 'http://' or 'https://'"
             )
 
+        if not isinstance(qbit["verify_cert"], bool):
+            raise ConfigError("Config item 'qbittorrent.verify_cert' must be a boolean")
+
+        if not isinstance(qbit["category"], str):
+            raise ConfigError("Config item 'qbittorrent.category' must be a string")
+
         expected_keys = set(_defaults.keys())
         for key in self._config.keys():
             if key not in expected_keys:
@@ -166,3 +179,12 @@ class Config:
 
     def __str__(self) -> str:
         return yaml.dump(self.redact(self._config), default_flow_style=False)
+
+
+def deep_merge(default, override):
+    if isinstance(default, dict) and isinstance(override, dict):
+        out = dict(default)
+        for k, v in override.items():
+            out[k] = deep_merge(default.get(k), v)
+        return out
+    return override if override is not None else default
