@@ -20,7 +20,8 @@ dependencies = [
   "rich_argparse",
   "pyyaml",
   "requests",
-  "rapidfuzz"
+  "rapidfuzz",
+  "qbittorrent-api"
 ]
 
 dynamic = [ "version" ]

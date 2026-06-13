@@ -18,6 +18,11 @@ base = _defaults.copy() | {
     "users": [{"id": 1234, "api_key": "secret123"}],
     "calibre_db_path": "metadata.db",
     "mam_id": "abc123",
+    "qbittorrent": {
+        "url": "http://localhost:8080",
+        "username": "admin",
+        "password": "adminadmin",
+    },
 }
 
 
@@ -303,3 +308,49 @@ def test_lang_codes_list_items_must_be_strings(build_config):
 def test_lang_codes_cannot_be_empty(build_config):
     with pytest.raises(ConfigError, match="Config item 'lang_codes' must be a non-empty list"):
         build_config(lang_codes=[])
+
+
+def test_qbittorrent_config_must_be_dict(build_config):
+    with pytest.raises(ConfigError, match="Config item 'qbittorrent' must be a dict"):
+        build_config(qbittorrent="not-a-dict")
+
+
+def test_qbittorrent_config_requires_url(build_config):
+    with pytest.raises(ConfigError, match="Config item 'qbittorrent' must have a 'url' key"):
+        build_config(qbittorrent={"username": "admin", "password": "adminadmin"})
+
+
+def test_qbittorrent_config_requires_username(build_config):
+    with pytest.raises(ConfigError, match="Config item 'qbittorrent' must have a 'username' key"):
+        build_config(qbittorrent={"url": "http://localhost:8080", "password": "adminadmin"})
+
+
+def test_qbittorrent_config_requires_password(build_config):
+    with pytest.raises(ConfigError, match="Config item 'qbittorrent' must have a 'password' key"):
+        build_config(qbittorrent={"url": "http://localhost:8080", "username": "admin"})
+
+
+def test_qbittorrent_url_must_start_with_http_or_https(build_config):
+    with pytest.raises(
+        ConfigError, match="Config item 'qbittorrent.url' must start with 'http://' or 'https://'"
+    ):
+        build_config(
+            qbittorrent={"url": "localhost:8080", "username": "admin", "password": "adminadmin"}
+        )
+    with pytest.raises(
+        ConfigError, match="Config item 'qbittorrent.url' must start with 'http://' or 'https://'"
+    ):
+        build_config(
+            qbittorrent={
+                "url": "ftp://localhost:8080",
+                "username": "admin",
+                "password": "adminadmin",
+            }
+        )
+
+
+def test_qbittorrent_url_trims_trailing_slash(build_config):
+    config = build_config(
+        qbittorrent={"url": "http://localhost:8080/", "username": "admin", "password": "adminadmin"}
+    )
+    assert config.get("qbittorrent")["url"] == "http://localhost:8080"

@@ -12,25 +12,32 @@ from hardcoverharvester.myanonamouse import (
 def mam():
     return MyAnonamouse("fake-cookie")
 
+
 def test_parse_size_empty():
     assert parse_size("") == 0
     assert parse_size(None) == 0
 
+
 def test_parse_size_bytes():
     assert parse_size("123 B") == 123
+
 
 def test_parse_size_mb():
     assert parse_size("10 MB") == 10 * 1024 * 1024
 
+
 def test_parse_size_gib():
     assert parse_size("1.5 GiB") == int(1.5 * 1024**3)
+
 
 def test_parse_size_with_comma():
     assert parse_size("1,024 KB") == 1024 * 1024
 
+
 def test_parse_size_invalid():
     assert parse_size("potato") == 0
     assert parse_size("1 XB") == 0
+
 
 def test_parse_torrent():
     torrent = MyAnonamouse._parse_torrent(
@@ -69,6 +76,7 @@ def test_parse_torrent():
 
     assert torrent.language == "en"
 
+
 def test_search_success(mam):
     class Response:
         def raise_for_status(self):
@@ -92,6 +100,7 @@ def test_search_success(mam):
     assert len(results) == 1
     assert results[0].book.title == "Dune"
 
+
 def test_search_respects_per_page(mam):
     class Response:
         def raise_for_status(self):
@@ -112,6 +121,7 @@ def test_search_respects_per_page(mam):
 
     assert len(results) == 2
 
+
 def test_search_request_error_returns_empty_list(mam):
     def boom(*args, **kwargs):
         raise requests.RequestException("boom")
@@ -119,6 +129,7 @@ def test_search_request_error_returns_empty_list(mam):
     mam.session.post = boom
 
     assert mam.search("Dune") == []
+
 
 def test_search_missing_data_raises(mam):
     class Response:
@@ -132,6 +143,7 @@ def test_search_missing_data_raises(mam):
 
     with pytest.raises(MAMError, match="Unexpected response"):
         mam.search("Dune")
+
 
 def test_search_include_description(mam):
     payloads = []
@@ -156,6 +168,7 @@ def test_search_include_description(mam):
 
     assert payloads[0]["description"] == "true"
 
+
 def test_get_torrent_found(mam):
     torrent = MyAnonamouse._parse_torrent(
         {
@@ -171,10 +184,12 @@ def test_get_torrent_found(mam):
 
     assert result is torrent
 
+
 def test_get_torrent_not_found(mam):
     mam.search = lambda *a, **k: []
 
     assert mam.get_torrent(123) is None
+
 
 def test_search_ebook_title_only(mam):
     captured = {}
@@ -190,6 +205,7 @@ def test_search_ebook_title_only(mam):
 
     assert captured["query"] == "Dune"
     assert captured["kwargs"]["main_categories"] == [14]
+
 
 def test_search_ebook_title_and_author(mam):
     captured = {}
@@ -207,6 +223,7 @@ def test_search_ebook_title_and_author(mam):
 
     assert captured["query"] == "Dune Frank Herbert"
 
+
 def test_search_ebook_logs_found(mam, caplog):
     mam.search = lambda *a, **k: [object(), object()]
 
@@ -214,6 +231,7 @@ def test_search_ebook_logs_found(mam, caplog):
         mam.search_ebook("Dune")
 
     assert "Found 2 results" in caplog.text
+
 
 def test_search_ebook_logs_not_found(mam, caplog):
     mam.search = lambda *a, **k: []
@@ -223,12 +241,9 @@ def test_search_ebook_logs_not_found(mam, caplog):
 
     assert "No results found" in caplog.text
 
+
 def test_parse_torrent_multiple_authors():
-    torrent = MyAnonamouse._parse_torrent(
-        {
-            "author_info": '{"1":"Author One","2":"Author Two"}'
-        }
-    )
+    torrent = MyAnonamouse._parse_torrent({"author_info": '{"1":"Author One","2":"Author Two"}'})
 
     assert torrent.book.authors == [
         "Author One",

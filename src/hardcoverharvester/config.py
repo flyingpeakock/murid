@@ -24,6 +24,7 @@ _defaults = {
     "matcher_threshold": 0.85,
     "mam_id": _MISSING,
     "lang_codes": ["ENG"],
+    "qbittorrent": _MISSING,
 }
 
 
@@ -136,6 +137,25 @@ class Config:
 
         if len(self.get("lang_codes")) == 0:
             raise ConfigError("Config item 'lang_codes' must be a non-empty list")
+
+        if not isinstance(self.get("qbittorrent"), dict):
+            raise ConfigError("Config item 'qbittorrent' must be a dict")
+
+        qbit = self.get("qbittorrent")
+        required_qbit_keys = ["url", "username", "password"]
+
+        for key in required_qbit_keys:
+            if key not in qbit:
+                raise ConfigError(f"Config item 'qbittorrent' must have a '{key}' key")
+            if not isinstance(qbit[key], str):
+                raise ConfigError(f"Config item 'qbittorrent.{key}' must be a string")
+
+        if qbit["url"].endswith("/"):
+            qbit["url"] = qbit["url"].rstrip("/")
+        if not qbit["url"].startswith("http://") and not qbit["url"].startswith("https://"):
+            raise ConfigError(
+                "Config item 'qbittorrent.url' must start with 'http://' or 'https://'"
+            )
 
         expected_keys = set(_defaults.keys())
         for key in self._config.keys():
