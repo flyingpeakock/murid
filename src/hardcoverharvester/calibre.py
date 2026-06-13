@@ -13,15 +13,23 @@ class CalibreError(Exception):
 
 
 class Calibre:
-    def __init__(self, db_path: str, db_executable: str = "calibredb") -> None:
+    def __init__(
+        self,
+        db_path: str,
+        db_executable: str = "calibredb",
+        run=subprocess.run,
+        connect=sqlite3.connect,
+    ) -> None:
         self.db_path = db_path
         self.db_executable = db_executable
         self.library_path = os.path.dirname(db_path)
+        self.run = run
+        self.connect = connect
         self.validate()
 
     def validate(self) -> None:
         try:
-            subprocess.run(
+            self.run(
                 [self.db_executable, "--version"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -30,12 +38,9 @@ class Calibre:
         except FileNotFoundError as e:
             logger.error(f"Calibre executable not found: {self.db_executable}")
             raise CalibreError(f"Calibre executable not found: {self.db_executable}") from e
-        except Exception as e:
-            logger.error(f"Error checking Calibre executable: {e}")
-            raise CalibreError(f"Error checking Calibre executable: {e}") from e
 
         try:
-            conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
+            conn = self.connect(f"file:{self.db_path}?mode=ro", uri=True)
             conn.close()
         except Exception as e:
             logger.error(f"Error connecting to Calibre database: {e}")
@@ -43,7 +48,7 @@ class Calibre:
 
     def get_books(self) -> list[Book]:
         try:
-            conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
+            conn = self.connect(f"file:{self.db_path}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
         except Exception as e:
             logger.error(f"Error connecting to Calibre database: {e}")
