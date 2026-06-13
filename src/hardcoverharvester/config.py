@@ -53,7 +53,9 @@ class Config:
 
         for key in _defaults:
             if config is None or key not in config:
-                logger.info(f"Using default value for config item '{key}'")
+                logger.info(
+                    f"Using default value for config item '{key}. Value: {self._config[key]}'"
+                )
 
         self.validate()
         logger.debug(f"Config loaded: {self}")

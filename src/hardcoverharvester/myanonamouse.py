@@ -3,6 +3,7 @@ import logging
 from typing import Any
 
 import requests
+from rich.pretty import pretty_repr
 
 from . import Torrent
 
@@ -117,7 +118,16 @@ class MyAnonamouse:
         if author:
             query += f" {author}"
 
-        return self.search(query, main_categories=[14], search_fields=["title", "author", "series"])
+        result = self.search(
+            query, main_categories=[14], search_fields=["title", "author", "series"]
+        )
+        if not result:
+            logger.info(f"No results found for {query}")
+        else:
+            logger.info(f"Found {len(result)} results for {query}")
+            for torrent in result:
+                logger.debug(pretty_repr(torrent))
+        return result
 
 
 def parse_size(size: str) -> int:

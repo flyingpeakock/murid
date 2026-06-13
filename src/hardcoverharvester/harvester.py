@@ -1,6 +1,7 @@
 import logging
 
 from rapidfuzz import fuzz
+from rich.pretty import pretty_repr
 
 from . import Book, Torrent
 from .calibre import Calibre, CalibreError
@@ -33,7 +34,8 @@ class HardcoverHarvesterApp:
         matches = self.match_books(calibre_books, hardcover_books)
         toFetch = self.process_matches(matches, hardcover_books)
         torrents = self.search_mam_for_books(toFetch)
-        logger.debug(f"Found {len(torrents)} torrents for wanted books: {torrents}")
+        if len(torrents) == 0:
+            logger.warning("No torrents found for wanted books")
 
     def fetch_calibre_books(self):
         books = self.calibre.get_books()
@@ -43,14 +45,14 @@ class HardcoverHarvesterApp:
     def fetch_hardcover_books(self):
         books = [book for client in self.hardcover_clients for book in client.get_books()]
         logger.info(f"Fetched {len(books)} books from Hardcover API")
-        logger.debug(f"Hardcover books: {books}")
+        logger.debug("Hardcover books:\n%s", pretty_repr(books))
         return books
 
     def match_books(self, calibre_books, hardcover_books):
         matches = self.matcher.match_books(calibre_books, hardcover_books)
         logger.info(f"{len(matches)} books already in Calibre")
         if matches:
-            logger.debug(f"Matched books: {matches}")
+            logger.debug("Matched books:\n%s", pretty_repr(matches))
         return matches
 
     def process_matches(self, matches, hardcover_books):
@@ -60,7 +62,7 @@ class HardcoverHarvesterApp:
         if to_fetch:
             count = len(to_fetch)
             logger.info(f"{count} book{'' if count == 1 else 's'} missing from Calibre")
-            logger.debug(f"Wanted books: {to_fetch}")
+            logger.debug("Wanted books:\n%s", pretty_repr(to_fetch))
         return to_fetch
 
     def search_mam_for_books(self, books) -> list[Torrent]:

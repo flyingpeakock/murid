@@ -1,6 +1,7 @@
 import logging
 
 import requests
+from rich.pretty import pretty_repr
 
 from . import Book
 
@@ -113,8 +114,8 @@ class Hardcover:
 
         if books:
             logger.debug(
-                "Books extracted: %s",
-                [b.title for b in books],
+                "Books extracted:\n%s",
+                pretty_repr([b.title for b in books]),
             )
         else:
             logger.warning("No books found for this user.")
