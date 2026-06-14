@@ -91,6 +91,10 @@ class MyAnonamouse:
 
         data = response.json()
 
+        if "error" in data:
+            logger.info("No results found for %r: %s", text, data["error"])
+            return []
+
         if "data" not in data:
             raise MAMError(f"Unexpected response: {data}")
 
@@ -111,7 +115,7 @@ class MyAnonamouse:
     def _parse_torrent(data: dict[str, Any]) -> Torrent:
         return Torrent(
             book=Book(
-                title=data.get("title", ""),
+                title=str(data.get("title", "")),
                 authors=[a.strip() for _, a in json.loads(data.get("author_info", "{}")).items()],
                 id=int(data.get("id", 0)),
                 isbn=[data.get("isbn", None)],

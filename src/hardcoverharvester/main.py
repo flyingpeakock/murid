@@ -41,6 +41,13 @@ def getArgParser(description: str) -> argparse.ArgumentParser:
         action="store_true",
         dest="dry_run",
     )
+    arg_parser.add_argument(
+        "--run-once",
+        "-r",
+        help="run the harvester once and then exit (no scheduler)",
+        action="store_true",
+        dest="run_once",
+    )
 
     return arg_parser
 
@@ -56,7 +63,10 @@ Downloads are sent to qBittorrent and then added to Calibre.
     logger.info(f"Starting HardcoverHarvester v{__version__}")
 
     app = HardcoverHarvesterApp(args)
-    app.start_scheduler()
+    if args.run_once:
+        app.run()
+    else:
+        app.start_scheduler()
 
 
 if __name__ == "__main__":
