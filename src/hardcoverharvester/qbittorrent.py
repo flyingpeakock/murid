@@ -63,7 +63,6 @@ class Qbittorrent:
     def _send_to_calibre(self, book, path):
         try:
             self.calibre.add_book(book, path)
-            logger.info("Added %s to calibre", book.title)
         except Exception:
             logger.error("Failed adding %s to calibre", book.title)
 

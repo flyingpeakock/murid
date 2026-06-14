@@ -102,6 +102,10 @@ class Calibre:
             f'"{", ".join(book.authors)}"',
             path,
         ]
+
+        if os.path.isdir(path):
+            args.extend(["--recurse", "--one-book-per-directory"])
+
         try:
             self.run(
                 args,
