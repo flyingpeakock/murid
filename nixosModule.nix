@@ -12,7 +12,7 @@ in {
     yaml = pkgs.formats.yaml {};
     createYAMLConfig = config: yaml.generate "hardcoverharvester.yaml" config;
 
-    configEnvType = lib.types.addCheck lib.types.str (val: val.hasPrefix "!ENV " val);
+    configEnvType = lib.types.addCheck lib.types.str (val: lib.strings.hasPrefix "!ENV " val);
 
     configUserType = lib.types.listOf (lib.types.submodule {
       options = {
