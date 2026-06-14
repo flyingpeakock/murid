@@ -436,3 +436,21 @@ def test_qbittorrent_verify_cert_can_be_set(build_config):
         }
     )
     assert config.get("qbittorrent")["verify_cert"] is False
+
+
+def test_schedule_defaults_to_once_an_hour(build_config):
+    config = build_config()
+    assert config.get("schedule") == "0 * * * *"
+
+
+def test_schedule_must_be_valid_cron(build_config):
+    with pytest.raises(ConfigError, match="Config item 'schedule' must be a valid cron expression"):
+        build_config(schedule="not-a-cron")
+
+    with pytest.raises(ConfigError, match="Config item 'schedule' must be a valid cron expression"):
+        build_config(schedule="* * *")
+
+
+def test_schedule_can_be_set(build_config):
+    config = build_config(schedule="*/15 * * * *")
+    assert config.get("schedule") == "*/15 * * * *"

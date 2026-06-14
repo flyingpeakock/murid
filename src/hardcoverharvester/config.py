@@ -4,6 +4,7 @@ from io import StringIO
 from typing import Any
 
 import yaml
+from croniter import croniter
 
 logger = logging.getLogger("HardcoverHarvester")
 
@@ -32,6 +33,7 @@ _defaults = {
         "verify_cert": True,
         "category": "hardcoverharvester",
     },
+    "schedule": "0 * * * *",
 }
 
 
@@ -148,6 +150,9 @@ class Config:
         if not isinstance(self.get("qbittorrent"), dict):
             raise ConfigError("Config item 'qbittorrent' must be a dict")
 
+        if not valid_cron(self.get("schedule")):
+            raise ConfigError("Config item 'schedule' must be a valid cron expression")
+
         qbit = self.get("qbittorrent")
         required_qbit_keys = ["host", "username", "password", "port"]
 
@@ -188,3 +193,11 @@ def deep_merge(default, override):
             out[k] = deep_merge(default.get(k), v)
         return out
     return override if override is not None else default
+
+
+def valid_cron(expr: str) -> bool:
+    try:
+        croniter(expr)
+        return True
+    except (ValueError, KeyError):
+        return False

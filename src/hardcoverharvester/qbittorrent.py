@@ -1,55 +1,111 @@
 import logging
-
-import qbittorrentapi
-from rich.pretty import pretty_repr
+import time
 
 from . import Book
 
 logger = logging.getLogger("HardcoverHarvester")
 
 
-class QbittorrentError(Exception):
-    pass
-
-
 class Qbittorrent:
-    def __init__(self, conn_info: dict) -> None:
-        self.conn_info = conn_info
-        self.conn_info["VERIFY_WEBUI_CERTIFICATE"] = conn_info.pop("verify_cert", True)
-        self.category = conn_info.pop("category", "hardcoverharvester")
-        self.client = qbittorrentapi.Client(**conn_info)
+    def __init__(self, client, calibre, category, dry_run, poll_interval=2, timeout=3600):
+        self.client = client
+        self.calibre = calibre
+        self.category = category
+        self.poll_interval = poll_interval
+        self.dry_run = dry_run
+        self.timeout = timeout
 
-        try:
-            self.client.auth_log_in()
-        except qbittorrentapi.LoginFailed as e:
-            logging.error(f"Failed to log in to qBittorrent: {e}")
-            raise QbittorrentError(f"Failed to log in to qBittorrent: {e}") from e
-        self.client.auth_log_out()
-        logger.info(f"Connected to qBittorrent version: {self.client.app.version}")
-        logger.debug(f"qBittorrent Web API version: {self.client.app.web_api_version}")
-        logger.debug(
-            "qBittorrent build info:%s",
-            pretty_repr([{k: v} for k, v in self.client.app.build_info.items()]),
-        )
+    def handle_torrents(self, torrent_files: list[tuple[bytes, "Book"]]):
+        if not torrent_files:
+            return []
 
-    def add_torrents(self, torrent_files: list[tuple[bytes, Book]]) -> list[tuple[Book, int]]:
-        ids = []
+        if self.dry_run:
+            logger.info("Dry run enabled, not adding torrents to qBittorrent")
+            return []
+
+        pending = {}  # torrent_id -> (book, start_time)
+
         for torrent_file, book in torrent_files:
-            try:
-                tInfo = self.client.torrents_add(
-                    torrent_files=torrent_file,
-                    category=self.category,
-                    is_paused=True,  # Only for testing, should be False in production
+            torrent_id = self._add_torrent(torrent_file, book)
+            if torrent_id:
+                pending[torrent_id] = (book, time.time())
+
+        if not pending:
+            logger.warning("No torrents were successfully added")
+            return []
+
+        logger.info("Tracking %d torrents for completion", len(pending))
+
+        while pending:
+            now = time.time()
+            completed = []
+            timed_out = []
+
+            for torrent_id, (book, start_time) in pending.items():
+                try:
+                    path = self._get_completed_path(torrent_id)
+
+                    if path:
+                        self._send_to_calibre(book, path)
+                        completed.append(torrent_id)
+                        continue
+
+                    if now - start_time > self.timeout:
+                        logger.warning(
+                            "Torrent timed out: %s (%s)",
+                            book.title,
+                            torrent_id,
+                        )
+                        timed_out.append(torrent_id)
+
+                except Exception:
+                    logger.error("Error checking torrent %s", torrent_id)
+
+            for tid in completed + timed_out:
+                pending.pop(tid, None)
+
+            if pending:
+                logger.debug(
+                    "%d torrents still active (%d timed out)",
+                    len(pending),
+                    len(timed_out),
                 )
-                logger.info(f"Added {book.title} torrent to qBittorrent")
-                ids.append((book, tInfo.added_torrent_ids[0]))
-            except qbittorrentapi.UnsupportedMediaType415Error as e:
-                logger.error(f"File is not a valid torrent: {e}")
-            except qbittorrentapi.TorrentFileNotFoundError as e:
-                logger.error(f"Torrent file not found: {e}")
-            except qbittorrentapi.TorrentFilePermissionError as e:
-                logger.error(f"Permission error adding torrent: {e}")
-            except qbittorrentapi.Conflict409Error as e:
-                logger.error(f"Torrent already exists: {e}")
-        logger.debug(f"Got torrent IDs: {pretty_repr(ids)}")
-        return ids
+                time.sleep(self.poll_interval)
+
+    def _send_to_calibre(self, book, path):
+        try:
+            self.calibre.add_book(book, path)
+            logger.info("Added %s to calibre", book.title)
+        except Exception:
+            logger.error("Failed adding %s to calibre", book.title)
+
+    def _add_torrent(self, torrent_file: tuple[bytes, "Book"], book: "Book") -> str | None:
+        try:
+            tinfo = self.client.torrents_add(
+                torrent_files=torrent_file,
+                category=self.category,
+            )
+
+            logger.info("Added %s to qBittorrent", book.title)
+            logger.debug("Response: %s", tinfo)
+
+            return tinfo.added_torrent_ids[0]
+
+        except Exception as e:
+            logger.error("Failed adding %s: %s", book.title, e)
+            return None
+
+    def _get_completed_path(self, torrent_id: str) -> str | None:
+        try:
+            torrent = self.client.torrents_info(torrent_hashes=torrent_id)[0]
+        except Exception:
+            logger.error("Torrent %s not found", torrent_id)
+            return None
+
+        if not torrent:
+            return None
+
+        if not torrent.completed:
+            return None
+
+        return torrent.content_path

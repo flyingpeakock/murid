@@ -1,6 +1,10 @@
 import logging
-from concurrent.futures import ThreadPoolExecutor
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 
+import qbittorrentapi
+from croniter import croniter
 from rapidfuzz import fuzz
 
 from . import Book, Torrent
@@ -16,30 +20,35 @@ logger = logging.getLogger("HardcoverHarvester")
 class HardcoverHarvesterApp:
     def __init__(self, args):
         self.args = args
-        self.config = None
-        self.calibre = None
-        self.hardcover_clients = []
-        self.mam = None
-        self.matcher = None
-
-    def run(self):
         self.config = load_config(self.args.config_file)
         self.calibre = init_calibre(self.config)
         self.hardcover_clients = init_hardcover_clients(self.config)
         self.matcher = BookMatcher(self.config.get("matcher_threshold"))
         self.mam = init_MyAnonamouse_client(self.config.get("mam_id"))
-        self.qbit = init_qbittorrent(self.config.get("qbittorrent"))
+        self.qbit = init_qbittorrent(
+            self.config.get("qbittorrent"),
+            self.calibre,
+            self.args.dry_run,
+        )
+        self.schedule = self.config.get("schedule")
 
+        base_time = datetime.now()
+        iter = croniter(self.schedule, base_time)
+        while True:
+            next_run = iter.get_next(datetime)
+            print(f"Next run scheduled for {next_run}")
+            while datetime.now() < next_run:
+                time.sleep(30)
+            self.run()
+
+    def run(self):
+        logger.info("Starting harvest cycle")
         calibre_books = self.fetch_calibre_books()
         hardcover_books = self.fetch_hardcover_books()
 
         matches = self.match_books(calibre_books, hardcover_books)
         toFetch = self.process_matches(matches, hardcover_books)
-        torrentFiles = [(self.mam.download_torrent(torrent), torrent.book) for torrent in toFetch]
-        if not self.args.dry_run:
-            self.qbit.add_torrents(torrentFiles)
-        else:
-            logger.info("Dry run enabled, not adding torrents to qBittorrent")
+        self.qbit.handle_torrents(toFetch)
 
     def fetch_calibre_books(self):
         books = self.calibre.get_books()
@@ -71,32 +80,71 @@ class HardcoverHarvesterApp:
             count = len(books)
             logger.info(f"{count} book{'' if count == 1 else 's'} missing from Calibre")
 
-        def search_book(book: Book):
+        lang_codes = set(self.config.get("lang_codes"))
+
+        def search_book(book):
             return (
                 book,
-                self.mam.search_ebook(book.title, book.authors[0] if book.authors else None),
+                self.mam.search_ebook(
+                    book.title,
+                    book.authors[0] if book.authors else None,
+                ),
             )
 
-        with ThreadPoolExecutor(max_workers=min(10, len(books))) as executor:
-            found = list(executor.map(search_book, books))
+        torrent_files = []
 
-        if not found:
-            logger.warning("No torrents found for wanted books")
-        else:
-            for book, tor_list in found:
+        with ThreadPoolExecutor(max_workers=min(20, max(1, len(books)))) as executor:
+            search_futures = {executor.submit(search_book, book): book for book in books}
+
+            download_futures = {}
+
+            for future in as_completed(search_futures):
+                book = search_futures[future]
+
+                try:
+                    _, tor_list = future.result()
+                except Exception:
+                    logger.exception("Failed searching for %s", book.title)
+                    continue
+
                 logger.debug(
-                    f"Torrents found for {book.title}:\n%s",
+                    "Torrents found for %s:\n%s",
+                    book.title,
                     [torrent.download_url for torrent in tor_list],
                 )
 
-        torrents_to_download = [
-            torrent
-            for book, tor_list in found
-            for torrent in [self.get_best_torrent_for_book(book, tor_list)]
-            if torrent
-            and (torrent.language in self.config.get("lang_codes") or torrent.language is None)
-        ]
-        return torrents_to_download
+                torrent = self.get_best_torrent_for_book(book, tor_list)
+
+                if not torrent:
+                    continue
+
+                if torrent.language is not None and torrent.language not in lang_codes:
+                    continue
+
+                download_future = executor.submit(
+                    self.mam.download_torrent,
+                    torrent,
+                )
+
+                download_futures[download_future] = torrent.book
+
+            if not download_futures:
+                logger.warning("No torrents found for wanted books")
+                return []
+
+            for future in as_completed(download_futures):
+                book = download_futures[future]
+
+                try:
+                    torrent_file = future.result()
+                    torrent_files.append((torrent_file, book))
+                except Exception:
+                    logger.exception(
+                        "Failed downloading torrent for %s",
+                        book.title,
+                    )
+
+        return torrent_files
 
     def get_best_torrent_for_book(self, book: Book, torrents: list[Torrent]) -> Torrent | None:
         torrent_books = [t.book for t in torrents]
@@ -110,6 +158,17 @@ class HardcoverHarvesterApp:
         else:
             logger.info(f"No good torrent match for {book.title}. Best similarity: {score:.2f}")
             return None
+
+    def handle_torrents(self, torrent_files: list[tuple[bytes, Book]]):
+        if self.args.dry_run:
+            logger.info("Dry run enabled, not adding torrents to qBittorrent")
+            return
+
+        added = []
+        for torrent_file in torrent_files:
+            result = self.qbit.add_torrent(torrent_file)
+            if result:
+                added.append(result)
 
 
 class BookMatcher:
@@ -218,5 +277,9 @@ def init_MyAnonamouse_client(mam_id: str):
     return MyAnonamouse(mam_id)
 
 
-def init_qbittorrent(qbittorrent_config: dict):
-    return Qbittorrent(qbittorrent_config)
+def init_qbittorrent(qbittorrent_config: dict, calibre: Calibre, dryRun: bool = False):
+    conn_info = qbittorrent_config
+    conn_info["VERIFY_WEBUI_CERTIFICATE"] = conn_info.pop("verify_cert", True)
+    category = conn_info.pop("category", "hardcoverharvester")
+    client = qbittorrentapi.Client(**conn_info)
+    return Qbittorrent(client, calibre, category, dryRun)

@@ -21,7 +21,8 @@ dependencies = [
   "pyyaml",
   "requests",
   "rapidfuzz",
-  "qbittorrent-api"
+  "qbittorrent-api",
+  "croniter",
 ]
 
 dynamic = [ "version" ]
