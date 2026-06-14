@@ -34,6 +34,13 @@ def getArgParser(description: str) -> argparse.ArgumentParser:
         dest="config_file",
         type=str,
     )
+    arg_parser.add_argument(
+        "--dry-run",
+        "-d",
+        help="see what will be downloaded without actually downloading",
+        action="store_true",
+        dest="dry_run",
+    )
 
     return arg_parser
 

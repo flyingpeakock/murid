@@ -35,7 +35,10 @@ class HardcoverHarvesterApp:
         matches = self.match_books(calibre_books, hardcover_books)
         toFetch = self.process_matches(matches, hardcover_books)
         torrentFiles = [(self.mam.download_torrent(torrent), torrent.book) for torrent in toFetch]
-        self.qbit.add_torrents(torrentFiles)
+        if not self.args.dry_run:
+            self.qbit.add_torrents(torrentFiles)
+        else:
+            logger.info("Dry run enabled, not adding torrents to qBittorrent")
 
     def fetch_calibre_books(self):
         books = self.calibre.get_books()
