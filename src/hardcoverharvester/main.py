@@ -1,5 +1,6 @@
 import argparse
 import logging
+import sys
 
 from rich.logging import RichHandler
 from rich_argparse import RichHelpFormatter
@@ -12,7 +13,11 @@ logger = logging.getLogger("HardcoverHarvester")
 
 def setupLogger(logLevel: str) -> None:
     logger.setLevel(logLevel)
-    logger.addHandler(RichHandler(rich_tracebacks=True, tracebacks_show_locals=True))
+
+    if sys.stderr.isatty():
+        logger.addHandler(RichHandler(rich_tracebacks=True, tracebacks_show_locals=True))
+    else:
+        logger.addHandler(logging.StreamHandler())
 
 
 def getArgParser(description: str) -> argparse.ArgumentParser:
