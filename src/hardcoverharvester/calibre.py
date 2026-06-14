@@ -96,11 +96,10 @@ class Calibre:
             "add",
             "--with-library",
             self.library_path,
-            "--auto-merge",
             "--title",
-            book.title,
+            f'"{book.title}"',
             "--authors",
-            ", ".join(book.authors),
+            f'"{", ".join(book.authors)}"',
             path,
         ]
         try:
