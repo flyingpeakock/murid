@@ -46,13 +46,14 @@ class HardcoverHarvesterApp:
             executor.submit(self.run)
 
     def run(self):
-        logger.info("Starting harvest cycle")
+        logger.info("Starting HardcoverHarvester cycle")
         calibre_books = self.fetch_calibre_books()
         hardcover_books = self.fetch_hardcover_books()
 
         matches = self.match_books(calibre_books, hardcover_books)
         toFetch = self.process_matches(matches, hardcover_books)
         self.qbit.handle_torrents(toFetch)
+        logger.info("HardcoverHarvester cycle complete")
 
     def fetch_calibre_books(self):
         books = self.calibre.get_books()
