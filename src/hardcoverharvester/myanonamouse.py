@@ -127,7 +127,8 @@ class MyAnonamouse:
         if not result:
             logger.info(f"No results found for {query}")
         else:
-            logger.info(f"Found {len(result)} results for {query}")
+            count = len(result)
+            logger.info(f"Found {count} result{'s' if count != 1 else ''} for {query}")
         return result
 
     def download_torrent(self, torrent: Torrent) -> bytes | None:

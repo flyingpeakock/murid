@@ -119,7 +119,7 @@ class Hardcover:
 
         if books:
             logger.debug(
-                "Books fetched from hardcover:\n%s",
+                f"Books fetched from hardcover for {self._user_id}:\n%s",
                 pretty_repr([b.title for b in books]),
             )
         else:

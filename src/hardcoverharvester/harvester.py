@@ -1,4 +1,5 @@
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 from rapidfuzz import fuzz
 
@@ -46,7 +47,9 @@ class HardcoverHarvesterApp:
         return books
 
     def fetch_hardcover_books(self):
-        books = [book for client in self.hardcover_clients for book in client.get_books()]
+        with ThreadPoolExecutor(max_workers=min(10, len(self.hardcover_clients))) as executor:
+            results = executor.map(lambda client: client.get_books(), self.hardcover_clients)
+        books = [book for result in results for book in result]
         logger.info(f"Fetched {len(books)} books from Hardcover API")
         return books
 
@@ -68,25 +71,30 @@ class HardcoverHarvesterApp:
             count = len(books)
             logger.info(f"{count} book{'' if count == 1 else 's'} missing from Calibre")
 
-        found = [
-            (book, self.mam.search_ebook(book.title, book.authors[0] if book.authors else None))
-            for book in books
-        ]
-        if len(found) == 0:
+        def search_book(book: Book):
+            return (
+                book,
+                self.mam.search_ebook(book.title, book.authors[0] if book.authors else None),
+            )
+
+        with ThreadPoolExecutor(max_workers=min(10, len(books))) as executor:
+            found = list(executor.map(search_book, books))
+
+        if not found:
             logger.warning("No torrents found for wanted books")
         else:
-            for tor in found:
-                (book, tor_list) = tor
+            for book, tor_list in found:
                 logger.debug(
                     f"Torrents found for {book.title}:\n%s",
                     [torrent.download_url for torrent in tor_list],
                 )
 
         torrents_to_download = [
-            x
+            torrent
             for book, tor_list in found
-            for x in [self.get_best_torrent_for_book(book, tor_list)]
-            if x and (x.language in self.config.get("lang_codes") or x.language is None)
+            for torrent in [self.get_best_torrent_for_book(book, tor_list)]
+            if torrent
+            and (torrent.language in self.config.get("lang_codes") or torrent.language is None)
         ]
         return torrents_to_download
 
