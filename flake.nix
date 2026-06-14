@@ -40,7 +40,10 @@
       );
   in
     flake-parts.lib.mkFlake {inherit inputs;} {
-      imports = [inputs.git-hooks-nix.flakeModule];
+      imports = [
+        inputs.git-hooks-nix.flakeModule
+        ./nixosModule.nix
+      ];
 
       systems = [
         "x86_64-linux"
