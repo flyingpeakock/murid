@@ -32,6 +32,7 @@ in {
         host = lib.mkOption {
           description = "Host for qBittorrent Web API";
           type = lib.types.str;
+          default = "http://localhost";
         };
         username = lib.mkOption {
           description = "Username for qBittorrent Web API";
@@ -50,6 +51,11 @@ in {
           description = "Category to use when adding torrents to qBittorrent";
           type = lib.types.str;
           default = "hardcoverharvester";
+        };
+        port = lib.mkOption {
+          description = "Port that qBittorrent Web API is running on";
+          type = lib.types.port;
+          default = config.services.qbittorrent.webuiPort;
         };
       };
     };
