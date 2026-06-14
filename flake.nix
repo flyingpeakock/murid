@@ -17,7 +17,28 @@
     pyproject-nix,
     flake-parts,
     ...
-  } @ inputs:
+  } @ inputs: let
+    project = pyproject-nix.lib.project.loadPyproject {
+      projectRoot = ./.;
+    };
+
+    mkPackage = pkgs:
+      pkgs.python3Packages.buildPythonApplication (
+        project.renderers.buildPythonPackage {
+          python = pkgs.python3;
+        }
+        // {
+          pname = "HardcoverHarvester";
+          version = "0.0.2";
+
+          nativeCheckInputs = [
+            pkgs.python3Packages.pytestCheckHook
+          ];
+
+          meta.mainProgram = "HardcoverHarvester";
+        }
+      );
+  in
     flake-parts.lib.mkFlake {inherit inputs;} {
       imports = [inputs.git-hooks-nix.flakeModule];
 
@@ -28,30 +49,16 @@
         "aarch64-darwin"
       ];
 
+      flake.overlays.default = final: _: {
+        hardcoverharvester = mkPackage final;
+      };
+
       perSystem = {
         pkgs,
         config,
         ...
-      }: let
-        project = pyproject-nix.lib.project.loadPyproject {
-          projectRoot = ./.;
-        };
-      in {
-        packages.default = pkgs.python3Packages.buildPythonApplication (
-          project.renderers.buildPythonPackage {
-            python = pkgs.python3;
-          }
-          // {
-            pname = "HardcoverHarvester";
-            version = "0.0.1";
-
-            nativeCheckInputs = [
-              pkgs.python3Packages.pytestCheckHook
-            ];
-
-            meta.mainProgram = "HardcoverHarvester";
-          }
-        );
+      }: {
+        packages.default = mkPackage pkgs;
 
         pre-commit.settings.hooks = {
           alejandra.enable = true;
