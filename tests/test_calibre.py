@@ -184,11 +184,10 @@ def test_add_book(tmp_path):
         "add",
         "--with-library",
         str(tmp_path),
-        "--auto-merge",
         "--title",
-        "Dune",
+        '"Dune"',
         "--authors",
-        "Frank Herbert",
+        '"Frank Herbert"',
         "/tmp/dune.epub",
     ]
 
@@ -221,7 +220,7 @@ def test_add_book_multiple_authors(tmp_path):
     assert "--authors" in args[0]
 
     idx = args[0].index("--authors")
-    assert args[0][idx + 1] == "Neil Gaiman, Terry Pratchett"
+    assert args[0][idx + 1] == '"Neil Gaiman, Terry Pratchett"'
 
 
 def test_add_book_failure(tmp_path):

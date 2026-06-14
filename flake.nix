@@ -29,7 +29,7 @@
         }
         // {
           pname = "HardcoverHarvester";
-          version = "0.0.2";
+          version = "0.0.3";
 
           nativeCheckInputs = [
             pkgs.python3Packages.pytestCheckHook
