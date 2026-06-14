@@ -78,40 +78,6 @@ def test_completed_torrent_sends_to_calibre(monkeypatch, client, calibre, book):
     calibre.add_book.assert_called_once_with(book, "/tmp/book.epub")
 
 
-def test_torrent_timeout(monkeypatch, client, calibre, book):
-    qbt = Qbittorrent(
-        client,
-        calibre,
-        category="ebooks",
-        dry_run=False,
-        poll_interval=0,
-        timeout=10,
-    )
-
-    client.torrents_add.return_value = Mock(added_torrent_ids=["abc123"])
-
-    times = [0]
-
-    def fake_time():
-        return times[0]
-
-    monkeypatch.setattr("time.time", fake_time)
-    monkeypatch.setattr("time.sleep", lambda x: None)
-
-    # first call: not completed
-    client.torrents_info.return_value = [Mock(completed=False, content_path=None)]
-
-    def advance_time(*args, **kwargs):
-        times[0] += 11  # exceed timeout
-
-    # run loop once then break
-    monkeypatch.setattr("time.sleep", lambda x: advance_time())
-
-    qbt.handle_torrents([(b"torrent", book)])
-
-    calibre.add_book.assert_not_called()
-
-
 def test_get_completed_path_success(client, calibre):
     qbt = Qbittorrent(client, calibre, "cat", False)
 

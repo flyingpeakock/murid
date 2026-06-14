@@ -7,13 +7,12 @@ logger = logging.getLogger("HardcoverHarvester")
 
 
 class Qbittorrent:
-    def __init__(self, client, calibre, category, dry_run, poll_interval=2, timeout=3600):
+    def __init__(self, client, calibre, category, dry_run, poll_interval=2):
         self.client = client
         self.calibre = calibre
         self.category = category
         self.poll_interval = poll_interval
         self.dry_run = dry_run
-        self.timeout = timeout
 
     def handle_torrents(self, torrent_files: list[tuple[bytes, "Book"]]):
         if not torrent_files:
@@ -23,12 +22,12 @@ class Qbittorrent:
             logger.info("Dry run enabled, not adding torrents to qBittorrent")
             return []
 
-        pending = {}  # torrent_id -> (book, start_time)
+        pending = {}  # torrent_id -> book
 
         for torrent_file, book in torrent_files:
             torrent_id = self._add_torrent(torrent_file, book)
             if torrent_id:
-                pending[torrent_id] = (book, time.time())
+                pending[torrent_id] = book
 
         if not pending:
             logger.warning("No torrents were successfully added")
@@ -37,11 +36,9 @@ class Qbittorrent:
         logger.info("Tracking %d torrents for completion", len(pending))
 
         while pending:
-            now = time.time()
             completed = []
-            timed_out = []
 
-            for torrent_id, (book, start_time) in pending.items():
+            for torrent_id, book in pending.items():
                 try:
                     path = self._get_completed_path(torrent_id)
 
@@ -50,25 +47,16 @@ class Qbittorrent:
                         completed.append(torrent_id)
                         continue
 
-                    if now - start_time > self.timeout:
-                        logger.warning(
-                            "Torrent timed out: %s (%s)",
-                            book.title,
-                            torrent_id,
-                        )
-                        timed_out.append(torrent_id)
-
                 except Exception:
                     logger.error("Error checking torrent %s", torrent_id)
 
-            for tid in completed + timed_out:
+            for tid in completed:
                 pending.pop(tid, None)
 
             if pending:
                 logger.debug(
-                    "%d torrents still active (%d timed out)",
+                    "%d torrents still active",
                     len(pending),
-                    len(timed_out),
                 )
                 time.sleep(self.poll_interval)
 

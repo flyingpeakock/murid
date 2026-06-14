@@ -55,7 +55,8 @@ Downloads are sent to qBittorrent and then added to Calibre.
 
     logger.info(f"Starting HardcoverHarvester v{__version__}")
 
-    HardcoverHarvesterApp(args)
+    app = HardcoverHarvesterApp(args)
+    app.start_scheduler()
 
 
 if __name__ == "__main__":

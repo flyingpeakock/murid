@@ -32,14 +32,18 @@ class HardcoverHarvesterApp:
         )
         self.schedule = self.config.get("schedule")
 
+    def start_scheduler(self):
         base_time = datetime.now()
         iter = croniter(self.schedule, base_time)
+
+        executor = ThreadPoolExecutor(max_workers=5)
+
         while True:
             next_run = iter.get_next(datetime)
-            print(f"Next run scheduled for {next_run}")
+            logger.info(f"Next run scheduled for {next_run}")
             while datetime.now() < next_run:
                 time.sleep(30)
-            self.run()
+            executor.submit(self.run)
 
     def run(self):
         logger.info("Starting harvest cycle")
