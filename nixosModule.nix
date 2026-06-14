@@ -117,7 +117,7 @@ in {
               type = lib.types.str;
             };
 
-            calibre_db_executable = lib.mkOption {
+            calibredb_executable = lib.mkOption {
               description = "Path to the calibredb executable";
               type = lib.types.str;
               default = "${pkgs.calibre}/bin/calibredb";
