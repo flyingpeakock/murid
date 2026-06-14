@@ -163,18 +163,6 @@ class HardcoverHarvesterApp:
             logger.info(f"No good torrent match for {book.title}. Best similarity: {score:.2f}")
             return None
 
-    def handle_torrents(self, torrent_files: list[tuple[bytes, Book]]):
-        if self.args.dry_run:
-            logger.info("Dry run enabled, not adding torrents to qBittorrent")
-            return
-
-        added = []
-        for torrent_file in torrent_files:
-            result = self.qbit.add_torrent(torrent_file)
-            if result:
-                added.append(result)
-
-
 class BookMatcher:
     def __init__(self, threshold: float = 0.92):
         self.threshold = threshold
