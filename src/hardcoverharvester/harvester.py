@@ -267,7 +267,10 @@ def load_config(path: str):
 
 def init_calibre(config):
     try:
-        return Calibre(config.get("calibre_db_path"))
+        return Calibre(
+            config.get("calibre_db_path"),
+            config.get("calibredb_executable", "calibredb"),
+        )
     except CalibreError as e:
         logger.error(f"Error initializing Calibre: {e}")
         raise SystemExit(1) from e
