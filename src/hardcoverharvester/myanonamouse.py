@@ -1,5 +1,7 @@
 import json
 import logging
+import threading
+import time
 from typing import Any
 
 import requests
@@ -17,11 +19,23 @@ class MyAnonamouse:
     BASE_URL = "https://www.myanonamouse.net"
     SEARCH_URL = f"{BASE_URL}/tor/js/loadSearchJSONbasic.php"
     DOWNLOAD_URL = f"{BASE_URL}/tor/download.php"
+    _MIN_REQUEST_INTERVAL = 0.3  # seconds
 
     def __init__(self, mam_id: str) -> None:
         self.session = requests.Session()
         self._mam_id = mam_id
         self.session.cookies.set("mam_id", mam_id, domain=".myanonamouse.net")
+        self._lock = threading.Lock()
+        self._last_request_time = 0.0
+
+    def _request(self, method: str, url: str, **kwargs) -> requests.Response:
+        with self._lock:
+            now = time.monotonic()
+            elapsed = now - self._last_request_time
+            if elapsed < self._MIN_REQUEST_INTERVAL:
+                time.sleep(self._MIN_REQUEST_INTERVAL - elapsed)
+            self._last_request_time = time.monotonic()
+            return self.session.request(method, url, **kwargs)
 
     def search(
         self,
@@ -63,7 +77,8 @@ class MyAnonamouse:
 
         logger.debug(f"Searching MyAnonamouse for {text}")
         try:
-            response = self.session.post(
+            response = self._request(
+                "POST",
                 self.SEARCH_URL,
                 json=payload,
                 timeout=30,
@@ -133,7 +148,9 @@ class MyAnonamouse:
 
     def download_torrent(self, torrent: Torrent) -> bytes | None:
         try:
-            response = self.session.get(f"{self.DOWNLOAD_URL}/?tid={torrent.book.id}")
+            response = self._request(
+                "GET", f"{self.DOWNLOAD_URL}/?tid={torrent.book.id}", timeout=30
+            )
             response.raise_for_status()
             logger.debug(f"Torrent for {torrent.book.title} downloaded successfully")
             return response.content

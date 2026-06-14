@@ -1,3 +1,6 @@
+import time
+from unittest.mock import patch
+
 import pytest
 import requests
 
@@ -93,7 +96,7 @@ def test_search_success(mam):
                 ]
             }
 
-    mam.session.post = lambda *a, **k: Response()
+    mam.session.request = lambda *a, **k: Response()
 
     results = mam.search("Dune")
 
@@ -115,7 +118,7 @@ def test_search_respects_per_page(mam):
                 ]
             }
 
-    mam.session.post = lambda *a, **k: Response()
+    mam.session.request = lambda *a, **k: Response()
 
     results = mam.search("test", per_page=2)
 
@@ -139,7 +142,7 @@ def test_search_missing_data_raises(mam):
         def json(self):
             return {"unexpected": True}
 
-    mam.session.post = lambda *a, **k: Response()
+    mam.session.request = lambda *a, **k: Response()
 
     with pytest.raises(MAMError, match="Unexpected response"):
         mam.search("Dune")
@@ -159,7 +162,7 @@ def test_search_include_description(mam):
         payloads.append(kwargs["json"])
         return Response()
 
-    mam.session.post = fake_post
+    mam.session.request = fake_post
 
     mam.search(
         "Dune",
@@ -249,3 +252,49 @@ def test_parse_torrent_multiple_authors():
         "Author One",
         "Author Two",
     ]
+
+
+def test_search_uses_request_wrapper(mam):
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"data": []}
+
+    called = False
+
+    def fake_request(*args, **kwargs):
+        nonlocal called
+        called = True
+        return Response()
+
+    mam._request = fake_request
+
+    mam.search("Dune")
+
+    assert called
+
+
+def test_rate_limit_enforced(mam):
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"data": []}
+
+    calls = []
+
+    def fake_request(*args, **kwargs):
+        calls.append(time.monotonic())
+        return Response()
+
+    mam.session.request = fake_request
+
+    with patch("time.monotonic", side_effect=[0, 0.0, 0.3, 0.3, 0.6, 0.6]):
+        with patch("time.sleep") as sleep:
+            mam._request("GET", "url")
+            mam._request("GET", "url")
+
+    assert sleep.called
