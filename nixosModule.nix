@@ -56,7 +56,7 @@ in {
   in {
     options.services.hardcoverharvester = {
       enable = lib.mkEnableOption "HardcoverHarvester";
-      package = lib.mkPackageOption "hardcoverharvester" {};
+      package = lib.mkPackageOption pkgs "hardcoverharvester" {};
 
       user = lib.mkOption {
         description = "User to run the HardcoverHarvester service as";
