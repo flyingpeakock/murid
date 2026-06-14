@@ -90,6 +90,12 @@ in {
         type = lib.types.nullOr lib.types.str;
       };
 
+      extraArgs = lib.mkOption {
+        description = "Extra command line arguments to pass to the HardcoverHarvester executable";
+        type = lib.types.listOf lib.types.str;
+        default = [];
+      };
+
       config = lib.mkOption {
         description = "Configuration for HardcoverHarvester";
         default = {};
@@ -179,7 +185,12 @@ in {
               if cfg.config != {}
               then createYAMLConfig cfg.config
               else cfg.configFile;
-          in "${lib.getExe cfg.package} --config ${configFile}";
+            args =
+              [
+                "--config ${configFile}"
+              ]
+              ++ cfg.extraArgs;
+          in "${lib.getExe cfg.package} ${lib.concatStringsSep " " args}";
         };
       };
     };
