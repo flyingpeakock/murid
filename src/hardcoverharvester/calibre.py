@@ -99,9 +99,9 @@ class Calibre:
             "--with-library",
             self.library_path,
             "--title",
-            f'"{book.title}"',
+            book.title,
             "--authors",
-            f'"{", ".join(book.authors)}"',
+            ", ".join(book.authors),
             path,
         ]
 
