@@ -152,10 +152,6 @@ def test_run_failure(tmp_path):
         Calibre(str(db), run=boom)
 
 
-class Result:
-    stdout = "Added book ids:"
-
-
 def test_add_book(tmp_path):
     db = tmp_path / "calibre.db"
     create_db(db)
@@ -164,7 +160,6 @@ def test_add_book(tmp_path):
 
     def fake_run(*args, **kwargs):
         calls.append((args, kwargs))
-        return Result()
 
     calibre = Calibre(
         str(db),
@@ -206,7 +201,6 @@ def test_add_book_multiple_authors(tmp_path):
 
     def fake_run(*args, **kwargs):
         calls.append((args, kwargs))
-        return Result()
 
     calibre = Calibre(
         str(db),

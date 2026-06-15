@@ -110,17 +110,21 @@ class Calibre:
 
         try:
             logger.debug(f"Running command: {' '.join(args)}")
-            output = self.run(
+            self.run(
                 args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-            ).stdout
+            )
         except Exception as e:
             logger.error(f"Error adding book to Calibre: {e}")
             raise CalibreError(f"Error adding book to Calibre: {e}") from e
 
-        if str("Added book ids:") not in output:
-            logger.error(f"Failed to add {book} to calibre. Output: {output}")
-            raise CalibreError(f"Failed to add {book} to Calibre. Output: {output}")
-        logger.info(f"Added {book} to Calibre")
+    def contains_book(self, book: Book, matcher) -> bool:
+        existing_books = self.get_books()
+        best_match, score = matcher.best_match(book, existing_books)
+        if best_match and score >= matcher.threshold:
+            return True
+        else:
+            logger.debug(f"Book {book} does not exist in Calibre. Best similarity: {score:.2f}")
+            return False
