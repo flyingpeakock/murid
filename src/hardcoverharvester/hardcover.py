@@ -114,6 +114,7 @@ class Hardcover:
                     title=book.get("title"),
                     authors=authors,
                     isbn=isbn,
+                    source="hardcover",
                 )
             )
 

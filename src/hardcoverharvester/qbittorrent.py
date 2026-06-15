@@ -64,7 +64,7 @@ class Qbittorrent:
         try:
             self.calibre.add_book(book, path)
         except Exception:
-            logger.error("Failed adding %s to calibre", book.title)
+            pass
 
     def _add_torrent(self, torrent_file: tuple[bytes, "Book"], book: "Book") -> str | None:
         try:

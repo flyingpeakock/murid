@@ -13,6 +13,9 @@ class Book:
     authors: list[str]
     id: int
     isbn: list[str | None]
+    source: str
+    def __str__(self):
+        return f"{self.title} by {', '.join(self.authors)}"
 
 
 @dataclass(slots=True)

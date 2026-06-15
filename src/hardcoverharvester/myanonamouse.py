@@ -119,6 +119,7 @@ class MyAnonamouse:
                 authors=[a.strip() for _, a in json.loads(data.get("author_info", "{}")).items()],
                 id=int(data.get("id", 0)),
                 isbn=[data.get("isbn", None)],
+                source="myanonamouse",
             ),
             category=int(data.get("category", 0)),
             category_name=data.get("catname", ""),
