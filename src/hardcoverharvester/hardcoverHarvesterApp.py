@@ -79,13 +79,16 @@ class HardcoverHarvesterApp:
             logger.info(f"{count} book{'' if count == 1 else 's'} missing from Calibre")
 
         def search_book(book):
-            return (
-                book,
-                self.mam.search_ebook(
-                    book.title,
-                    book.authors[0] if book.authors else None,
-                ),
+            mam_books = self.mam.search_ebook(
+                book.title,
+                book.authors[0] if book.authors else None,
             )
+            for torrent in mam_books:
+                # Prefer series info from Hardcover if available,
+                # as MyAnonamouse data can be inconsistent
+                torrent.book.series = book.series
+                torrent.book.series_number = book.series_number
+            return book, mam_books
 
         torrent_files = []
 
@@ -108,7 +111,7 @@ class HardcoverHarvesterApp:
                 logger.debug(
                     "Potential torrents found for %s:\n%s",
                     book,
-                    [f"https://www.myanonamouse.net/t/{torrent.book.id}" for torrent in tor_list],
+                    [str(torrent) for torrent in tor_list],
                 )
 
                 torrent = self.get_best_torrent_for_book(book, tor_list)
@@ -162,10 +165,7 @@ class HardcoverHarvesterApp:
         best_match, score = self.matcher.best_match(book, torrent_books)
         if best_match and score >= self.matcher.threshold:
             ret = next(t for t in torrents if t.book == best_match)
-            logger.debug(
-                f"Best torrent for {book} is https://www.myanonamouse.net/t/{ret.book.id}"
-                " with similarity {score:.2f}"
-            )
+            logger.debug(f"Best torrent for {book} is {ret} with similarity {score:.2f}")
             return ret
         else:
             logger.info(f"No good torrent match for {book}. Best similarity: {score:.2f}")

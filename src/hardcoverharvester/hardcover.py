@@ -46,6 +46,13 @@ class Hardcover:
                 isbn_10
                 isbn_13
               }
+
+              book_series {
+                  position
+                  series {
+                      name
+                  }
+              }
             }
           }
         }
@@ -73,6 +80,15 @@ class Hardcover:
 
         logger.debug("Hardcover data fetched successfully")
         return data
+
+    @staticmethod
+    def _extract_series_info(data: dict) -> tuple[str | None, float | None]:
+        series_info = data.get("book_series", [])
+        if not series_info:
+            return None, None
+        name = series_info[0].get("series", {}).get("name")
+        position = series_info[0].get("position")
+        return name, position
 
     @staticmethod
     def _extract_isbn(editions: list[dict] | None) -> list[str | None]:
@@ -106,6 +122,7 @@ class Hardcover:
 
             editions = book.get("editions", [])
             isbn = self._extract_isbn(editions)
+            series, series_number = self._extract_series_info(book)
 
             books.append(
                 Book(
@@ -114,6 +131,8 @@ class Hardcover:
                     authors=authors,
                     isbn=isbn,
                     source="hardcover",
+                    series=series,
+                    series_number=series_number,
                 )
             )
 

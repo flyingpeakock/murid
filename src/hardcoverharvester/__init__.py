@@ -14,6 +14,8 @@ class Book:
     id: int
     isbn: list[str | None]
     source: str
+    series: str | None = None
+    series_number: float | None = None
 
     def __str__(self):
         return f"{self.title} by {', '.join(self.authors)}"
@@ -43,3 +45,6 @@ class Torrent:
             return None
 
         return f"https://www.myanonamouse.net/tor/download.php/{self.download_hash}"
+
+    def __str__(self) -> str:
+        return f"https://www.myanonamouse.net/t/{self.book.id}"

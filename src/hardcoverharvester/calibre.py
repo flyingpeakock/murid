@@ -102,12 +102,22 @@ class Calibre:
             book.title,
             "--authors",
             ", ".join(book.authors),
-            path,
         ]
 
         if os.path.isdir(path):
             args.extend(["--recurse", "--one-book-per-directory"])
 
+        if book.series and book.series_number:
+            args.extend(
+                [
+                    "--series",
+                    book.series,
+                    "--series-index",
+                    str(book.series_number),
+                ]
+            )
+
+        args.append(path)
         try:
             logger.debug(f"Running command: {' '.join(args)}")
             self.run(

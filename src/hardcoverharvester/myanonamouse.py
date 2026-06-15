@@ -112,6 +112,12 @@ class MyAnonamouse:
 
     @staticmethod
     def _parse_torrent(data: dict[str, Any]) -> Torrent:
+        series_info = json.loads(data.get("series_info", "{}"))
+        series_name = None
+        series_number = None
+        if series_info:
+            _, (series_name, _, series_number) = next(iter(series_info.items()))
+
         return Torrent(
             book=Book(
                 title=str(data.get("title", "")),
@@ -119,6 +125,8 @@ class MyAnonamouse:
                 id=int(data.get("id", 0)),
                 isbn=[data.get("isbn", None)],
                 source="myanonamouse",
+                series=series_name,
+                series_number=series_number,
             ),
             category=int(data.get("category", 0)),
             category_name=data.get("catname", ""),
