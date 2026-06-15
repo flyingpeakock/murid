@@ -68,7 +68,6 @@ class HardcoverHarvesterApp:
 
     def match_books(self, calibre_books, hardcover_books):
         matches = self.matcher.match_books(calibre_books, hardcover_books)
-        logger.info(f"{len(matches)} books already in Calibre")
         return matches
 
     def process_matches(self, matches, hardcover_books):
@@ -106,6 +105,8 @@ class HardcoverHarvesterApp:
                     logger.exception(f"Failed searching for {book}")
                     continue
 
+                if not tor_list:
+                    continue
                 logger.debug(
                     "Torrents found for %s:\n%s",
                     book,
@@ -277,7 +278,7 @@ class BookMatcher:
                 matches.append((match, book_b, score))
             else:
                 logger.debug(
-                    f"No match for {book_b.title} in calibre db. Best similarity: {score:.2f}"
+                    f"No match for {book_b} in calibre db. Best similarity: {score:.2f}"
                 )
 
         return matches

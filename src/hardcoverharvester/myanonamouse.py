@@ -92,7 +92,6 @@ class MyAnonamouse:
         data = response.json()
 
         if "error" in data:
-            logger.info("No results found for %r: %s", text, data["error"])
             return []
 
         if "data" not in data:
