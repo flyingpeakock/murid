@@ -151,6 +151,8 @@ def test_run_failure(tmp_path):
     with pytest.raises(CalibreError):
         Calibre(str(db), run=boom)
 
+class Result:
+    stdout = "1"
 
 def test_add_book(tmp_path):
     db = tmp_path / "calibre.db"
@@ -158,8 +160,10 @@ def test_add_book(tmp_path):
 
     calls = []
 
+
     def fake_run(*args, **kwargs):
         calls.append((args, kwargs))
+        return Result()
 
     calibre = Calibre(
         str(db),
@@ -171,6 +175,7 @@ def test_add_book(tmp_path):
         title="Dune",
         authors=["Frank Herbert"],
         isbn=["9780441172719"],
+        source="calibre",
     )
 
     calibre.add_book(book, "/tmp/dune.epub")
@@ -200,6 +205,7 @@ def test_add_book_multiple_authors(tmp_path):
 
     def fake_run(*args, **kwargs):
         calls.append((args, kwargs))
+        return Result()
 
     calibre = Calibre(
         str(db),
@@ -211,6 +217,7 @@ def test_add_book_multiple_authors(tmp_path):
         title="Good Omens",
         authors=["Neil Gaiman", "Terry Pratchett"],
         isbn=[],
+        source="calibre",
     )
 
     calibre.add_book(book, "/tmp/book.epub")
@@ -249,6 +256,7 @@ def test_add_book_failure(tmp_path):
         title="Dune",
         authors=["Frank Herbert"],
         isbn=[],
+        source="calibre",
     )
 
     with pytest.raises(

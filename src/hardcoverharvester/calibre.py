@@ -25,6 +25,7 @@ class Calibre:
         self.library_path = os.path.dirname(db_path)
         self.run = run
         self.connect = connect
+        self.num_books = 0
         self.validate()
 
     def validate(self) -> None:
@@ -79,16 +80,19 @@ class Calibre:
 
         rows = cursor.fetchall()
         conn.close()
-        return [
+        books = [
             Book(
                 id=row["id"],
                 title=row["title"],
                 # authors=row["authors"],
                 authors=[a.strip() for a in row["authors"].split(",")] if row["authors"] else [],
                 isbn=[row["isbn"]],
+                source="calibre",
             )
             for row in rows
         ]
+        self.num_books = len(books)
+        return books
 
     def add_book(self, book: Book, path: str) -> None:
         args = [
@@ -107,13 +111,26 @@ class Calibre:
             args.extend(["--recurse", "--one-book-per-directory"])
 
         try:
-            self.run(
+            logger.debug(f"Running command: {' '.join(args)}")
+            output = self.run(
                 args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-            )
+            ).stdout
         except Exception as e:
             logger.error(f"Error adding book to Calibre: {e}")
             raise CalibreError(f"Error adding book to Calibre: {e}") from e
+
+        if str(self.num_books + 1) not in output:
+            logger.error(
+                f"Failed to add {book.title} by "
+                f"{', '.join(book.authors)} to Calibre. Output: {output}"
+            )
+            logger.debug(f"Expected book count: {self.num_books + 1}, got output: {output}")
+            raise CalibreError(
+                f"Failed to add {book.title} by "
+                f"{', '.join(book.authors)} to Calibre. Output: {output}"
+            )
+        self.num_books += 1
         logger.info(f"Added book to Calibre: {book.title} by {', '.join(book.authors)}")
