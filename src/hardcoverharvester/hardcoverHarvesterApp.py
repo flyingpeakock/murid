@@ -21,6 +21,28 @@ class HardcoverHarvesterApp:
     def __init__(self, args):
         self.args = args
         self.config = load_config(self.args.config_file)
+
+        self.calibre = None
+        self.hardcover_clients = None
+        self.matcher = None
+        self.mam = None
+        self.qbit = None
+
+    def start_scheduler(self):
+        base_time = datetime.now()
+        iter = croniter(self.config.get("schedule"), base_time)
+
+        executor = ThreadPoolExecutor(max_workers=5)
+
+        while True:
+            next_run = iter.get_next(datetime)
+            logger.info(f"Next run scheduled for {next_run}")
+            while datetime.now() < next_run:
+                sleep_time = ((next_run - datetime.now()).total_seconds()) / 2 or 1
+                time.sleep(sleep_time)
+            executor.submit(self.run)
+
+    def run(self):
         self.calibre = init_calibre(self.config)
         self.hardcover_clients = init_hardcover_clients(self.config)
         self.matcher = BookMatcher(self.config.get("matcher_threshold"))
@@ -29,22 +51,7 @@ class HardcoverHarvesterApp:
             self.config.get("qbittorrent"),
             self.args.dry_run,
         )
-        self.schedule = self.config.get("schedule")
 
-    def start_scheduler(self):
-        base_time = datetime.now()
-        iter = croniter(self.schedule, base_time)
-
-        executor = ThreadPoolExecutor(max_workers=5)
-
-        while True:
-            next_run = iter.get_next(datetime)
-            logger.info(f"Next run scheduled for {next_run}")
-            while datetime.now() < next_run:
-                time.sleep(30)
-            executor.submit(self.run)
-
-    def run(self):
         logger.info("Starting HardcoverHarvester cycle")
         calibre_books = self.fetch_calibre_books()
         hardcover_books = self.fetch_hardcover_books()
