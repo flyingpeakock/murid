@@ -260,9 +260,9 @@ def test_calibredb_executable_path_can_be_overridden(build_config):
     assert config.get("calibredb_executable") == "/custom/path/calibredb"
 
 
-def test_matcher_threshold_defaults_to_0_85(build_config):
+def test_matcher_threshold_defaults_to_0_7(build_config):
     config = build_config()
-    assert config.get("matcher_threshold") == 0.85
+    assert config.get("matcher_threshold") == 0.7
 
 
 def test_matcher_threshold_must_be_float(build_config):

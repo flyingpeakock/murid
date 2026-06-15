@@ -22,7 +22,7 @@ _defaults = {
     "redact_sensitive_data": True,
     "calibre_db_path": _MISSING,
     "calibredb_executable": "calibredb",
-    "matcher_threshold": 0.85,
+    "matcher_threshold": 0.7,
     "mam_id": _MISSING,
     "lang_codes": ["ENG"],
     "qbittorrent": {
