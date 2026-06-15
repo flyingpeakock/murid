@@ -153,7 +153,7 @@ def test_run_failure(tmp_path):
 
 
 class Result:
-    stdout = "1"
+    stdout = "Added book ids:"
 
 
 def test_add_book(tmp_path):

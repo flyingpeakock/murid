@@ -25,7 +25,6 @@ class Calibre:
         self.library_path = os.path.dirname(db_path)
         self.run = run
         self.connect = connect
-        self.num_books = 0
         self.validate()
 
     def validate(self) -> None:
@@ -91,7 +90,6 @@ class Calibre:
             )
             for row in rows
         ]
-        self.num_books = len(books)
         return books
 
     def add_book(self, book: Book, path: str) -> None:
@@ -122,9 +120,7 @@ class Calibre:
             logger.error(f"Error adding book to Calibre: {e}")
             raise CalibreError(f"Error adding book to Calibre: {e}") from e
 
-        if str(self.num_books + 1) not in output:
+        if str("Added book ids:") not in output:
             logger.error(f"Failed to add {book} to calibre. Output: {output}")
-            logger.debug(f"Expected book count: {self.num_books + 1}, got output: {output}")
             raise CalibreError(f"Failed to add {book} to Calibre. Output: {output}")
-        self.num_books += 1
         logger.info(f"Added {book} to Calibre")
