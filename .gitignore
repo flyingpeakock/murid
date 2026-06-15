@@ -8,3 +8,4 @@ result
 .pre-commit-config.yaml
 .direnv
 config.yaml
+.coverage
