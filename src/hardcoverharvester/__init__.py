@@ -34,6 +34,7 @@ class Torrent:
     narrator_info: dict[str, str] | None = None
     series_info: dict[str, Any] | None = None
     language: str | None = None
+    file_types: list[str] | None = None
     raw: dict[str, Any] | None = None
 
     @property

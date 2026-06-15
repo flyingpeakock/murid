@@ -25,6 +25,7 @@ def make_torrent(book):
         narrator_info={},
         series_info={},
         language="ENG",
+        file_types=["epub"],
         raw={},
     )
 
@@ -106,9 +107,10 @@ def test_get_best_torrent_for_book():
 
     app = MagicMock()
     app.matcher = matcher
+    app.config = {"lang_codes": ["ENG"]}
     app.get_best_torrent_for_book = HardcoverHarvesterApp.get_best_torrent_for_book.__get__(app)
 
-    result = app.get_best_torrent_for_book(book, [torrent], ["ENG"])
+    result = app.get_best_torrent_for_book(book, [torrent])
 
     assert result == torrent
 
@@ -125,9 +127,10 @@ def test_get_best_torrent_for_book_none():
 
     app = MagicMock()
     app.matcher = matcher
+    app.config = {"lang_codes": ["ENG"]}
     app.get_best_torrent_for_book = HardcoverHarvesterApp.get_best_torrent_for_book.__get__(app)
 
-    result = app.get_best_torrent_for_book(book, [torrent], ["ENG"])
+    result = app.get_best_torrent_for_book(book, [torrent])
 
     assert result is None
 

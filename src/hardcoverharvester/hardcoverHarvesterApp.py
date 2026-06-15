@@ -78,8 +78,6 @@ class HardcoverHarvesterApp:
             count = len(books)
             logger.info(f"{count} book{'' if count == 1 else 's'} missing from Calibre")
 
-        lang_codes = set(self.config.get("lang_codes"))
-
         def search_book(book):
             return (
                 book,
@@ -113,7 +111,7 @@ class HardcoverHarvesterApp:
                     [torrent.download_url for torrent in tor_list],
                 )
 
-                torrent = self.get_best_torrent_for_book(book, tor_list, lang_codes)
+                torrent = self.get_best_torrent_for_book(book, tor_list)
 
                 if not torrent:
                     continue
@@ -143,10 +141,21 @@ class HardcoverHarvesterApp:
 
         return torrent_files
 
-    def get_best_torrent_for_book(
-        self, book: Book, torrents: list[Torrent], languages: list[str]
-    ) -> Torrent | None:
-        torrent_books = [t.book for t in torrents if t.language is None or t.language in languages]
+    def get_best_torrent_for_book(self, book: Book, torrents: list[Torrent]) -> Torrent | None:
+        wanted_filetypes = {
+            "epub",
+            "mobi",
+            "azw3",
+        }
+        torrent_books = [
+            t.book
+            for t in torrents
+            if (t.language is None or t.language in self.config.get("lang_codes", []))
+            and wanted_filetypes.intersection(set(t.file_types or []))
+        ]
+        if not torrent_books:
+            return None
+
         best_match, score = self.matcher.best_match(book, torrent_books)
         if best_match and score >= self.matcher.threshold:
             ret = next(t for t in torrents if t.book == best_match)

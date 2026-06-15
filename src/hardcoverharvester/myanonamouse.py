@@ -132,6 +132,7 @@ class MyAnonamouse:
             narrator_info=json.loads(data.get("narrator_info", "{}")),
             series_info=json.loads(data.get("series_info", "{}")),
             language=data.get("lang_code", None),
+            file_types=data.get("file_types", "").split() if data.get("file_types") else [],
             raw=data,
         )
 
