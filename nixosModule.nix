@@ -143,7 +143,7 @@ in {
             matcher_threshold = lib.mkOption {
               description = "Threshold for the matcher to consider a match valid (between 0 and 1)";
               type = lib.types.float;
-              default = 0.85;
+              default = 0.7;
             };
 
             mam_id = lib.mkOption {

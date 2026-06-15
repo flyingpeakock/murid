@@ -6,7 +6,7 @@ from rich.logging import RichHandler
 from rich_argparse import RichHelpFormatter
 
 from . import __version__
-from .harvester import HardcoverHarvesterApp
+from .hardcoverHarvesterApp import HardcoverHarvesterApp
 
 logger = logging.getLogger("HardcoverHarvester")
 
