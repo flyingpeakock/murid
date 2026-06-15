@@ -151,15 +151,16 @@ def test_run_failure(tmp_path):
     with pytest.raises(CalibreError):
         Calibre(str(db), run=boom)
 
+
 class Result:
     stdout = "1"
+
 
 def test_add_book(tmp_path):
     db = tmp_path / "calibre.db"
     create_db(db)
 
     calls = []
-
 
     def fake_run(*args, **kwargs):
         calls.append((args, kwargs))

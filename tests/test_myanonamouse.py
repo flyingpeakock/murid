@@ -299,6 +299,7 @@ def test_rate_limit_enforced(mam):
 
     assert sleep.called
 
+
 def test_book_title_is_string(mam):
     torrent = MyAnonamouse._parse_torrent({"title": 123, "author_info": "{}"})
 

@@ -123,14 +123,8 @@ class Calibre:
             raise CalibreError(f"Error adding book to Calibre: {e}") from e
 
         if str(self.num_books + 1) not in output:
-            logger.error(
-                f"Failed to add {book.title} by "
-                f"{', '.join(book.authors)} to Calibre. Output: {output}"
-            )
+            logger.error(f"Failed to add {book} to calibre. Output: {output}")
             logger.debug(f"Expected book count: {self.num_books + 1}, got output: {output}")
-            raise CalibreError(
-                f"Failed to add {book.title} by "
-                f"{', '.join(book.authors)} to Calibre. Output: {output}"
-            )
+            raise CalibreError(f"Failed to add {book} to Calibre. Output: {output}")
         self.num_books += 1
-        logger.info(f"Added book to Calibre: {book.title} by {', '.join(book.authors)}")
+        logger.info(f"Added {book} to Calibre")

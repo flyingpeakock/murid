@@ -1,7 +1,6 @@
 import logging
 
 import requests
-from rich.pretty import pretty_repr
 
 from . import Book
 
@@ -118,12 +117,7 @@ class Hardcover:
                 )
             )
 
-        if books:
-            logger.debug(
-                f"Books fetched from hardcover for {self._user_id}:\n%s",
-                pretty_repr([b.title for b in books]),
-            )
-        else:
-            logger.warning("No books found for this user.")
+        if not books:
+            logger.warning(f"No books found for user {self._user_id}.")
 
         return books

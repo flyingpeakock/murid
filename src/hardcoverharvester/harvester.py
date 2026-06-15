@@ -27,7 +27,6 @@ class HardcoverHarvesterApp:
         self.mam = init_MyAnonamouse_client(self.config.get("mam_id"))
         self.qbit = init_qbittorrent(
             self.config.get("qbittorrent"),
-            self.calibre,
             self.args.dry_run,
         )
         self.schedule = self.config.get("schedule")
@@ -52,7 +51,7 @@ class HardcoverHarvesterApp:
 
         matches = self.match_books(calibre_books, hardcover_books)
         toFetch = self.process_matches(matches, hardcover_books)
-        self.qbit.handle_torrents(toFetch)
+        self.handle_torrents(toFetch)
         logger.info("HardcoverHarvester cycle complete")
 
     def fetch_calibre_books(self):
@@ -70,11 +69,6 @@ class HardcoverHarvesterApp:
     def match_books(self, calibre_books, hardcover_books):
         matches = self.matcher.match_books(calibre_books, hardcover_books)
         logger.info(f"{len(matches)} books already in Calibre")
-        if matches:
-            logger.debug(
-                "Hardcover books already in calibre db:\n%s",
-                "\n".join([match.title for match, _, _ in matches]),
-            )
         return matches
 
     def process_matches(self, matches, hardcover_books):
@@ -109,12 +103,12 @@ class HardcoverHarvesterApp:
                 try:
                     _, tor_list = future.result()
                 except Exception:
-                    logger.exception("Failed searching for %s", book.title)
+                    logger.exception(f"Failed searching for {book}")
                     continue
 
                 logger.debug(
                     "Torrents found for %s:\n%s",
-                    book.title,
+                    book,
                     [torrent.download_url for torrent in tor_list],
                 )
 
@@ -146,7 +140,7 @@ class HardcoverHarvesterApp:
                 except Exception:
                     logger.exception(
                         "Failed downloading torrent for %s",
-                        book.title,
+                        book,
                     )
 
         return torrent_files
@@ -157,12 +151,62 @@ class HardcoverHarvesterApp:
         if best_match and score >= self.matcher.threshold:
             ret = next(t for t in torrents if t.book == best_match)
             logger.debug(
-                f"Best torrent for {book.title} is {ret.download_url} with similarity {score:.2f}"
+                f"Best torrent for {book} is {ret.download_url} with similarity {score:.2f}"
             )
             return ret
         else:
-            logger.info(f"No good torrent match for {book.title}. Best similarity: {score:.2f}")
+            logger.info(f"No good torrent match for {book}. Best similarity: {score:.2f}")
             return None
+
+    def handle_torrents(self, torrent_files: list[tuple[bytes, Book]]):
+        if not torrent_files:
+            logger.info("No torrents to handle")
+            return
+
+        logger.info(f"Handling {len(torrent_files)} torrents")
+
+        if self.args.dry_run:
+            logger.info("Dry run enabled, not adding torrents to qBittorrent")
+            for _, book in torrent_files:
+                logger.info(f"Would add {book} to qBittorrent")
+            return
+
+        pending = {}  # torrent_id -> book
+
+        for torrent_file, book in torrent_files:
+            torrent_id = self.qbit.add_torrent(torrent_file, book)
+            if torrent_id:
+                pending[torrent_id] = book
+
+        if not pending:
+            logger.warning("No torrents were successfully added to qBittorrent")
+            return
+
+        logger.info(f"Tracking {len(pending)} torrents for completion")
+
+        while pending:
+            completed = []
+
+            for torrent_id, book in pending.items():
+                try:
+                    path = self.qbit.get_completed_path(torrent_id)
+                    if path:
+                        try:
+                            self.calibre.add_book(book, path)
+                        except Exception:
+                            self.qbit.add_tag(torrent_id, "import_failed")
+                        completed.append(torrent_id)
+                        continue
+                except Exception:
+                    logger.error(f"Error checking torrent for {book}")
+
+            for tid in completed:
+                pending.pop(tid, None)
+
+            if pending:
+                logger.debug(f"{len(pending)} torrents still active")
+                time.sleep(self.qbit.poll_interval)
+
 
 class BookMatcher:
     def __init__(self, threshold: float = 0.92):
@@ -273,9 +317,9 @@ def init_MyAnonamouse_client(mam_id: str):
     return MyAnonamouse(mam_id)
 
 
-def init_qbittorrent(qbittorrent_config: dict, calibre: Calibre, dryRun: bool = False):
+def init_qbittorrent(qbittorrent_config: dict, dryRun: bool = False):
     conn_info = qbittorrent_config
     conn_info["VERIFY_WEBUI_CERTIFICATE"] = conn_info.pop("verify_cert", True)
     category = conn_info.pop("category", "hardcoverharvester")
     client = qbittorrentapi.Client(**conn_info)
-    return Qbittorrent(client, calibre, category, dryRun)
+    return Qbittorrent(client, category, dryRun)

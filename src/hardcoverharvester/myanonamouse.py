@@ -157,10 +157,10 @@ class MyAnonamouse:
                 "GET", f"{self.DOWNLOAD_URL}/?tid={torrent.book.id}", timeout=30
             )
             response.raise_for_status()
-            logger.debug(f"Torrent for {torrent.book.title} downloaded successfully")
+            logger.debug(f"Torrent for {torrent.book} downloaded successfully")
             return response.content
         except requests.RequestException as e:
-            logger.error(f"Error downloading torrent for {torrent.book.title}: {e}")
+            logger.error(f"Error downloading torrent for {torrent.book}: {e}")
             return None
 
 

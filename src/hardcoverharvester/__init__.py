@@ -14,6 +14,7 @@ class Book:
     id: int
     isbn: list[str | None]
     source: str
+
     def __str__(self):
         return f"{self.title} by {', '.join(self.authors)}"
 

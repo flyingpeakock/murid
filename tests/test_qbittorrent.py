@@ -1,8 +1,19 @@
 from unittest.mock import Mock
 
 import pytest
+import qbittorrentapi
 
 from hardcoverharvester.qbittorrent import Qbittorrent
+
+
+@pytest.fixture
+def client():
+    client = Mock()
+
+    client.app.version = "5.1.0"
+    client.app.web_api_version = "2.11.0"
+
+    return client
 
 
 @pytest.fixture
@@ -10,102 +21,110 @@ def book():
     return Mock(title="Dune")
 
 
-@pytest.fixture
-def client():
-    return Mock()
+def test_validate_success(client):
+    qbt = Qbittorrent(
+        client=client,
+        category="ebooks",
+        dry_run=False,
+    )
+
+    client.auth_log_in.assert_called_once()
+    client.auth_log_out.assert_called_once()
+
+    assert qbt.client is client
 
 
-@pytest.fixture
-def calibre():
-    return Mock()
+def test_validate_login_failure(client):
+    client.auth_log_in.side_effect = qbittorrentapi.LoginFailed("invalid credentials")
+
+    with pytest.raises(SystemExit, match="1"):
+        Qbittorrent(
+            client=client,
+            category="ebooks",
+            dry_run=False,
+        )
 
 
-def test_handle_torrents_empty(client, calibre):
-    qbt = Qbittorrent(client, calibre, category="ebooks", dry_run=False)
-
-    result = qbt.handle_torrents([])
-
-    assert result == []
-
-
-def test_handle_torrents_dry_run(client, calibre, book):
-    qbt = Qbittorrent(client, calibre, category="ebooks", dry_run=True)
-
-    result = qbt.handle_torrents([(b"torrent", book)])
-
-    assert result == []
-    client.torrents_add.assert_not_called()
-
-
-def test_add_torrent_success(client, calibre, book):
-    qbt = Qbittorrent(client, calibre, category="ebooks", dry_run=False)
-
+def test_add_torrent_success(client, book):
     client.torrents_add.return_value = Mock(added_torrent_ids=["abc123"])
 
-    result = qbt._add_torrent(b"file", book)
+    qbt = Qbittorrent(client, "ebooks", False)
 
-    assert result == "abc123"
-    client.torrents_add.assert_called_once()
+    torrent_id = qbt.add_torrent(
+        (b"torrent-data", book),
+        book,
+    )
+
+    assert torrent_id == "abc123"
+
+    client.torrents_add.assert_called_once_with(
+        torrent_files=(b"torrent-data", book),
+        category="ebooks",
+    )
 
 
-def test_add_torrent_failure(client, calibre, book):
-    qbt = Qbittorrent(client, calibre, category="ebooks", dry_run=False)
-
+def test_add_torrent_failure(client, book):
     client.torrents_add.side_effect = Exception("boom")
 
-    result = qbt._add_torrent(b"file", book)
+    qbt = Qbittorrent(client, "ebooks", False)
 
-    assert result is None
+    torrent_id = qbt.add_torrent(
+        (b"torrent-data", book),
+        book,
+    )
 
-
-def test_completed_torrent_sends_to_calibre(monkeypatch, client, calibre, book):
-    qbt = Qbittorrent(client, calibre, category="ebooks", dry_run=False)
-
-    # add torrent returns id
-    client.torrents_add.return_value = Mock(added_torrent_ids=["abc123"])
-
-    # time control
-    monkeypatch.setattr("time.time", lambda: 1000)
-
-    # completed torrent
-    client.torrents_info.return_value = [Mock(completed=True, content_path="/tmp/book.epub")]
-
-    # avoid sleep loop
-    monkeypatch.setattr("time.sleep", lambda x: None)
-
-    qbt.handle_torrents([(b"torrent", book)])
-
-    calibre.add_book.assert_called_once_with(book, "/tmp/book.epub")
+    assert torrent_id is None
 
 
-def test_get_completed_path_success(client, calibre):
-    qbt = Qbittorrent(client, calibre, "cat", False)
+def test_get_completed_path_success(client):
+    torrent = Mock(
+        completed=True,
+        content_path="/downloads/Dune.epub",
+    )
 
-    client.torrents_info.return_value = [Mock(completed=True, content_path="/path/file.epub")]
+    client.torrents_info.return_value = [torrent]
 
-    assert qbt._get_completed_path("abc") == "/path/file.epub"
+    qbt = Qbittorrent(client, "ebooks", False)
 
+    path = qbt.get_completed_path("abc123")
 
-def test_get_completed_path_not_completed(client, calibre):
-    qbt = Qbittorrent(client, calibre, "cat", False)
-
-    client.torrents_info.return_value = [Mock(completed=False, content_path="/path/file.epub")]
-
-    assert qbt._get_completed_path("abc") is None
+    assert path == "/downloads/Dune.epub"
 
 
-def test_get_completed_path_missing(client, calibre):
-    qbt = Qbittorrent(client, calibre, "cat", False)
+def test_get_completed_path_not_completed(client):
+    torrent = Mock(
+        completed=False,
+        content_path="/downloads/Dune.epub",
+    )
 
+    client.torrents_info.return_value = [torrent]
+
+    qbt = Qbittorrent(client, "ebooks", False)
+
+    assert qbt.get_completed_path("abc123") is None
+
+
+def test_get_completed_path_empty_result(client):
+    client.torrents_info.return_value = [None]
+
+    qbt = Qbittorrent(client, "ebooks", False)
+
+    assert qbt.get_completed_path("abc123") is None
+
+
+def test_get_completed_path_not_found(client):
     client.torrents_info.side_effect = Exception("not found")
 
-    assert qbt._get_completed_path("abc") is None
+    qbt = Qbittorrent(client, "ebooks", False)
+
+    assert qbt.get_completed_path("abc123") is None
 
 
-def test_send_to_calibre_failure_is_swallowed(client, calibre, book):
-    qbt = Qbittorrent(client, calibre, "cat", False)
+def test_login_failure_logs_error(client, caplog):
+    client.auth_log_in.side_effect = qbittorrentapi.LoginFailed("bad login")
 
-    calibre.add_book.side_effect = Exception("boom")
+    with caplog.at_level("ERROR"):
+        with pytest.raises(SystemExit):
+            Qbittorrent(client, "ebooks", False)
 
-    # should NOT raise
-    qbt._send_to_calibre(book, "/tmp/file.epub")
+    assert "Failed to authenticate with qBittorrent" in caplog.text
