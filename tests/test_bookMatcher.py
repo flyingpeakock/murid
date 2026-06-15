@@ -308,6 +308,7 @@ def test_canonicalize_torrent_title():
         == "wintersmith"
     )
 
+
 def test_white_sand_volume_matches():
     matcher = BookMatcher()
 
@@ -322,6 +323,7 @@ def test_white_sand_volume_matches():
     )
 
     assert matcher.is_match(a, b)
+
 
 def test_canonicalize_does_not_destroy_numeric_titles():
     assert BookMatcher.canonicalize_title("1984") == "1984"

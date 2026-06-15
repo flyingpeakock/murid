@@ -7,6 +7,7 @@ from . import Book
 
 logger = logging.getLogger("HardcoverHarvester")
 
+
 class BookMatcher:
     def __init__(self, threshold: float = 0.92):
         self.threshold = threshold
@@ -22,7 +23,7 @@ class BookMatcher:
         # Remove leading articles
         for prefix in ("the ", "a ", "an "):
             if title.startswith(prefix):
-                title = title[len(prefix):]
+                title = title[len(prefix) :]
                 break
 
         # Prefer bracketed title if present
@@ -103,8 +104,6 @@ class BookMatcher:
             if match and score >= self.threshold:
                 matches.append((match, book_b, score))
             else:
-                logger.debug(
-                    f"No match for {book_b} in calibre db. Best similarity: {score:.2f}"
-                )
+                logger.debug(f"No match for {book_b} in calibre db. Best similarity: {score:.2f}")
 
         return matches
