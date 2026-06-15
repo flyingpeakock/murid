@@ -57,6 +57,23 @@ in {
           type = lib.types.port;
           default = config.services.qbittorrent.webuiPort;
         };
+        mapping = lib.mkOption {
+          description = "Mapping of qbittorrent save paths to paths as seen by the HardcoverHarvester service";
+          type = lib.types.submodule {
+            options = {
+              qbit_path = lib.mkOption {
+                description = "Path as seen by qBittorrent";
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+              };
+              harvester_path = lib.mkOption {
+                description = "Path as seen by the HardcoverHarvester service";
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+              };
+            };
+          };
+        };
       };
     };
   in {

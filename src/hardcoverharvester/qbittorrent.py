@@ -8,11 +8,12 @@ logger = logging.getLogger("HardcoverHarvester")
 
 
 class Qbittorrent:
-    def __init__(self, client, category, dry_run, poll_interval=2):
+    def __init__(self, client, category, dry_run, poll_interval=2, mapping=None):
         self.client = client
         self.category = category
         self.poll_interval = poll_interval
         self.dry_run = dry_run
+        self.mapping = mapping
         self._validate()
 
     def _validate(self):
@@ -55,7 +56,17 @@ class Qbittorrent:
         if not torrent.completed:
             return None
 
-        return torrent.content_path
+        path = torrent.content_path
+
+        if (
+            self.mapping
+            and self.mapping["qbit_path"]
+            and self.mapping["harvester_path"]
+            and path.startswith(self.mapping["qbit_path"])
+        ):
+            path = path.replace(self.mapping["qbit_path"], self.mapping["harvester_path"], 1)
+
+        return path
 
     def add_tag(self, torrent_id: str, tag: str):
         self.client.torrents_add_tags(tags=tag, torrent_hashes=torrent_id)

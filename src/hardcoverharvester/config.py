@@ -32,6 +32,10 @@ _defaults = {
         "port": _MISSING,
         "verify_cert": True,
         "category": "hardcoverharvester",
+        "mapping": {
+            "qbit_path": None,
+            "harvester_path": None,
+        },
     },
     "schedule": "0 * * * *",
 }
@@ -152,6 +156,24 @@ class Config:
 
         if not valid_cron(self.get("schedule")):
             raise ConfigError("Config item 'schedule' must be a valid cron expression")
+
+        mapping = self.get("qbittorrent").get("mapping", {})
+        if not isinstance(mapping, dict):
+            raise ConfigError("Config item 'qbittorrent.mapping' must be a dict")
+        if "qbit_path" not in mapping or "harvester_path" not in mapping:
+            raise ConfigError(
+                "Config item 'qbittorrent.mapping' must have 'qbit_path' and 'harvester_path' keys"
+            )
+        if mapping["harvester_path"] and not os.path.exists(mapping["harvester_path"]):
+            raise ConfigError(f"Harvester path '{mapping['harvester_path']}' does not exist")
+        if mapping["harvester_path"] and not mapping["qbit_path"]:
+            raise ConfigError(
+                "Config item 'qbittorrent.mapping.qbit_path' must be set if 'harvester_path' is set"
+            )
+        if mapping["qbit_path"] and not mapping["harvester_path"]:
+            raise ConfigError(
+                "Config item 'qbittorrent.mapping.harvester_path' must be set if 'qbit_path' is set"
+            )
 
         qbit = self.get("qbittorrent")
         required_qbit_keys = ["host", "username", "password", "port"]

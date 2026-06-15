@@ -318,8 +318,9 @@ def init_MyAnonamouse_client(mam_id: str):
 
 
 def init_qbittorrent(qbittorrent_config: dict, dryRun: bool = False):
+    mapping = qbittorrent_config.pop("mapping", None)
     conn_info = qbittorrent_config
     conn_info["VERIFY_WEBUI_CERTIFICATE"] = conn_info.pop("verify_cert", True)
     category = conn_info.pop("category", "hardcoverharvester")
     client = qbittorrentapi.Client(**conn_info)
-    return Qbittorrent(client, category, dryRun)
+    return Qbittorrent(client, category, dryRun, mapping=mapping)
