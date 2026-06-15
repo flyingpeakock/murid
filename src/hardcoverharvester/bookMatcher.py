@@ -1,4 +1,5 @@
 import logging
+import re
 
 from rapidfuzz import fuzz
 
@@ -14,11 +15,39 @@ class BookMatcher:
     def normalize(text: str) -> str:
         return "".join(c.lower() for c in text if c.isalnum() or c.isspace()).strip()
 
+    @staticmethod
+    def canonicalize_title(title: str) -> str:
+        title = title.lower()
+
+        # Remove leading articles
+        for prefix in ("the ", "a ", "an "):
+            if title.startswith(prefix):
+                title = title[len(prefix):]
+                break
+
+        # Prefer bracketed title if present
+        match = re.search(r"\[([^\]]+)\]", title)
+        if match:
+            title = match.group(1)
+
+        # Remove parenthetical metadata
+        title = re.sub(r"\([^)]*\)", "", title)
+
+        # Remove subtitles
+        if ":" in title:
+            title = title.split(":", 1)[0]
+
+        # Get title before comma
+        if "," in title:
+            title = title.split(",", 1)[0]
+
+        return BookMatcher.normalize(title)
+
     def title_similarity(self, a: str, b: str) -> float:
         return (
-            fuzz.token_set_ratio(
-                self.normalize(a),
-                self.normalize(b),
+            fuzz.ratio(
+                self.canonicalize_title(a),
+                self.canonicalize_title(b),
             )
             / 100
         )
