@@ -113,12 +113,9 @@ class HardcoverHarvesterApp:
                     [torrent.download_url for torrent in tor_list],
                 )
 
-                torrent = self.get_best_torrent_for_book(book, tor_list)
+                torrent = self.get_best_torrent_for_book(book, tor_list, lang_codes)
 
                 if not torrent:
-                    continue
-
-                if torrent.language is not None and torrent.language not in lang_codes:
                     continue
 
                 download_future = executor.submit(
@@ -146,8 +143,10 @@ class HardcoverHarvesterApp:
 
         return torrent_files
 
-    def get_best_torrent_for_book(self, book: Book, torrents: list[Torrent]) -> Torrent | None:
-        torrent_books = [t.book for t in torrents]
+    def get_best_torrent_for_book(
+        self, book: Book, torrents: list[Torrent], languages: list[str]
+    ) -> Torrent | None:
+        torrent_books = [t.book for t in torrents if t.language is None or t.language in languages]
         best_match, score = self.matcher.best_match(book, torrent_books)
         if best_match and score >= self.matcher.threshold:
             ret = next(t for t in torrents if t.book == best_match)
@@ -194,7 +193,13 @@ class HardcoverHarvesterApp:
                     if path:
                         try:
                             self.calibre.add_book(book, path)
+                            if self.calibre.contains_book(book, self.matcher):
+                                logger.info(f"Successfully imported {book} into Calibre")
+                            else:
+                                logger.error(f"Failed to verify import of {book} into Calibre")
+                                self.qbit.add_tag(torrent_id, "import_failed")
                         except Exception:
+                            logger.error(f"Error importing {book} into Calibre")
                             self.qbit.add_tag(torrent_id, "import_failed")
                         completed.append(torrent_id)
                         continue

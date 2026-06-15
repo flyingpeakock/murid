@@ -24,7 +24,7 @@ def make_torrent(book):
         download_hash="abc",
         narrator_info={},
         series_info={},
-        language="en",
+        language="ENG",
         raw={},
     )
 
@@ -108,7 +108,7 @@ def test_get_best_torrent_for_book():
     app.matcher = matcher
     app.get_best_torrent_for_book = HardcoverHarvesterApp.get_best_torrent_for_book.__get__(app)
 
-    result = app.get_best_torrent_for_book(book, [torrent])
+    result = app.get_best_torrent_for_book(book, [torrent], ["ENG"])
 
     assert result == torrent
 
@@ -127,7 +127,7 @@ def test_get_best_torrent_for_book_none():
     app.matcher = matcher
     app.get_best_torrent_for_book = HardcoverHarvesterApp.get_best_torrent_for_book.__get__(app)
 
-    result = app.get_best_torrent_for_book(book, [torrent])
+    result = app.get_best_torrent_for_book(book, [torrent], ["ENG"])
 
     assert result is None
 
