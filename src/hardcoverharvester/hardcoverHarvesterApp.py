@@ -106,9 +106,9 @@ class HardcoverHarvesterApp:
                 if not tor_list:
                     continue
                 logger.debug(
-                    "Torrents found for %s:\n%s",
+                    "Potential torrents found for %s:\n%s",
                     book,
-                    [torrent.download_url for torrent in tor_list],
+                    [f"https://www.myanonamouse.net/t/{torrent.book.id}" for torrent in tor_list],
                 )
 
                 torrent = self.get_best_torrent_for_book(book, tor_list)
@@ -153,14 +153,18 @@ class HardcoverHarvesterApp:
             if (t.language is None or t.language in self.config.get("lang_codes", []))
             and wanted_filetypes.intersection(set(t.file_types or []))
         ]
+
         if not torrent_books:
+            logger.debug(f"No torrents for {book} passed language and filetype filters")
+            logger.debug(torrents)
             return None
 
         best_match, score = self.matcher.best_match(book, torrent_books)
         if best_match and score >= self.matcher.threshold:
             ret = next(t for t in torrents if t.book == best_match)
             logger.debug(
-                f"Best torrent for {book} is {ret.download_url} with similarity {score:.2f}"
+                f"Best torrent for {book} is https://www.myanonamouse.net/t/{ret.book.id}"
+                " with similarity {score:.2f}"
             )
             return ret
         else:

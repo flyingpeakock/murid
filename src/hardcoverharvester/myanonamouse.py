@@ -132,7 +132,7 @@ class MyAnonamouse:
             narrator_info=json.loads(data.get("narrator_info", "{}")),
             series_info=json.loads(data.get("series_info", "{}")),
             language=data.get("lang_code", None),
-            file_types=data.get("file_types", "").split() if data.get("file_types") else [],
+            file_types=data.get("filetype", "").split() if data.get("filetype") else [],
             raw=data,
         )
 
@@ -145,10 +145,10 @@ class MyAnonamouse:
             query, main_categories=[14], search_fields=["title", "author", "series"]
         )
         if not result:
-            logger.info(f"No results found for {query}")
+            logger.info(f"No potential torrents found for {query}")
         else:
             count = len(result)
-            logger.info(f"Found {count} result{'s' if count != 1 else ''} for {query}")
+            logger.info(f"Found {count} potential torrent{'s' if count != 1 else ''} for {query}")
         return result
 
     def download_torrent(self, torrent: Torrent) -> bytes | None:

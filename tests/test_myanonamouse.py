@@ -233,7 +233,7 @@ def test_search_ebook_logs_found(mam, caplog):
     with caplog.at_level("INFO"):
         mam.search_ebook("Dune")
 
-    assert "Found 2 results" in caplog.text
+    assert "Found 2 potential torrents for" in caplog.text
 
 
 def test_search_ebook_logs_not_found(mam, caplog):
@@ -242,7 +242,7 @@ def test_search_ebook_logs_not_found(mam, caplog):
     with caplog.at_level("INFO"):
         mam.search_ebook("Dune")
 
-    assert "No results found" in caplog.text
+    assert "No potential torrents found for" in caplog.text
 
 
 def test_parse_torrent_multiple_authors():
