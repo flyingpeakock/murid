@@ -109,7 +109,7 @@ qbittorrent:
   category: "murid"
   mapping:
     qbit_path: /downloads/completed
-    murid: /data/downloads/completed
+    murid_path: /data/downloads/completed
 ```
 
 ### Environment Variables
