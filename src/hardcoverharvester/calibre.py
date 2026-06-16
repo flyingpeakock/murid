@@ -120,12 +120,13 @@ class Calibre:
         args.append(path)
         try:
             logger.debug(f"Running command: {' '.join(args)}")
-            self.run(
+            stdout = self.run(
                 args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-            )
+            ).stdout
+            logger.debug(f"Calibre output: {stdout}")
         except Exception as e:
             logger.error(f"Error adding book to Calibre: {e}")
             raise CalibreError(f"Error adding book to Calibre: {e}") from e

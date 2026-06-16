@@ -19,7 +19,7 @@ class MyAnonamouse:
     BASE_URL = "https://www.myanonamouse.net"
     SEARCH_URL = f"{BASE_URL}/tor/js/loadSearchJSONbasic.php"
     DOWNLOAD_URL = f"{BASE_URL}/tor/download.php"
-    _MIN_REQUEST_INTERVAL = 0.3  # seconds
+    _MIN_REQUEST_INTERVAL = 0.5  # seconds
 
     def __init__(self, mam_id: str) -> None:
         self.session = requests.Session()

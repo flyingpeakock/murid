@@ -6,6 +6,10 @@ import pytest
 from hardcoverharvester.calibre import Book, Calibre, CalibreError
 
 
+class Result:
+    stdout = None
+
+
 def create_db(path: Path):
     conn = sqlite3.connect(path)
     cur = conn.cursor()
@@ -160,6 +164,7 @@ def test_add_book(tmp_path):
 
     def fake_run(*args, **kwargs):
         calls.append((args, kwargs))
+        return Result()
 
     calibre = Calibre(
         str(db),
@@ -201,6 +206,7 @@ def test_add_book_multiple_authors(tmp_path):
 
     def fake_run(*args, **kwargs):
         calls.append((args, kwargs))
+        return Result()
 
     calibre = Calibre(
         str(db),

@@ -143,7 +143,8 @@ class HardcoverHarvesterApp:
 
                 try:
                     torrent_file = future.result()
-                    torrent_files.append((torrent_file, book))
+                    if torrent_file:
+                        torrent_files.append((torrent_file, book))
                 except Exception:
                     logger.exception(
                         "Failed downloading torrent for %s",
