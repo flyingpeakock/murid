@@ -107,6 +107,9 @@ qbittorrent:
   password: "password"
   verify_cert: true
   category: "hardcoverharvester"
+  mapping:
+    qbit_path: /downloads/completed
+    harvester_path: /data/downloads/completed
 ```
 
 ### Environment Variables
@@ -134,24 +137,37 @@ export MAM_ID="..."
 
 | Option | Description | Default |
 |----------|-------------|----------|
-| `users` | Hardcover users to monitor | Required |
+| `users` | [Hardcover users to monitor](#users) | Required |
+| `qbittorrent` | [qBittorrent configuration](#qBittorrent) | Required |
 | `calibre_db_path` | Path to Calibre `metadata.db` | Required |
+| `calibredb_executable` | Path to calibredb executable | `calibredb` |
 | `mam_id` | MyAnonamouse session cookie | Required |
-| `matcher_threshold` | Fuzzy match threshold | `0.85` |
+| `matcher_threshold` | Fuzzy match threshold | `0.7` |
 | `lang_codes` | Allowed language codes | `["ENG"]` |
 | `schedule` | Cron schedule | `0 * * * *` |
 | `redact_sensitive_data` | Hide secrets in logs | `true` |
+| `apprise` | [Apprise configuration](https://appriseit.com/getting-started/configuration) | `None` |
+
+### users
+
+Must be a list of the following
+
+| Option | Description | Default |
+|----------|-------------|----------|
+| `id` | Numerical Hardcover user id | Required |
+| `api_key` | Hardcover api key | Required |
 
 ### qBittorrent
 
-| Option | Description |
-|----------|-------------|
-| `host` | qBittorrent URL |
-| `port` | qBittorrent WebUI port |
-| `username` | Username |
-| `password` | Password |
-| `verify_cert` | Verify SSL certificates |
-| `category` | Category assigned to downloads |
+| Option | Description | Default |
+|----------|-------------|----------|
+| `host` | qBittorrent URL | Required |
+| `port` | qBittorrent WebUI port | Required |
+| `username` | Username | Required |
+| `password` | Password | Required |
+| `verify_cert` | Verify SSL certificates | `True` |
+| `category` | Category assigned to downloads | `hardcoverharvester` |
+| `mapping` | Needed if qBittorrent sees the file system differently than HardcoverHarvester | `None` |
 
 ---
 
@@ -163,11 +179,11 @@ Your Hardcover user ID can be obtained from the Hardcover API or account informa
 
 ### Hardcover API Key
 
-Generate an API key from your Hardcover account settings.
+[Generate an API key from your Hardcover account settings.](https://hardcover.app/account/api)
 
 ### MyAnonamouse `mam_id`
 
-Log into MyAnonamouse and copy the `mam_id` cookie value from your browser.
+Log into MyAnonamouse and obtain your `mam_id` from [here](https://www.myanonamouse.net/preferences/index.php?view=security)
 
 ---
 
@@ -185,6 +201,14 @@ See what would be downloaded without actually downloading anything:
 
 ```bash
 HardcoverHarvester --config config.yaml --dry-run
+```
+
+### Run once
+
+Run without using the schedule. Instead run once then exit:
+
+```bash
+HardcoverHarvester --config config.yaml --run-once
 ```
 
 ### Debug Logging
