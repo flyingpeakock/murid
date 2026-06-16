@@ -32,14 +32,14 @@ The goal is a mostly hands-off workflow for turning your “Want to Read” list
 
 ## Architecture
 
-Hardcover → Fetch reading lists
-    ↓
-Calibre → Check existing library
-    ↓
-MyAnonamouse → Search missing books
-    ↓
-qBittorrent → Download torrents
-    ↓
+Hardcover → Fetch reading lists  
+    ↓  
+Calibre → Check existing library  
+    ↓  
+MyAnonamouse → Search missing books  
+    ↓  
+qBittorrent → Download torrents  
+    ↓  
 Calibre → Import completed books
 
 ## Requirments
