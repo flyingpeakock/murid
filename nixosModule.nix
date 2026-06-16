@@ -217,6 +217,7 @@ in {
             args =
               [
                 "--config ${configFile}"
+                "--schedule"
               ]
               ++ cfg.extraArgs;
           in "${lib.getExe cfg.package} ${lib.concatStringsSep " " args}";

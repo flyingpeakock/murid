@@ -64,11 +64,11 @@ def getArgParser(description: str) -> argparse.ArgumentParser:
         dest="dry_run",
     )
     arg_parser.add_argument(
-        "--run-once",
-        "-r",
-        help="run murid once and then exit (no scheduler)",
+        "--schedule",
+        "-s",
+        help="run murid on a schedule",
         action="store_true",
-        dest="run_once",
+        dest="schedule",
     )
     arg_parser.add_argument(
         "--test-notification",
@@ -104,10 +104,10 @@ reading list on Hardcover, with help from myAnonamouse.
         return
 
     try:
-        if args.run_once:
-            app.run()
-        else:
+        if args.schedule:
             app.start_scheduler()
+        else:
+            app.run()
     except Exception as e:
         logger.exception(f"An error occurred: {e}")
         raise SystemExit(1) from e
