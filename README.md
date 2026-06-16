@@ -66,6 +66,8 @@ Calibre
 ### Using pip
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
 pip install .
 ```
 

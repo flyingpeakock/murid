@@ -91,6 +91,8 @@
             pkgs.ruff
             pkgs.python3Packages.pytest
             pkgs.python3Packages.pytest-cov
+            pkgs.python3Packages.virtualenv
+            pkgs.python3Packages.pip
             pythonEnv
           ];
         };
