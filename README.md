@@ -98,6 +98,26 @@ pip install -e ".[dev]"
 
 Module options are defined in [nixosModule.nix](nixosModule.nix)
 
+## Usage
+
+```
+Usage: murid [-h] [--version] [--log-level {DEBUG,INFO,WARNING,ERROR,CRITICAL}] [--dry-run] [--schedule] [--test-notification] [--config CONFIG_FILE]
+
+Murid automatically keeps your Calibre library in sync with your reading list on Hardcover, with help from myAnonamouse.
+
+Options:
+  -h, --help            show this help message and exit
+  --version, -v         show program's version number and exit
+  --log-level, -l {DEBUG,INFO,WARNING,ERROR,CRITICAL}
+                        logging level (default: INFO)
+  --dry-run, -d         see what will be downloaded without actually downloading (default: False)
+  --schedule, -s        run murid on a schedule (default: False)
+  --test-notification   send a test notification and then exit (default: False)
+  --config, -c CONFIG_FILE
+                        path to config file (default: $XDG_CONFIG_HOME/murid/config.yaml)
+
+```
+
 ## Configuration
 
 Create a yaml configuration file:
