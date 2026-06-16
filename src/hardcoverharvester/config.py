@@ -38,6 +38,7 @@ _defaults = {
         },
     },
     "schedule": "0 * * * *",
+    "apprise": None,
 }
 
 

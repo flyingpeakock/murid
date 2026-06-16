@@ -7,6 +7,7 @@ import qbittorrentapi
 from croniter import croniter
 
 from . import Book, Torrent
+from .apprise import init_apprise as apprise
 from .bookMatcher import BookMatcher
 from .calibre import Calibre, CalibreError
 from .config import Config, ConfigError
@@ -21,6 +22,7 @@ class HardcoverHarvesterApp:
     def __init__(self, args):
         self.args = args
         self.config = load_config(self.args.config_file)
+        self.notify = init_apprise(self.config)
 
         self.calibre = None
         self.hardcover_clients = None
@@ -214,9 +216,14 @@ class HardcoverHarvesterApp:
                         try:
                             self.calibre.add_book(book, path)
                             if self.calibre.contains_book(book, self.matcher):
-                                logger.info(f"Successfully imported {book} into Calibre")
+                                message = f"Successfully imported {book} into Calibre"
+                                logger.info(message)
+                                self.notify(title="Book Imported", body=message)
                             else:
-                                logger.error(f"Failed to verify import of {book} into Calibre")
+                                logger.error(
+                                    f"Failed to verify import of {book} into Calibre."
+                                    "\nManual intervention is likely required.",
+                                )
                                 self.qbit.add_tag(torrent_id, "import_failed")
                         except Exception:
                             logger.error(f"Error importing {book} into Calibre")
@@ -232,6 +239,12 @@ class HardcoverHarvesterApp:
             if pending:
                 logger.debug(f"{len(pending)} torrents still active")
                 time.sleep(self.qbit.poll_interval)
+
+    def test_notification(self):
+        self.notify(
+            title="Test notification from HardcoverHarvester",
+            body="Hello from HardcoverHarvester!",
+        )
 
 
 def load_config(path: str):
@@ -275,3 +288,13 @@ def init_qbittorrent(qbittorrent_config: dict, dryRun: bool = False):
     category = conn_info.pop("category", "hardcoverharvester")
     client = qbittorrentapi.Client(**conn_info)
     return Qbittorrent(client, category, dryRun, mapping=mapping)
+
+
+def init_apprise(config):
+    if not config.get("apprise", None):
+        return lambda *args, **kwargs: None
+    try:
+        return apprise(logger, config.get("apprise"))
+    except Exception as e:
+        logger.error(f"Error initializing Apprise: {e}")
+        raise SystemExit(1) from e

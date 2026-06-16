@@ -2,6 +2,7 @@ import argparse
 import logging
 import sys
 
+import apprise
 from rich.logging import RichHandler
 from rich_argparse import RichHelpFormatter
 
@@ -9,6 +10,17 @@ from . import __version__
 from .hardcoverHarvesterApp import HardcoverHarvesterApp
 
 logger = logging.getLogger("HardcoverHarvester")
+
+
+class AppriseHandler(logging.Handler):
+    def emit(self, record: logging.LogRecord) -> None:
+        super().emit(record)
+        if record.levelno >= logging.ERROR:
+            apprise.notify(
+                body=record.getMessage(),
+                title=f"HardcoverHarvester - {record.levelname}",
+                severity=apprise.NotifySeverity.ERROR,
+            )
 
 
 def setupLogger(logLevel: str) -> None:
@@ -32,14 +44,6 @@ def getArgParser(description: str) -> argparse.ArgumentParser:
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
     )
     arg_parser.add_argument(
-        "--config",
-        "-c",
-        help="path to config file",
-        default="config.yaml",
-        dest="config_file",
-        type=str,
-    )
-    arg_parser.add_argument(
         "--dry-run",
         "-d",
         help="see what will be downloaded without actually downloading",
@@ -52,6 +56,21 @@ def getArgParser(description: str) -> argparse.ArgumentParser:
         help="run the harvester once and then exit (no scheduler)",
         action="store_true",
         dest="run_once",
+    )
+    arg_parser.add_argument(
+        "--test-notification",
+        help="send a test notification and then exit",
+        action="store_true",
+        dest="test_notification",
+    )
+    arg_parser.add_argument(
+        "--config",
+        "-c",
+        help="path to config file",
+        default="config.yaml",
+        dest="config_file",
+        type=str,
+        required=True,
     )
 
     return arg_parser
@@ -68,10 +87,18 @@ Downloads are sent to qBittorrent and then added to Calibre.
     logger.info(f"Starting HardcoverHarvester v{__version__}")
 
     app = HardcoverHarvesterApp(args)
-    if args.run_once:
-        app.run()
-    else:
-        app.start_scheduler()
+    if args.test_notification:
+        app.test_notification()
+        return
+
+    try:
+        if args.run_once:
+            app.run()
+        else:
+            app.start_scheduler()
+    except Exception as e:
+        logger.exception(f"An error occurred: {e}")
+        raise SystemExit(1) from e
 
 
 if __name__ == "__main__":
