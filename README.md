@@ -72,10 +72,26 @@ pip install .
 ### Development Installation
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/flyingpeakock/murid.git
 cd murid
 
 pip install -e ".[dev]"
+```
+
+Or with nix
+
+```bash
+nix shell
+```
+
+### Using nixOS flakes
+
+All nixos options are defined in [nixosModule.nix](nixosModule.nix)
+
+```nix
+{
+  inputs.murid = "github:flyingpeakock/murid"
+}
 ```
 
 ---
