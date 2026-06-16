@@ -1,65 +1,54 @@
 # murid
 
-Murid automatically keeps your Calibre library in sync with your reading list on Hardcover, with help from myAnonamouse.
+Murid automatically syncs your reading list from Hardcover with your Calibre library and fetches missing ebooks using MyAnonamouse.
 
-It periodically:
+It is designed to automate the full pipeline from “want to read” → “available in Calibre”.
 
-1. Fetches books from one or more Hardcover accounts.
-2. Compares them against your existing Calibre library.
-3. Searches MyAnonamouse (MaM) for missing ebooks.
-4. Downloads matching torrents through qBittorrent.
-5. Imports completed downloads into Calibre.
+## Overview
 
-The goal is to provide a mostly hands-off workflow for acquiring books you've added to your Hardcover "Want to Read" list.
+Murid periodically:
 
----
+1. Fetches books from one or more Hardcover accounts
+2. Compares them against your local Calibre library
+3. Searches MyAnonamouse for missing books
+4. Sends matching torrents to qBittorrent
+5. Imports completed downloads into Calibre
+
+The goal is a mostly hands-off workflow for turning your “Want to Read” list into an actual, local library.
+
 
 ## Features
 
-- Multiple Hardcover user support
-- Automatic matching against existing Calibre books
-- ISBN and title/author matching
-- Configurable fuzzy matching threshold
-- Scheduled harvesting using cron expressions
+- Multiple Hardcover accounts
+- ISBN + title/author matching
+- Fuzzy matching with configurable threshold
+- Scheduled sync via cron expressions
 - MyAnonamouse integration
 - qBittorrent integration
 - Automatic Calibre imports
-- Dry-run mode for testing
-- Environment variable support for secrets
+- Dry-run mode
+- Environment variable secret injection
+- Structured logging
 
----
+## Architecture
 
-## How It Works
+Hardcover → Fetch reading lists
+    ↓
+Calibre → Check existing library
+    ↓
+MyAnonamouse → Search missing books
+    ↓
+qBittorrent → Download torrents
+    ↓
+Calibre → Import completed books
 
-```text
-Hardcover
-    ↓
-Fetch reading list
-    ↓
-Compare against Calibre library
-    ↓
-Search MyAnonamouse
-    ↓
-Download missing books
-    ↓
-qBittorrent
-    ↓
-Import completed downloads
-    ↓
-Calibre
-```
-
----
-
-## Requirements
+## Requirments
 
 - Python 3.12+
 - Calibre
-- qBittorrent
-- A Hardcover API key
-- A MyAnonamouse account
-
----
+- qBittorrent (Web UI enabled)
+- Hardcover API key
+- MyAnonamouse account
 
 ## Installation
 
@@ -87,48 +76,40 @@ python -m venv .venv
 pip install .
 ```
 
-### Development Installation
+### Development
 
 ```bash
 git clone https://github.com/flyingpeakock/murid.git
 cd murid
 
-python -m venv.venv
+python -m venv .venv
 source .venv/bin/activate
 
 pip install -e ".[dev]"
 ```
 
-Or with nix
+### NixOS Flake
 
-```bash
-nix shell
 ```
-
-### Using nixOS flake
-
-All nixos options are defined in [nixosModule.nix](nixosModule.nix)
-
-```nix
 {
-  inputs.murid = "github:flyingpeakock/murid"
+  inputs.murid.url = "github:flyingpeakock/murid";
 }
 ```
 
----
+Module options are defined in [nixosModule.nix](nixosModule.nix)
 
 ## Configuration
 
-Create a configuration file:
+Create a yaml configuration file:
 
 ```yaml
 users:
   - id: 12345
-    api_key: "your-hardcover-api-key"
+    api_key: your-hardcover-api-key
 
 calibre_db_path: "/path/to/Calibre Library/metadata.db"
 
-mam_id: "your-mam-session-cookie"
+mam_id: your-mam-session-cookie
 
 matcher_threshold: 0.85
 
@@ -143,7 +124,7 @@ qbittorrent:
   username: "admin"
   password: "password"
   verify_cert: true
-  category: "murid"
+  category: murid
   mapping:
     qbit_path: /downloads/completed
     murid_path: /data/downloads/completed
@@ -151,7 +132,7 @@ qbittorrent:
 
 ### Environment Variables
 
-Sensitive values can be loaded from environment variables:
+Sensitive information can be injected via environment variables:
 
 ```yaml
 users:
@@ -161,198 +142,88 @@ users:
 mam_id: !ENV MAM_ID
 ```
 
-Example:
-
 ```bash
 export HARDCOVER_API_KEY="..."
 export MAM_ID="..."
 ```
 
----
+## Configuration Reference
 
-## Configuration Options
+| Option                  | Description                 | Default     |
+| ----------------------- | --------------------------- | ----------- |
+| `users`                 | Hardcover accounts          | required    |
+| `qbittorrent`           | qBittorrent connection      | required    |
+| `calibre_db_path`       | Path to Calibre metadata.db | required    |
+| `calibredb_executable`  | Path to calibredb           | `calibredb` |
+| `mam_id`                | MyAnonamouse session cookie | required    |
+| `matcher_threshold`     | Fuzzy match sensitivity     | `0.7`       |
+| `lang_codes`            | Allowed languages           | `["ENG"]`   |
+| `schedule`              | Cron expression             | `0 * * * *` |
+| `redact_sensitive_data` | Hide secrets in logs        | `true`      |
+| `apprise`               | Notifications via Apprise   | `None`      |
 
-| Option | Description | Default |
-|----------|-------------|----------|
-| `users` | [Hardcover users to monitor](#users) | Required |
-| `qbittorrent` | [qBittorrent configuration](#qbittorrent) | Required |
-| `calibre_db_path` | Path to Calibre `metadata.db` | Required |
-| `calibredb_executable` | Path to calibredb executable | `calibredb` |
-| `mam_id` | MyAnonamouse session cookie | Required |
-| `matcher_threshold` | Fuzzy match threshold | `0.7` |
-| `lang_codes` | Allowed language codes | `["ENG"]` |
-| `schedule` | Cron schedule | `0 * * * *` |
-| `redact_sensitive_data` | Hide secrets in logs | `true` |
-| `apprise` | [Apprise configuration](https://appriseit.com/getting-started/configuration) | `None` |
+### Users
 
-### users
+| Option    | Description       | Default  |
+| --------- | ----------------- | -------- |
+| `id`      | Hardcover user ID | required |
+| `api_key` | Hardcover API key | required |
 
-Must be a list of the following
-
-| Option | Description | Default |
-|----------|-------------|----------|
-| `id` | Numerical Hardcover user id | Required |
-| `api_key` | Hardcover api key | Required |
 
 ### qBittorrent
 
-| Option | Description | Default |
-|----------|-------------|----------|
-| `host` | qBittorrent URL | Required |
-| `port` | qBittorrent WebUI port | Required |
-| `username` | Username | Required |
-| `password` | Password | Required |
-| `verify_cert` | Verify SSL certificates | `True` |
-| `category` | Category assigned to downloads | `murid` |
-| `mapping` | Needed if qBittorrent sees the file system differently than murid | `None` |
+| Option        | Description                  | Default  |
+| ------------- | ---------------------------- | -------- |
+| `host`        | Web UI host                  | required |
+| `port`        | Web UI port                  | required |
+| `username`    | Login username               | required |
+| `password`    | Login password               | required |
+| `verify_cert` | SSL verification             | `True`   |
+| `category`    | Torrent category             | `murid`  |
+| `mapping`     | Path mapping between systems | `None`   |
 
----
-
-## Finding Your Credentials
+## Credentials
 
 ### Hardcover User ID
 
-Your Hardcover user ID can be obtained from the Hardcover API or account information.
+Available via your Hardcover account or API response
 
 ### Hardcover API Key
 
-Generate an API key from your Hardcover [account settings.](https://hardcover.app/account/api)
+Generate one in your account settings:  
+<https://hardcover.app/account/api>
 
-### MyAnonamouse `mam_id`
+### MyAnonamouse Cookie (mam_id)
 
-Log into MyAnonamouse and obtain your `mam_id` from [here](https://www.myanonamouse.net/preferences/index.php?view=security)
-
----
-
-## Usage
-
-### Help output
-
-```
-Usage: murid [-h] [--version] [--log-level {DEBUG,INFO,WARNING,ERROR,CRITICAL}] [--dry-run] [--run-once] [--test-notification] [--config CONFIG_FILE]
-
-Murid automatically keeps your Calibre library in sync with your reading list on Hardcover, with help from myAnonamouse.
-
-Options:
-  -h, --help            show this help message and exit
-  --version, -v         show program's version number and exit
-  --log-level, -l {DEBUG,INFO,WARNING,ERROR,CRITICAL}
-                        logging level (default: INFO)
-  --dry-run, -d         see what will be downloaded without actually downloading (default: False)
-  --run-once, -r        run murid once and then exit (no scheduler) (default: False)
-  --test-notification   send a test notification and then exit (default: False)
-  --config, -c CONFIG_FILE
-                        path to config file (default: /home/philipj/.config/murid/config.yaml)bash
-```
-
-### Run Normally
-
-```bash
-murid --config config.yaml
-```
-
-### Dry Run
-
-See what would be downloaded without actually downloading anything:
-
-```bash
-murid --config config.yaml --dry-run
-```
-
-### Run once
-
-Run without using the schedule. Instead run once then exit:
-
-```bash
-murid --config config.yaml --run-once
-```
-
-### Debug Logging
-
-```bash
-murid \
-  --config config.yaml \
-  --log-level DEBUG
-```
-
----
+Found in your MyAnonamouse security settings:  
+<https://www.myanonamouse.net/preferences/index.php?view=security>
 
 ## Scheduling
 
-Scheduling is controlled by a cron expression.
+Cron-based scheduling controls how often Murid runs.
 
-Examples:
-
-| Schedule | Description |
-|-----------|-------------|
-| `0 * * * *` | Every hour |
-| `0 */6 * * *` | Every 6 hours |
-| `0 3 * * *` | Daily at 03:00 |
-| `0 0 * * 0` | Weekly |
-
----
+| Expression    | Meaning        |
+| ------------- | -------------- |
+| `0 * * * *`   | Every hour     |
+| `0 */6 * * *` | Every 6 hours  |
+| `0 3 * * *`   | Daily at 03:00 |
+| `0 0 * * 0`   | Weekly         |
 
 ## Matching Logic
 
-Books are considered already owned when:
+A book is considered already present if:
 
-- ISBNs match, or
-- Title/author similarity exceeds the configured threshold.
+- ISBN matches, or
+- Title/author similarity exceeds matcher_threshold
 
-Books not found in Calibre are searched on MyAnonamouse.
-
----
-
-## Logging
-
-Supported log levels:
-
-- `DEBUG`
-- `INFO`
-- `WARNING`
-- `ERROR`
-- `CRITICAL`
-
-Example:
-
-```bash
-murid \
-  --config config.yaml \
-  --log-level DEBUG
-```
-
----
-
-## Development
-
-Run tests:
-
-```bash
-pytest
-```
-
-Run coverage:
-
-```bash
-pytest --cov
-```
-
-Lint:
-
-```bash
-ruff check .
-```
-
----
+Otherwise, it will be searched and downloaded via MyAnonamouse.
 
 ## Disclaimer
 
-This project is intended for personal library management and automation.
+This tool is intended for personal library automation and management.
 
-Users are responsible for ensuring their usage complies with the terms of service of Hardcover, MyAnonamouse, qBittorrent, and any applicable laws.
-
----
+Users are responsible for complying with applicable laws and the terms of service of all services used, including Hardcover, MyAnonamouse, and qBittorrent.
 
 ## License
 
-MIT License
+MIT
