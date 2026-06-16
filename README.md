@@ -160,7 +160,7 @@ export MAM_ID="..."
 | `lang_codes`            | Allowed languages           | `["ENG"]`   |
 | `schedule`              | Cron expression             | `0 * * * *` |
 | `redact_sensitive_data` | Hide secrets in logs        | `true`      |
-| `apprise`               | Notifications via Apprise   | `None`      |
+| `apprise`               | Notifications via [Apprise](https://appriseit.com/getting-started/configuration/)   | `None`      |
 
 ### Users
 
