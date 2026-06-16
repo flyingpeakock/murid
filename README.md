@@ -202,6 +202,28 @@ export MAM_ID="..."
 | `category`    | Torrent category             | `murid`  |
 | `mapping`     | Path mapping between systems | `None`   |
 
+#### Path Mapping
+
+If qBittorrent and murid see the download directory under different paths (for example,
+when one or both are running in containers with different volume mounts), configure a path mapping. 
+
+Set: 
+
+- `qbittorrent.mapping.qbit_path` to the download path as seen by qBittorrent
+- `qbittorrent.mapping.murid_path` to the corresponding path as seen by murid
+
+For example, qBittorrent may save files to `/downloads` inside a container,
+while murid accesses the same files at `/mnt/media/downloads` on the host. In that case:
+
+```yaml
+qbittorrent:
+  mapping:
+    qbit_path: /downloads
+    murid_path: /mnt/media/downloads
+```
+
+This allows murid to correctly locate files reported by qBittorrent.
+
 ## Credentials
 
 ### Hardcover User ID
