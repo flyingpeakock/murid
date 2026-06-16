@@ -63,11 +63,27 @@ Calibre
 
 ## Installation
 
-### Using pip
+### Linux / macOS
 
 ```bash
+git clone https://github.com/flyingpeakock/murid.git
+cd murid
+
 python -m venv .venv
 source .venv/bin/activate
+
+pip install .
+```
+
+### Windows
+
+```powershell
+git clone https://github.com/flyingpeakock/murid.git
+cd murid
+
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
 pip install .
 ```
 
@@ -76,6 +92,9 @@ pip install .
 ```bash
 git clone https://github.com/flyingpeakock/murid.git
 cd murid
+
+python -m venv.venv
+source .venv/bin/activate
 
 pip install -e ".[dev]"
 ```
@@ -86,7 +105,7 @@ Or with nix
 nix shell
 ```
 
-### Using nixOS flakes
+### Using nixOS flake
 
 All nixos options are defined in [nixosModule.nix](nixosModule.nix)
 
