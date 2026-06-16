@@ -138,7 +138,7 @@ export MAM_ID="..."
 | Option | Description | Default |
 |----------|-------------|----------|
 | `users` | [Hardcover users to monitor](#users) | Required |
-| `qbittorrent` | [qBittorrent configuration](#qBittorrent) | Required |
+| `qbittorrent` | [qBittorrent configuration](#qbittorrent) | Required |
 | `calibre_db_path` | Path to Calibre `metadata.db` | Required |
 | `calibredb_executable` | Path to calibredb executable | `calibredb` |
 | `mam_id` | MyAnonamouse session cookie | Required |
@@ -179,7 +179,7 @@ Your Hardcover user ID can be obtained from the Hardcover API or account informa
 
 ### Hardcover API Key
 
-[Generate an API key from your Hardcover account settings.](https://hardcover.app/account/api)
+Generate an API key from your Hardcover [account settings.](https://hardcover.app/account/api)
 
 ### MyAnonamouse `mam_id`
 
