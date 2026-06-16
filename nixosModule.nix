@@ -167,6 +167,18 @@ in {
               type = lib.types.str;
               default = "0 * * * *"; # every hour
             };
+
+            apprise = lib.mkOption {
+              description = "Apprise configuration for notifications";
+              default = null;
+              type = lib.types.nullOr (lib.types.submodule {
+                freeformType = yaml.type;
+                options.urls = lib.mkOption {
+                  description = "List of Apprise URLs to send notifications to";
+                  type = lib.types.listOf lib.types.str;
+                };
+              });
+            };
           };
         };
       };
