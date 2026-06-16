@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from hardcoverharvester import Book, Torrent
-from hardcoverharvester.hardcoverHarvesterApp import HardcoverHarvesterApp
+from murid import Book, Torrent
+from murid.muridApp import MuridApp
 
 
 def make_book(id=1, title="Dune"):
@@ -37,7 +37,7 @@ def test_init_hardcover_clients():
         {"api_key": "key2", "id": 2},
     ]
 
-    from hardcoverharvester.hardcoverHarvesterApp import init_hardcover_clients
+    from murid.muridApp import init_hardcover_clients
 
     clients = init_hardcover_clients(config)
 
@@ -45,7 +45,7 @@ def test_init_hardcover_clients():
 
 
 def test_load_config_file_not_found():
-    from hardcoverharvester.hardcoverHarvesterApp import load_config
+    from murid.muridApp import load_config
 
     with pytest.raises(SystemExit):
         load_config("does_not_exist.yaml")
@@ -57,7 +57,7 @@ def test_fetch_calibre_books():
 
     app = MagicMock()
     app.calibre = calibre
-    app.fetch_calibre_books = HardcoverHarvesterApp.fetch_calibre_books.__get__(app)
+    app.fetch_calibre_books = MuridApp.fetch_calibre_books.__get__(app)
 
     books = app.fetch_calibre_books()
 
@@ -75,7 +75,7 @@ def test_fetch_hardcover_books():
     app = MagicMock()
     app.hardcover_clients = [client1, client2]
 
-    app.fetch_hardcover_books = HardcoverHarvesterApp.fetch_hardcover_books.__get__(app)
+    app.fetch_hardcover_books = MuridApp.fetch_hardcover_books.__get__(app)
 
     books = app.fetch_hardcover_books()
 
@@ -88,7 +88,7 @@ def test_match_books_delegates():
 
     app = MagicMock()
     app.matcher = matcher
-    app.match_books = HardcoverHarvesterApp.match_books.__get__(app)
+    app.match_books = MuridApp.match_books.__get__(app)
 
     result = app.match_books(["a"], ["b"])
 
@@ -108,7 +108,7 @@ def test_get_best_torrent_for_book():
     app = MagicMock()
     app.matcher = matcher
     app.config = {"lang_codes": ["ENG"]}
-    app.get_best_torrent_for_book = HardcoverHarvesterApp.get_best_torrent_for_book.__get__(app)
+    app.get_best_torrent_for_book = MuridApp.get_best_torrent_for_book.__get__(app)
 
     result = app.get_best_torrent_for_book(book, [torrent])
 
@@ -128,7 +128,7 @@ def test_get_best_torrent_for_book_none():
     app = MagicMock()
     app.matcher = matcher
     app.config = {"lang_codes": ["ENG"]}
-    app.get_best_torrent_for_book = HardcoverHarvesterApp.get_best_torrent_for_book.__get__(app)
+    app.get_best_torrent_for_book = MuridApp.get_best_torrent_for_book.__get__(app)
 
     result = app.get_best_torrent_for_book(book, [torrent])
 
@@ -142,7 +142,7 @@ def test_handle_torrents_dry_run():
     app.args = MagicMock(dry_run=True)
     app.qbit = qbit
 
-    app.handle_torrents = HardcoverHarvesterApp.handle_torrents.__get__(app)
+    app.handle_torrents = MuridApp.handle_torrents.__get__(app)
 
     app.handle_torrents([(b"file", make_book())])
 
@@ -153,7 +153,7 @@ def test_handle_torrents_empty():
     app = MagicMock()
     app.args = MagicMock(dry_run=False)
 
-    app.handle_torrents = HardcoverHarvesterApp.handle_torrents.__get__(app)
+    app.handle_torrents = MuridApp.handle_torrents.__get__(app)
 
     result = app.handle_torrents([])
 
@@ -176,7 +176,7 @@ def test_handle_torrents_adds_torrents():
     app.qbit = qbit
     app.calibre = calibre
 
-    app.handle_torrents = HardcoverHarvesterApp.handle_torrents.__get__(app)
+    app.handle_torrents = MuridApp.handle_torrents.__get__(app)
 
     # break loop immediately by removing pending after first iteration
     def fake_get_completed_path(_):

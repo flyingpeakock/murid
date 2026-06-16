@@ -1,6 +1,6 @@
-# HardcoverHarvester
+# murid
 
-HardcoverHarvester automatically keeps your Calibre library in sync with your reading list on Hardcover.
+Murid automatically keeps your Calibre library in sync with your reading list on Hardcover, with help from myAnonamouse.
 
 It periodically:
 
@@ -73,7 +73,7 @@ pip install .
 
 ```bash
 git clone <repository-url>
-cd HardcoverHarvester
+cd murid
 
 pip install -e ".[dev]"
 ```
@@ -106,10 +106,10 @@ qbittorrent:
   username: "admin"
   password: "password"
   verify_cert: true
-  category: "hardcoverharvester"
+  category: "murid"
   mapping:
     qbit_path: /downloads/completed
-    harvester_path: /data/downloads/completed
+    murid: /data/downloads/completed
 ```
 
 ### Environment Variables
@@ -166,8 +166,8 @@ Must be a list of the following
 | `username` | Username | Required |
 | `password` | Password | Required |
 | `verify_cert` | Verify SSL certificates | `True` |
-| `category` | Category assigned to downloads | `hardcoverharvester` |
-| `mapping` | Needed if qBittorrent sees the file system differently than HardcoverHarvester | `None` |
+| `category` | Category assigned to downloads | `murid` |
+| `mapping` | Needed if qBittorrent sees the file system differently than murid | `None` |
 
 ---
 
@@ -189,10 +189,29 @@ Log into MyAnonamouse and obtain your `mam_id` from [here](https://www.myanonamo
 
 ## Usage
 
+### Help output
+
+```
+Usage: murid [-h] [--version] [--log-level {DEBUG,INFO,WARNING,ERROR,CRITICAL}] [--dry-run] [--run-once] [--test-notification] [--config CONFIG_FILE]
+
+Murid automatically keeps your Calibre library in sync with your reading list on Hardcover, with help from myAnonamouse.
+
+Options:
+  -h, --help            show this help message and exit
+  --version, -v         show program's version number and exit
+  --log-level, -l {DEBUG,INFO,WARNING,ERROR,CRITICAL}
+                        logging level (default: INFO)
+  --dry-run, -d         see what will be downloaded without actually downloading (default: False)
+  --run-once, -r        run murid once and then exit (no scheduler) (default: False)
+  --test-notification   send a test notification and then exit (default: False)
+  --config, -c CONFIG_FILE
+                        path to config file (default: /home/philipj/.config/murid/config.yaml)bash
+```
+
 ### Run Normally
 
 ```bash
-HardcoverHarvester --config config.yaml
+murid --config config.yaml
 ```
 
 ### Dry Run
@@ -200,7 +219,7 @@ HardcoverHarvester --config config.yaml
 See what would be downloaded without actually downloading anything:
 
 ```bash
-HardcoverHarvester --config config.yaml --dry-run
+murid --config config.yaml --dry-run
 ```
 
 ### Run once
@@ -208,13 +227,13 @@ HardcoverHarvester --config config.yaml --dry-run
 Run without using the schedule. Instead run once then exit:
 
 ```bash
-HardcoverHarvester --config config.yaml --run-once
+murid --config config.yaml --run-once
 ```
 
 ### Debug Logging
 
 ```bash
-HardcoverHarvester \
+murid \
   --config config.yaml \
   --log-level DEBUG
 ```
@@ -260,7 +279,7 @@ Supported log levels:
 Example:
 
 ```bash
-HardcoverHarvester \
+murid \
   --config config.yaml \
   --log-level DEBUG
 ```

@@ -5,7 +5,7 @@ from rapidfuzz import fuzz
 
 from . import Book
 
-logger = logging.getLogger("HardcoverHarvester")
+logger = logging.getLogger("murid")
 
 
 class BookMatcher:

@@ -8,7 +8,7 @@ import requests
 
 from . import Book, Torrent
 
-logger = logging.getLogger("HardcoverHarvester")
+logger = logging.getLogger("murid")
 
 
 class MAMError(Exception):

@@ -1,26 +1,37 @@
 import argparse
 import logging
+import os
+import platform
 import sys
+from pathlib import Path
 
-import apprise
 from rich.logging import RichHandler
-from rich_argparse import RichHelpFormatter
+from rich_argparse import ArgumentDefaultsRichHelpFormatter
 
 from . import __version__
-from .hardcoverHarvesterApp import HardcoverHarvesterApp
+from .muridApp import MuridApp
 
-logger = logging.getLogger("HardcoverHarvester")
+logger = logging.getLogger("murid")
 
 
-class AppriseHandler(logging.Handler):
-    def emit(self, record: logging.LogRecord) -> None:
-        super().emit(record)
-        if record.levelno >= logging.ERROR:
-            apprise.notify(
-                body=record.getMessage(),
-                title=f"HardcoverHarvester - {record.levelname}",
-                severity=apprise.NotifySeverity.ERROR,
-            )
+def get_default_config_path() -> Path:
+    app_name = "murid"
+    file_name = "config.yaml"
+
+    match platform.system():
+        case "Linux":
+            config_home = os.getenv("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+            return Path(config_home) / app_name / file_name
+
+        case "Darwin":
+            return Path.home() / "Library" / "Application Support" / app_name / file_name
+
+        case "Windows":
+            appdata = os.getenv("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+            return Path(appdata) / app_name / file_name
+
+        case _:
+            raise RuntimeError(f"Unsupported operating system: {platform.system()}")
 
 
 def setupLogger(logLevel: str) -> None:
@@ -33,7 +44,9 @@ def setupLogger(logLevel: str) -> None:
 
 
 def getArgParser(description: str) -> argparse.ArgumentParser:
-    arg_parser = argparse.ArgumentParser(description=description, formatter_class=RichHelpFormatter)
+    arg_parser = argparse.ArgumentParser(
+        description=description, formatter_class=ArgumentDefaultsRichHelpFormatter
+    )
     arg_parser.add_argument("--version", "-v", action="version", version=__version__)
     arg_parser.add_argument(
         "--log-level",
@@ -53,7 +66,7 @@ def getArgParser(description: str) -> argparse.ArgumentParser:
     arg_parser.add_argument(
         "--run-once",
         "-r",
-        help="run the harvester once and then exit (no scheduler)",
+        help="run murid once and then exit (no scheduler)",
         action="store_true",
         dest="run_once",
     )
@@ -67,10 +80,9 @@ def getArgParser(description: str) -> argparse.ArgumentParser:
         "--config",
         "-c",
         help="path to config file",
-        default="config.yaml",
+        default=get_default_config_path(),
         dest="config_file",
         type=str,
-        required=True,
     )
 
     return arg_parser
@@ -78,15 +90,15 @@ def getArgParser(description: str) -> argparse.ArgumentParser:
 
 def main() -> None:
     description = """
-Fetch books from Hardcover API and search for them in MyAnonamous.
-Downloads are sent to qBittorrent and then added to Calibre.
+Murid automatically keeps your Calibre library in sync with your
+reading list on Hardcover, with help from myAnonamouse.
 """
     args = getArgParser(description).parse_args()
     setupLogger(args.log_level)
 
-    logger.info(f"Starting HardcoverHarvester v{__version__}")
+    logger.info(f"Starting murid v{__version__}")
 
-    app = HardcoverHarvesterApp(args)
+    app = MuridApp(args)
     if args.test_notification:
         app.test_notification()
         return

@@ -3,7 +3,7 @@ from unittest.mock import Mock
 import pytest
 import qbittorrentapi
 
-from hardcoverharvester.qbittorrent import Qbittorrent
+from murid.qbittorrent import Qbittorrent
 
 
 @pytest.fixture

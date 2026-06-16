@@ -14,7 +14,7 @@ class AppriseHandler(logging.Handler):
         if record.levelno >= logging.ERROR:
             self.apprise.notify(
                 body=record.getMessage(),
-                title=f"HardcoverHarvester - {record.levelname}",
+                title=f"murid - {record.levelname}",
                 notify_type=apprise.NotifyType.FAILURE,
             )
 
@@ -24,8 +24,12 @@ def init_apprise(
 ) -> Callable[[str, str, apprise.NotifyType], None]:
     logger.debug("Initializing Apprise with config: %s", config)
     asset = apprise.AppriseAsset(
-        app_id="HardcoverHarvester",
-        app_desc="Fetch Hardcover books with MaM",
+        app_id="murid",
+        app_desc=(
+            "Murid automatically keeps your "
+            "Calibre library in sync with your reading "
+            "list on Hardcover, with help from myAnonamouse."
+        ),
     )
 
     apprise_conf = apprise.AppriseConfig()

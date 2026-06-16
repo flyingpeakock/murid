@@ -1,5 +1,8 @@
 {
-  description = "Search for books from Hardcover on MaM and add them to calibre";
+  description = ''
+    Murid automatically keeps your Calibre library in sync with your
+    reading list on Hardcover, with help from myAnonamouse.
+  '';
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -28,14 +31,14 @@
           python = pkgs.python3;
         }
         // {
-          pname = "HardcoverHarvester";
+          pname = "murid";
           version = "0.0.11";
 
           nativeCheckInputs = [
             pkgs.python3Packages.pytestCheckHook
           ];
 
-          meta.mainProgram = "HardcoverHarvester";
+          meta.mainProgram = "murid";
         }
       );
   in
@@ -53,7 +56,7 @@
       ];
 
       flake.overlays.default = final: _: {
-        hardcoverharvester = mkPackage final;
+        murid = mkPackage final;
       };
 
       perSystem = {
@@ -74,7 +77,7 @@
         devShells.default = pkgs.mkShell {
           shellHook = ''
             ${config.pre-commit.installationScript}
-            echo 1>&2 "Welcome to the development shell for HardcoverHarvester!"
+            echo 1>&2 "Welcome to the development shell for murid!"
           '';
           packages = let
             python = pkgs.python3;

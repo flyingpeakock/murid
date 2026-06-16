@@ -1,7 +1,7 @@
 # tests/test_bookmatcher.py
 
-from hardcoverharvester import Book
-from hardcoverharvester.bookMatcher import BookMatcher
+from murid import Book
+from murid.bookMatcher import BookMatcher
 
 
 def make_book(

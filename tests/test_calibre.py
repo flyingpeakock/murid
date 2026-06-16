@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from hardcoverharvester.calibre import Book, Calibre, CalibreError
+from murid.calibre import Book, Calibre, CalibreError
 
 
 class Result:

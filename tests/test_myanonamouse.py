@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 import requests
 
-from hardcoverharvester.myanonamouse import (
+from murid.myanonamouse import (
     MAMError,
     MyAnonamouse,
     parse_size,

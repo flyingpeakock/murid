@@ -6,7 +6,7 @@ from typing import Any
 import yaml
 from croniter import croniter
 
-logger = logging.getLogger("HardcoverHarvester")
+logger = logging.getLogger("murid")
 
 
 class _Missing:
@@ -31,10 +31,10 @@ _defaults = {
         "password": _MISSING,
         "port": _MISSING,
         "verify_cert": True,
-        "category": "hardcoverharvester",
+        "category": "murid",
         "mapping": {
             "qbit_path": None,
-            "harvester_path": None,
+            "murid_path": None,
         },
     },
     "schedule": "0 * * * *",
@@ -161,19 +161,19 @@ class Config:
         mapping = self.get("qbittorrent").get("mapping", {})
         if not isinstance(mapping, dict):
             raise ConfigError("Config item 'qbittorrent.mapping' must be a dict")
-        if "qbit_path" not in mapping or "harvester_path" not in mapping:
+        if "qbit_path" not in mapping or "murid_path" not in mapping:
             raise ConfigError(
-                "Config item 'qbittorrent.mapping' must have 'qbit_path' and 'harvester_path' keys"
+                "Config item 'qbittorrent.mapping' must have 'qbit_path' and 'murid_path' keys"
             )
-        if mapping["harvester_path"] and not os.path.exists(mapping["harvester_path"]):
-            raise ConfigError(f"Harvester path '{mapping['harvester_path']}' does not exist")
-        if mapping["harvester_path"] and not mapping["qbit_path"]:
+        if mapping["murid_path"] and not os.path.exists(mapping["murid_path"]):
+            raise ConfigError(f"murid path '{mapping['murid_path']}' does not exist")
+        if mapping["murid_path"] and not mapping["qbit_path"]:
             raise ConfigError(
-                "Config item 'qbittorrent.mapping.qbit_path' must be set if 'harvester_path' is set"
+                "Config item 'qbittorrent.mapping.qbit_path' must be set if 'murid_path' is set"
             )
-        if mapping["qbit_path"] and not mapping["harvester_path"]:
+        if mapping["qbit_path"] and not mapping["murid_path"]:
             raise ConfigError(
-                "Config item 'qbittorrent.mapping.harvester_path' must be set if 'qbit_path' is set"
+                "Config item 'qbittorrent.mapping.murid_path' must be set if 'qbit_path' is set"
             )
 
         qbit = self.get("qbittorrent")

@@ -5,7 +5,7 @@ import qbittorrentapi
 
 from . import Book
 
-logger = logging.getLogger("HardcoverHarvester")
+logger = logging.getLogger("murid")
 
 
 class Qbittorrent:
@@ -64,10 +64,10 @@ class Qbittorrent:
         if (
             self.mapping
             and self.mapping["qbit_path"]
-            and self.mapping["harvester_path"]
+            and self.mapping["murid_path"]
             and path.startswith(self.mapping["qbit_path"])
         ):
-            path = path.replace(self.mapping["qbit_path"], self.mapping["harvester_path"], 1)
+            path = path.replace(self.mapping["qbit_path"], self.mapping["murid_path"], 1)
 
         return path
 

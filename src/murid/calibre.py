@@ -5,7 +5,7 @@ import subprocess
 
 from . import Book
 
-logger = logging.getLogger("HardcoverHarvester")
+logger = logging.getLogger("murid")
 
 
 class CalibreError(Exception):

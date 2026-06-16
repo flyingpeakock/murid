@@ -6,7 +6,7 @@ from io import StringIO
 import pytest
 import yaml
 
-from hardcoverharvester.config import (
+from murid.config import (
     Config,
     ConfigError,
     EnvLoader,
@@ -24,7 +24,7 @@ base = _defaults.copy() | {
         "password": "adminadmin",
         "port": 8080,
         "verify_cert": False,
-        "category": "hardcoverharvester",
+        "category": "murid",
     },
 }
 
@@ -375,7 +375,7 @@ def test_qbittorrent_host_trims_trailing_slash(build_config):
             "password": "adminadmin",
             "port": 8080,
             "verify_cert": False,
-            "category": "hardcoverharvester",
+            "category": "murid",
         }
     )
     assert config.get("qbittorrent")["host"] == "http://localhost"
@@ -431,7 +431,7 @@ def test_qbittorrent_verify_cert_can_be_set(build_config):
             "username": "admin",
             "password": "adminadmin",
             "port": 8080,
-            "category": "hardcoverharvester",
+            "category": "murid",
             "verify_cert": False,
         }
     )

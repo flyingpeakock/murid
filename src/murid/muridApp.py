@@ -15,10 +15,10 @@ from .hardcover import Hardcover
 from .myanonamouse import MyAnonamouse
 from .qbittorrent import Qbittorrent
 
-logger = logging.getLogger("HardcoverHarvester")
+logger = logging.getLogger("murid")
 
 
-class HardcoverHarvesterApp:
+class MuridApp:
     def __init__(self, args):
         self.args = args
         self.config = load_config(self.args.config_file)
@@ -54,14 +54,14 @@ class HardcoverHarvesterApp:
             self.args.dry_run,
         )
 
-        logger.info("Starting HardcoverHarvester cycle")
+        logger.info("Starting murid cycle")
         calibre_books = self.fetch_calibre_books()
         hardcover_books = self.fetch_hardcover_books()
 
         matches = self.match_books(calibre_books, hardcover_books)
         toFetch = self.process_matches(matches, hardcover_books)
         self.handle_torrents(toFetch)
-        logger.info("HardcoverHarvester cycle complete")
+        logger.info("murid cycle complete")
 
     def fetch_calibre_books(self):
         books = self.calibre.get_books()
@@ -242,8 +242,8 @@ class HardcoverHarvesterApp:
 
     def test_notification(self):
         self.notify(
-            title="Test notification from HardcoverHarvester",
-            body="Hello from HardcoverHarvester!",
+            title="Test notification from murid",
+            body="Hello from murid!",
         )
 
 
@@ -285,7 +285,7 @@ def init_qbittorrent(qbittorrent_config: dict, dryRun: bool = False):
     mapping = qbittorrent_config.pop("mapping", None)
     conn_info = qbittorrent_config
     conn_info["VERIFY_WEBUI_CERTIFICATE"] = conn_info.pop("verify_cert", True)
-    category = conn_info.pop("category", "hardcoverharvester")
+    category = conn_info.pop("category", "murid")
     client = qbittorrentapi.Client(**conn_info)
     return Qbittorrent(client, category, dryRun, mapping=mapping)
 

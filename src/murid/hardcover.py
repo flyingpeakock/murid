@@ -4,7 +4,7 @@ import requests
 
 from . import Book
 
-logger = logging.getLogger("HardcoverHarvester")
+logger = logging.getLogger("murid")
 
 
 class HardcoverError(Exception):

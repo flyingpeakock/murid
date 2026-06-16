@@ -7,10 +7,10 @@ in {
     pkgs,
     ...
   }: let
-    cfg = config.services.hardcoverharvester;
+    cfg = config.services.murid;
 
     yaml = pkgs.formats.yaml {};
-    createYAMLConfig = config: yaml.generate "hardcoverharvester.yaml" config;
+    createYAMLConfig = config: yaml.generate "murid.yaml" config;
 
     configEnvType = lib.types.addCheck lib.types.str (val: lib.strings.hasPrefix "!ENV " val);
 
@@ -50,7 +50,7 @@ in {
         category = lib.mkOption {
           description = "Category to use when adding torrents to qBittorrent";
           type = lib.types.str;
-          default = "hardcoverharvester";
+          default = "murid";
         };
         port = lib.mkOption {
           description = "Port that qBittorrent Web API is running on";
@@ -58,7 +58,7 @@ in {
           default = config.services.qbittorrent.webuiPort;
         };
         mapping = lib.mkOption {
-          description = "Mapping of qbittorrent save paths to paths as seen by the HardcoverHarvester service";
+          description = "Mapping of qbittorrent save paths to paths as seen by the murid service";
           type = lib.types.submodule {
             options = {
               qbit_path = lib.mkOption {
@@ -66,8 +66,8 @@ in {
                 type = lib.types.nullOr lib.types.str;
                 default = null;
               };
-              harvester_path = lib.mkOption {
-                description = "Path as seen by the HardcoverHarvester service";
+              murid_path = lib.mkOption {
+                description = "Path as seen by the murid service";
                 type = lib.types.nullOr lib.types.str;
                 default = null;
               };
@@ -77,24 +77,24 @@ in {
       };
     };
   in {
-    options.services.hardcoverharvester = {
-      enable = lib.mkEnableOption "HardcoverHarvester";
-      package = lib.mkPackageOption pkgs "hardcoverharvester" {};
+    options.services.murid = {
+      enable = lib.mkEnableOption "murid";
+      package = lib.mkPackageOption pkgs "murid" {};
 
       user = lib.mkOption {
-        description = "User to run the HardcoverHarvester service as";
+        description = "User to run the murid service as";
         type = lib.types.str;
-        default = "hardcoverharvester";
+        default = "murid";
       };
       group = lib.mkOption {
-        description = "Group to run the HardcoverHarvester service as";
+        description = "Group to run the murid service as";
         type = lib.types.str;
-        default = "hardcoverharvester";
+        default = "murid";
       };
 
       configFile = lib.mkOption {
         description = ''
-          Path to the HardcoverHarvester configuration file.
+          Path to the murid configuration file.
           Ignored if `config` option is used.
         '';
         type = lib.types.str;
@@ -102,19 +102,19 @@ in {
 
       environmentFile = lib.mkOption {
         description = ''
-          Path to an environment file containing environment variables for the HardcoverHarvester service.
+          Path to an environment file containing environment variables for the murid service.
         '';
         type = lib.types.nullOr lib.types.str;
       };
 
       extraArgs = lib.mkOption {
-        description = "Extra command line arguments to pass to the HardcoverHarvester executable";
+        description = "Extra command line arguments to pass to the murid executable";
         type = lib.types.listOf lib.types.str;
         default = [];
       };
 
       config = lib.mkOption {
-        description = "Configuration for HardcoverHarvester";
+        description = "Configuration for murid";
         default = {};
         type = lib.types.submodule {
           options = {
@@ -163,7 +163,7 @@ in {
             };
 
             schedule = lib.mkOption {
-              description = "Cron schedule for running the harvester";
+              description = "Cron schedule for running the murid";
               type = lib.types.str;
               default = "0 * * * *"; # every hour
             };
@@ -188,19 +188,19 @@ in {
       nixpkgs.overlays = [overlay];
 
       users = {
-        users = lib.mkIf (cfg.user == "hardcoverharvester") {
-          hardcoverharvester = {
+        users = lib.mkIf (cfg.user == "murid") {
+          murid = {
             inherit (cfg) group;
             isSystemUser = true;
           };
         };
-        groups = lib.mkIf (cfg.group == "hardcoverharvester") {
-          hardcoverharvester = {};
+        groups = lib.mkIf (cfg.group == "murid") {
+          murid = {};
         };
       };
 
-      systemd.services.hardcoverharvester = {
-        description = "Fetch books from MaM and add them to calibre";
+      systemd.services.murid = {
+        description = "Murid automatically keeps your Calibre library in sync";
         enable = true;
         after = ["network.target"];
         wantedBy = ["multi-user.target"];
