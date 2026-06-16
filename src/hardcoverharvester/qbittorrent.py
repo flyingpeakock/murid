@@ -1,4 +1,5 @@
 import logging
+import time
 
 import qbittorrentapi
 
@@ -56,6 +57,8 @@ class Qbittorrent:
         if not torrent.completed:
             return None
 
+        time.sleep(0.3)  # Give qBittorrent a moment to update the content path
+        torrent = self.client.torrents_info(torrent_hashes=torrent_id)[0]
         path = torrent.content_path
 
         if (
