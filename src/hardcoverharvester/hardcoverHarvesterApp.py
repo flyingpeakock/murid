@@ -136,7 +136,6 @@ class HardcoverHarvesterApp:
                 download_futures[download_future] = torrent.book
 
             if not download_futures:
-                logger.warning("No torrents found for wanted books")
                 return []
 
             for future in as_completed(download_futures):
