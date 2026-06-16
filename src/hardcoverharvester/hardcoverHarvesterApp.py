@@ -213,6 +213,7 @@ class HardcoverHarvesterApp:
                 try:
                     path = self.qbit.get_completed_path(torrent_id)
                     if path:
+                        time.sleep(0.5)  # Small delay to ensure file is fully available
                         try:
                             self.calibre.add_book(book, path)
                             if self.calibre.contains_book(book, self.matcher):
