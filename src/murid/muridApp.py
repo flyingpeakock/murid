@@ -19,7 +19,10 @@ logger = logging.getLogger("murid")
 
 
 class MuridApp:
+    """Main application class for Murid."""
+
     def __init__(self, args):
+        """Initialize the Murid application with the provided command-line arguments."""
         self.args = args
         self.config = load_config(self.args.config_file)
         self.notify = init_apprise(self.config)
@@ -31,6 +34,7 @@ class MuridApp:
         self.torrent_client = None
 
     def start_scheduler(self):
+        """Start the scheduler to run the main cycle on a defined schedule."""
         base_time = datetime.now()
         iter = croniter(self.config.get("schedule"), base_time)
 
@@ -45,6 +49,7 @@ class MuridApp:
             executor.submit(self.run)
 
     def run(self):
+        """Run the main application logic to sync Calibre with Hardcover and handle torrents."""
         self.calibre = init_calibre(self.config)
         self.hardcover_clients = init_hardcover_clients(self.config)
         self.matcher = BookMatcher(self.config.get("matcher_threshold"))
@@ -64,11 +69,13 @@ class MuridApp:
         logger.info("murid cycle complete")
 
     def fetch_calibre_books(self):
+        """Fetch the list of books from the Calibre database."""
         books = self.calibre.get_books()
         logger.info(f"Fetched {len(books)} books from Calibre database")
         return books
 
     def fetch_hardcover_books(self):
+        """Fetch the list of books from the Hardcover API for all configured users."""
         with ThreadPoolExecutor(max_workers=min(10, len(self.hardcover_clients))) as executor:
             results = executor.map(lambda client: client.get_books(), self.hardcover_clients)
         books = [book for result in results for book in result]
@@ -76,10 +83,12 @@ class MuridApp:
         return books
 
     def match_books(self, calibre_books, hardcover_books):
+        """Match books from Calibre with books from Hardcover using the BookMatcher."""
         matches = self.matcher.match_books(calibre_books, hardcover_books)
         return matches
 
     def process_matches(self, matches, hardcover_books):
+        """Determine which books from Hardcover are missing in Calibre and find their torrents."""
         matched_ids = {h.id for _, h, _ in matches}
         books = [h for h in hardcover_books if h.id not in matched_ids]
 
@@ -154,6 +163,7 @@ class MuridApp:
         return torrent_files
 
     def get_best_torrent_for_book(self, book: Book, torrents: list[Torrent]) -> Torrent | None:
+        """Given a book and a list of torrents, find the best matching torrent."""
         wanted_filetypes = {
             "epub",
             "mobi",
@@ -181,6 +191,7 @@ class MuridApp:
             return None
 
     def handle_torrents(self, torrent_files: list[tuple[bytes, Book]]):
+        """Add torrents to the torrent client and monitor for completion to import into Calibre."""
         if not torrent_files:
             logger.info("No torrents to handle")
             return
@@ -241,6 +252,7 @@ class MuridApp:
                 time.sleep(self.torrent_client.poll_interval)
 
     def test_notification(self):
+        """Send a test notification to verify that the notification system is working."""
         self.notify(
             title="Test notification from murid",
             body="Hello from murid!",
@@ -248,6 +260,7 @@ class MuridApp:
 
 
 def load_config(path: str):
+    """Load the configuration from the specified file path and return a Config object."""
     try:
         with open(path, "r") as f:
             return Config(f)
@@ -263,6 +276,7 @@ def load_config(path: str):
 
 
 def init_calibre(config):
+    """Initialize the Calibre interface using the provided configuration."""
     try:
         return Calibre(
             config.get("calibre_db_path"),
@@ -274,14 +288,17 @@ def init_calibre(config):
 
 
 def init_hardcover_clients(config):
+    """Initialize the Hardcover API clients for all users specified in the configuration."""
     return [Hardcover(user["api_key"], user["id"]) for user in config.get("users")]
 
 
 def init_MyAnonamouse_client(mam_id: str):
+    """Initialize the MyAnonamouse client using the provided user ID."""
     return MyAnonamouse(mam_id)
 
 
 def init_qbittorrent(qbittorrent_config: dict, dryRun: bool = False):
+    """Initialize the qBittorrent client using the provided configuration."""
     mapping = qbittorrent_config.pop("mapping", None)
     conn_info = qbittorrent_config
     conn_info["VERIFY_WEBUI_CERTIFICATE"] = conn_info.pop("verify_cert", True)

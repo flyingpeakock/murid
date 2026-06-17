@@ -9,15 +9,20 @@ logger = logging.getLogger("murid")
 
 
 class BookMatcher:
+    """Class for matching books based on title and author similarity."""
+
     def __init__(self, threshold: float = 0.92):
+        """Initialize the BookMatcher with a similarity threshold."""
         self.threshold = threshold
 
     @staticmethod
     def normalize(text: str) -> str:
+        """Normalize text by lowercasing and removing non-alphanumeric characters."""
         return "".join(c.lower() for c in text if c.isalnum() or c.isspace()).strip()
 
     @staticmethod
     def canonicalize_title(title: str) -> str:
+        """Canonicalize a book title by applying various transformations to improve matching."""
         title = title.lower()
 
         # Remove leading articles
@@ -45,6 +50,7 @@ class BookMatcher:
         return BookMatcher.normalize(title)
 
     def title_similarity(self, a: str, b: str) -> float:
+        """Calculate the similarity between two book titles using fuzzy matching."""
         return (
             fuzz.ratio(
                 self.canonicalize_title(a),
@@ -58,6 +64,7 @@ class BookMatcher:
         a: list[str],
         b: list[str],
     ) -> float:
+        """Calculate the similarity between two lists of authors using Jaccard similarity."""
         set_a = {self.normalize(x) for x in a}
         set_b = {self.normalize(x) for x in b}
 
@@ -67,6 +74,7 @@ class BookMatcher:
         return len(set_a & set_b) / len(set_a | set_b)
 
     def similarity(self, a: Book, b: Book) -> float:
+        """Calculate the overall similarity between two books based on total similarity."""
         # Strong signal: ISBN match
         if set(filter(None, a.isbn)) & set(filter(None, b.isbn)):
             return 1.0
@@ -77,9 +85,11 @@ class BookMatcher:
         return 0.7 * t + 0.3 * au
 
     def is_match(self, a: Book, b: Book) -> bool:
+        """Determine if two books are a match based on their similarity score and the threshold."""
         return self.similarity(a, b) >= self.threshold
 
     def best_match(self, book: Book, candidates: list[Book]) -> tuple[Book | None, float]:
+        """Find the best matching book from a list of candidates."""
         best_match = None
         best_score = 0.0
 
@@ -96,6 +106,7 @@ class BookMatcher:
         books_a: list[Book],
         books_b: list[Book],
     ) -> list[tuple[Book, Book, float]]:
+        """Match books from two lists and return a list of matched pairs and their similarity."""
 
         matches = []
 

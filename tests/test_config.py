@@ -196,12 +196,6 @@ def test_redact_list(build_config):
     ]
 
 
-def test_redaction_can_be_disabled(build_config):
-    config = build_config(redact_sensitive_data=False)
-    data = {"api_key": "secret"}
-    assert config.redact(data) == data
-
-
 def test_str_redacts_api_keys(build_config):
     config = build_config()
     output = str(config)

@@ -10,7 +10,10 @@ logger = logging.getLogger("murid")
 
 
 class _Missing:
+    """Sentinel class for missing config values."""
+
     def __str__(self) -> str:
+        """Return a string representation of the missing value."""
         return "<MISSING>"
 
 
@@ -43,10 +46,14 @@ _defaults = {
 
 
 class ConfigError(Exception):
+    """Custom exception for configuration-related errors."""
+
     pass
 
 
 class EnvLoader(yaml.SafeLoader):
+    """Custom YAML loader that loads values from environment variables using the !ENV tag."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.add_constructor("!ENV", self._env_constructor)
@@ -60,7 +67,10 @@ class EnvLoader(yaml.SafeLoader):
 
 
 class Config:
+    """Class for loading and validating the configuration for the Murid application."""
+
     def __init__(self, config_file: StringIO) -> None:
+        """Initialize the Config class by loading and validating the configuration."""
         try:
             config = yaml.load(config_file, Loader=EnvLoader)
         except yaml.YAMLError as e:
@@ -77,13 +87,19 @@ class Config:
         logger.debug(f"Config loaded:\n{self}")
 
     def get(self, key: str, default: Any = _MISSING) -> Any:
+        """Get a config value by key, with an optional default if the key is not found."""
         if key in self._config:
             return self._config[key]
         if default is not _MISSING:
             return default
         raise KeyError(f"Config item '{key}' not found in config file")
 
-    def _sanitize(self, value: Any) -> Any:
+    @staticmethod
+    def _sanitize(value: Any) -> Any:
+        """Recursively sanitize config values.
+
+        By striping whitespace and resolving environment variables.
+        """
         if isinstance(value, str):
             value = value.strip()
             if value.startswith("!ENV"):
@@ -95,27 +111,31 @@ class Config:
             else:
                 return value
         elif isinstance(value, list):
-            return [self._sanitize(item) for item in value]
+            return [Config._sanitize(item) for item in value]
         elif isinstance(value, dict):
-            return {self._sanitize(key): self._sanitize(val) for key, val in value.items()}
+            return {Config._sanitize(key): Config._sanitize(val) for key, val in value.items()}
         else:
             return value
 
-    def redact(self, data: Any) -> dict:
-        if self.get("redact_sensitive_data") is False:
-            return data
+    @staticmethod
+    def redact(data: Any) -> dict:
+        """Recursively redact sensitive data from the provided data structure."""
         sensitive_keys = ["api_key", "mam_id"]
         if isinstance(data, dict):
             return {
-                key: ("**REDACTED**" if key in sensitive_keys else self.redact(value))
+                key: ("**REDACTED**" if key in sensitive_keys else Config.redact(value))
                 for key, value in data.items()
             }
         elif isinstance(data, list):
-            return [self.redact(item) for item in data]
+            return [Config.redact(item) for item in data]
         else:
             return data
 
     def validate(self) -> None:
+        """Validate the loaded configuration.
+
+        Ensure all required fields are present and correctly formatted.
+        """
         for key, value in self._config.items():
             if value is _MISSING:
                 raise ConfigError(f"Config item '{key}' is missing")
@@ -206,10 +226,18 @@ class Config:
                 logger.warning(f"Unexpected config item '{key}' found in config file")
 
     def __str__(self) -> str:
-        return yaml.dump(self.redact(self._config), default_flow_style=False)
+        """Return a string representation of the configuration."""
+        if self.get("redact_sensitive_data"):
+            return yaml.dump(self.redact(self._config), default_flow_style=False)
+        else:
+            return yaml.dump(self._config, default_flow_style=False)
 
 
 def deep_merge(default, override):
+    """Recursively merge two dictionaries
+
+    Values from the override take precedence over the default.
+    """
     if isinstance(default, dict) and isinstance(override, dict):
         out = dict(default)
         for k, v in override.items():
@@ -219,6 +247,7 @@ def deep_merge(default, override):
 
 
 def valid_cron(expr: str) -> bool:
+    """Check if the provided string is a valid cron expression."""
     try:
         croniter(expr)
         return True

@@ -13,6 +13,8 @@ class CalibreError(Exception):
 
 
 class Calibre:
+    """Class for interacting with a Calibre library database."""
+
     def __init__(
         self,
         db_path: str,
@@ -20,6 +22,7 @@ class Calibre:
         run=subprocess.run,
         connect=sqlite3.connect,
     ) -> None:
+        """Initialize the Calibre class with the path to the database and the executable."""
         self.db_path = db_path
         self.db_executable = db_executable
         self.library_path = os.path.dirname(db_path)
@@ -28,6 +31,7 @@ class Calibre:
         self.validate()
 
     def validate(self) -> None:
+        """Validate that the Calibre executable is available and that the database is accessible."""
         try:
             self.run(
                 [self.db_executable, "--version"],
@@ -47,6 +51,7 @@ class Calibre:
             raise CalibreError(f"Error connecting to Calibre database: {e}") from e
 
     def get_books(self) -> list[Book]:
+        """Retrieve a list of books from the Calibre database."""
         try:
             conn = self.connect(f"file:{self.db_path}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
@@ -93,6 +98,7 @@ class Calibre:
         return books
 
     def add_book(self, book: Book, path: str) -> None:
+        """Add a book to the Calibre library using the calibredb command-line tool."""
         args = [
             self.db_executable,
             "add",
@@ -132,6 +138,7 @@ class Calibre:
             raise CalibreError(f"Error adding book to Calibre: {e}") from e
 
     def contains_book(self, book: Book, matcher) -> bool:
+        """Check if a book already exists in the Calibre library using the provided matcher."""
         existing_books = self.get_books()
         best_match, score = matcher.best_match(book, existing_books)
         if best_match and score >= matcher.threshold:

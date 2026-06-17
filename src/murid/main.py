@@ -15,6 +15,7 @@ logger = logging.getLogger("murid")
 
 
 def get_default_config_path() -> Path:
+    """Get the default config file path based on the operating system."""
     app_name = "murid"
     file_name = "config.yaml"
 
@@ -35,6 +36,7 @@ def get_default_config_path() -> Path:
 
 
 def setupLogger(logLevel: str) -> None:
+    """Set up the logger with the specified log level and appropriate handler."""
     logger.setLevel(logLevel)
 
     if sys.stderr.isatty():
@@ -44,6 +46,7 @@ def setupLogger(logLevel: str) -> None:
 
 
 def getArgParser(description: str) -> argparse.ArgumentParser:
+    """Create and return an argument parser with the specified description and default arguments."""
     arg_parser = argparse.ArgumentParser(
         description=description, formatter_class=ArgumentDefaultsRichHelpFormatter
     )
@@ -89,6 +92,10 @@ def getArgParser(description: str) -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    """Main entry point for the application.
+
+    Sets up logging, parses command-line arguments, and runs the main application logic.
+    """
     description = """
 Murid automatically keeps your Calibre library in sync with your
 reading list on Hardcover, with help from myAnonamouse.

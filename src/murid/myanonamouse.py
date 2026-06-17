@@ -12,16 +12,21 @@ logger = logging.getLogger("murid")
 
 
 class MAMError(Exception):
+    """Custom exception for errors related to MyAnonamouse interactions."""
+
     pass
 
 
 class MyAnonamouse:
+    """Class for interacting with the MyAnonamouse website to search for and download torrents."""
+
     BASE_URL = "https://www.myanonamouse.net"
     SEARCH_URL = f"{BASE_URL}/tor/js/loadSearchJSONbasic.php"
     DOWNLOAD_URL = f"{BASE_URL}/tor/download.php"
     _MIN_REQUEST_INTERVAL = 0.5  # seconds
 
     def __init__(self, mam_id: str) -> None:
+        """Initialize the MyAnonamouse class with the provided mam_id for authentication."""
         self.session = requests.Session()
         self._mam_id = mam_id
         self.session.cookies.set("mam_id", mam_id, domain=".myanonamouse.net")
@@ -29,6 +34,7 @@ class MyAnonamouse:
         self._last_request_time = 0.0
 
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
+        """Make a request to the MyAnonamouse API, ensuring that we respect the minimum interval."""
         with self._lock:
             now = time.monotonic()
             elapsed = now - self._last_request_time
@@ -51,6 +57,7 @@ class MyAnonamouse:
         include_download_link: bool = True,
         include_isbn: bool = True,
     ) -> list[Torrent]:
+        """Search for torrents on MyAnonamouse matching the specified criteria."""
 
         payload = {
             "tor": {
@@ -100,6 +107,7 @@ class MyAnonamouse:
         return [self._parse_torrent(row) for row in data["data"][:per_page]]
 
     def get_torrent(self, torrent_id: int) -> Torrent | None:
+        """Get a torrent by its ID by searching for it and filtering the results."""
         results = self.search(
             "",
             include_description=True,
@@ -112,6 +120,7 @@ class MyAnonamouse:
 
     @staticmethod
     def _parse_torrent(data: dict[str, Any]) -> Torrent:
+        """Parse a torrent from the raw data returned by the MyAnonamouse API."""
         series_info = json.loads(data.get("series_info", "{}"))
         series_name = None
         series_number = None
@@ -145,6 +154,7 @@ class MyAnonamouse:
         )
 
     def search_ebook(self, title: str, author: str | None = None) -> list[Torrent]:
+        """Search for ebooks on MyAnonamouse matching the specified title and optional author."""
         query = title
         if author:
             query += f" {author}"
@@ -160,6 +170,7 @@ class MyAnonamouse:
         return result
 
     def download_torrent(self, torrent: Torrent) -> bytes | None:
+        """Download the torrent file for the specified torrent."""
         try:
             response = self._request(
                 "GET", f"{self.DOWNLOAD_URL}/?tid={torrent.book.id}", timeout=30
@@ -173,6 +184,7 @@ class MyAnonamouse:
 
 
 def parse_size(size: str) -> int:
+    """Parse a human-readable file size (e.g. "1.5 GB") into bytes."""
     if not size:
         return 0
 

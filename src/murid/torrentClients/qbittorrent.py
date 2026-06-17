@@ -10,7 +10,10 @@ logger = logging.getLogger("murid")
 
 
 class Qbittorrent(TorrentClient):
+    """Torrent client implementation for qBittorrent."""
+
     def __init__(self, client, category, dry_run, poll_interval=2, mapping=None):
+        """Initialize the qBittorrent client with the provided parameters."""
         self.client = client
         self.category = category
         self.poll_interval = poll_interval
@@ -19,6 +22,7 @@ class Qbittorrent(TorrentClient):
         self._validate()
 
     def _validate(self):
+        """Validate the connection to qBittorrent by attempting to log in."""
         try:
             self.client.auth_log_in()
             logger.debug("Successfully authenticated with qBittorrent")
@@ -30,6 +34,7 @@ class Qbittorrent(TorrentClient):
         logger.debug(f"qBittorrent api: {self.client.app.web_api_version}")
 
     def add_torrent(self, torrent_file: bytes, book: Book) -> str | None:
+        """Add a torrent to qBittorrent and return its ID."""
         try:
             tinfo = self.client.torrents_add(
                 torrent_files=torrent_file,
@@ -46,6 +51,7 @@ class Qbittorrent(TorrentClient):
             return None
 
     def get_completed_path(self, torrent_id: str) -> str | None:
+        """Get the completed path of a torrent by its ID, or None if it's not yet completed."""
         try:
             torrent = self.client.torrents_info(torrent_hashes=torrent_id)[0]
         except Exception:
@@ -73,4 +79,5 @@ class Qbittorrent(TorrentClient):
         return path
 
     def add_tag(self, torrent_id: str, tag: str):
+        """Add a tag to a torrent by its ID."""
         self.client.torrents_add_tags(tags=tag, torrent_hashes=torrent_id)

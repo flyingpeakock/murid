@@ -6,6 +6,8 @@ import yaml
 
 
 class AppriseHandler(logging.Handler):
+    """Custom logging handler that sends error-level logs to Apprise notifications."""
+
     def __init__(self, apprise_obj: apprise.Apprise = None):
         super().__init__()
         self.apprise = apprise_obj or apprise.Apprise()
@@ -22,6 +24,7 @@ class AppriseHandler(logging.Handler):
 def init_apprise(
     logger: logging.Logger, config: dict
 ) -> Callable[[str, str, apprise.NotifyType], None]:
+    """Initialize Apprise with the provided configuration and return a notify function."""
     logger.debug("Initializing Apprise with config: %s", config)
     asset = apprise.AppriseAsset(
         app_id="murid",

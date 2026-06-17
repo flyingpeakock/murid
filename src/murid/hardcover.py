@@ -8,11 +8,16 @@ logger = logging.getLogger("murid")
 
 
 class HardcoverError(Exception):
+    """Custom exception for errors related to the Hardcover API."""
+
     pass
 
 
 class Hardcover:
+    """Class for interacting with the Hardcover API to fetch user book data."""
+
     def __init__(self, api: str, user_id: str) -> None:
+        """Initialize the Hardcover class with the API token and user ID."""
         self.url = "https://api.hardcover.app/v1/graphql"
         self._user_id = user_id
         self._headers = {
@@ -24,6 +29,7 @@ class Hardcover:
         logger.debug(f"Initialized Hardcover for user_id: {self._user_id}")
 
     def fetch_data(self) -> dict:
+        """Fetch book data from the Hardcover API for the specified user."""
         logger.debug("Fetching Hardcover data...")
 
         query = """
@@ -83,6 +89,7 @@ class Hardcover:
 
     @staticmethod
     def _extract_series_info(data: dict) -> tuple[str | None, float | None]:
+        """Extract series name and position from the book data."""
         series_info = data.get("book_series", [])
         if not series_info:
             return None, None
@@ -92,6 +99,7 @@ class Hardcover:
 
     @staticmethod
     def _extract_isbn(editions: list[dict] | None) -> list[str | None]:
+        """Extract ISBN-10 and ISBN-13 from the editions data."""
         if not editions:
             return []
 
@@ -108,6 +116,10 @@ class Hardcover:
         return isbns
 
     def get_books(self) -> list[Book]:
+        """Fetch the user's "Want to Read" books from the Hardcover API.
+
+        Return them as a list of Book objects.
+        """
         data = self.fetch_data()
         items = data.get("data", {}).get("user_books", [])
 
