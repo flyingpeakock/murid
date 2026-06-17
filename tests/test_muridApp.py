@@ -136,17 +136,17 @@ def test_get_best_torrent_for_book_none():
 
 
 def test_handle_torrents_dry_run():
-    qbit = MagicMock()
+    torrent_client = MagicMock()
 
     app = MagicMock()
     app.args = MagicMock(dry_run=True)
-    app.qbit = qbit
+    app.torrent_client = torrent_client
 
     app.handle_torrents = MuridApp.handle_torrents.__get__(app)
 
     app.handle_torrents([(b"file", make_book())])
 
-    qbit.add_torrent.assert_not_called()
+    torrent_client.add_torrent.assert_not_called()
 
 
 def test_handle_torrents_empty():
@@ -163,17 +163,17 @@ def test_handle_torrents_empty():
 def test_handle_torrents_adds_torrents():
     book = make_book()
 
-    qbit = MagicMock()
-    qbit.add_torrent.return_value = "hash123"
-    qbit.get_completed_path.return_value = "/books/dune.epub"
-    qbit.poll_interval = 0
+    torrent_client = MagicMock()
+    torrent_client.add_torrent.return_value = "hash123"
+    torrent_client.get_completed_path.return_value = "/books/dune.epub"
+    torrent_client.poll_interval = 0
 
     calibre = MagicMock()
     calibre.add_book.return_value = None
 
     app = MagicMock()
     app.args = MagicMock(dry_run=False)
-    app.qbit = qbit
+    app.torrent_client = torrent_client
     app.calibre = calibre
 
     app.handle_torrents = MuridApp.handle_torrents.__get__(app)
@@ -183,9 +183,9 @@ def test_handle_torrents_adds_torrents():
         app.handle_torrents_running = False
         return "/books/dune.epub"
 
-    qbit.get_completed_path.side_effect = fake_get_completed_path
+    torrent_client.get_completed_path.side_effect = fake_get_completed_path
 
     app.handle_torrents([(b"file", book)])
 
-    qbit.add_torrent.assert_called_once()
+    torrent_client.add_torrent.assert_called_once()
     calibre.add_book.assert_called()

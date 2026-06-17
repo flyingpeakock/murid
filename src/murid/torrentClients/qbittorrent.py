@@ -3,12 +3,13 @@ import time
 
 import qbittorrentapi
 
-from . import Book
+from .. import Book
+from .torrentClients import TorrentClient
 
 logger = logging.getLogger("murid")
 
 
-class Qbittorrent:
+class Qbittorrent(TorrentClient):
     def __init__(self, client, category, dry_run, poll_interval=2, mapping=None):
         self.client = client
         self.category = category
@@ -28,7 +29,7 @@ class Qbittorrent:
         logger.debug(f"qBittorrent: {self.client.app.version}")
         logger.debug(f"qBittorrent api: {self.client.app.web_api_version}")
 
-    def add_torrent(self, torrent_file: bytes, book: "Book") -> str | None:
+    def add_torrent(self, torrent_file: bytes, book: Book) -> str | None:
         try:
             tinfo = self.client.torrents_add(
                 torrent_files=torrent_file,

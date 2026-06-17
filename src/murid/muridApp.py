@@ -13,7 +13,7 @@ from .calibre import Calibre, CalibreError
 from .config import Config, ConfigError
 from .hardcover import Hardcover
 from .myanonamouse import MyAnonamouse
-from .qbittorrent import Qbittorrent
+from .torrentClients.qbittorrent import Qbittorrent
 
 logger = logging.getLogger("murid")
 
@@ -28,7 +28,7 @@ class MuridApp:
         self.hardcover_clients = None
         self.matcher = None
         self.mam = None
-        self.qbit = None
+        self.torrent_client = None
 
     def start_scheduler(self):
         base_time = datetime.now()
@@ -49,7 +49,7 @@ class MuridApp:
         self.hardcover_clients = init_hardcover_clients(self.config)
         self.matcher = BookMatcher(self.config.get("matcher_threshold"))
         self.mam = init_MyAnonamouse_client(self.config.get("mam_id"))
-        self.qbit = init_qbittorrent(
+        self.torrent_client = init_qbittorrent(
             self.config.get("qbittorrent"),
             self.args.dry_run,
         )
@@ -188,20 +188,20 @@ class MuridApp:
         logger.info(f"Handling {len(torrent_files)} torrents")
 
         if self.args.dry_run:
-            logger.info("Dry run enabled, not adding torrents to qBittorrent")
+            logger.info("Dry run enabled, not adding torrents to torrent client")
             for _, book in torrent_files:
-                logger.info(f"Would add {book} to qBittorrent")
+                logger.info(f"Would add {book} to torrent client")
             return
 
         pending = {}  # torrent_id -> book
 
         for torrent_file, book in torrent_files:
-            torrent_id = self.qbit.add_torrent(torrent_file, book)
+            torrent_id = self.torrent_client.add_torrent(torrent_file, book)
             if torrent_id:
                 pending[torrent_id] = book
 
         if not pending:
-            logger.warning("No torrents were successfully added to qBittorrent")
+            logger.warning("No torrents were successfully added to torrent client")
             return
 
         logger.info(f"Tracking {len(pending)} torrents for completion")
@@ -211,7 +211,7 @@ class MuridApp:
 
             for torrent_id, book in pending.items():
                 try:
-                    path = self.qbit.get_completed_path(torrent_id)
+                    path = self.torrent_client.get_completed_path(torrent_id)
                     if path:
                         try:
                             self.calibre.add_book(book, path)
@@ -224,10 +224,10 @@ class MuridApp:
                                     f"Failed to verify import of {book} into Calibre."
                                     "\nManual intervention is likely required.",
                                 )
-                                self.qbit.add_tag(torrent_id, "import_failed")
+                                self.torrent_client.add_tag(torrent_id, "import_failed")
                         except Exception:
                             logger.error(f"Error importing {book} into Calibre")
-                            self.qbit.add_tag(torrent_id, "import_failed")
+                            self.torrent_client.add_tag(torrent_id, "import_failed")
                         completed.append(torrent_id)
                         continue
                 except Exception:
@@ -238,7 +238,7 @@ class MuridApp:
 
             if pending:
                 logger.debug(f"{len(pending)} torrents still active")
-                time.sleep(self.qbit.poll_interval)
+                time.sleep(self.torrent_client.poll_interval)
 
     def test_notification(self):
         self.notify(
