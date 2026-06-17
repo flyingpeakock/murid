@@ -1,7 +1,7 @@
 # tests/test_bookmatcher.py
 
 from murid import Book
-from murid.bookMatcher import BookMatcher
+from murid.book_matcher import BookMatcher
 
 
 def make_book(

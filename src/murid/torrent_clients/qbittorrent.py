@@ -1,24 +1,37 @@
+"""qBittorrent client implementation for Murid."""
+
 import logging
 import time
+from dataclasses import dataclass
 
 import qbittorrentapi
 
 from .. import Book
-from .torrentClients import TorrentClient
+from .torrent_client import TorrentClient
 
 logger = logging.getLogger("murid")
+
+
+@dataclass
+class QbittorrentConfig:
+    """Configuration for the qBittorrent client."""
+
+    client: qbittorrentapi.Client
+    category: str
+    dry_run: bool
+    mapping: dict[str, str] | None = None
 
 
 class Qbittorrent(TorrentClient):
     """Torrent client implementation for qBittorrent."""
 
-    def __init__(self, client, category, dry_run, poll_interval=2, mapping=None):
+    def __init__(self, config: QbittorrentConfig, poll_interval=2):
         """Initialize the qBittorrent client with the provided parameters."""
-        self.client = client
-        self.category = category
+        self.client = config.client
+        self.category = config.category
         self.poll_interval = poll_interval
-        self.dry_run = dry_run
-        self.mapping = mapping
+        self.dry_run = config.dry_run
+        self.mapping = config.mapping
         self._validate()
 
     def _validate(self):
@@ -30,8 +43,8 @@ class Qbittorrent(TorrentClient):
         except qbittorrentapi.LoginFailed as e:
             logger.error("Failed to authenticate with qBittorrent: %s", e)
             raise SystemExit(1) from e
-        logger.debug(f"qBittorrent: {self.client.app.version}")
-        logger.debug(f"qBittorrent api: {self.client.app.web_api_version}")
+        logger.debug("qBittorrent: %s", self.client.app.version)
+        logger.debug("qBittorrent api: %s", self.client.app.web_api_version)
 
     def add_torrent(self, torrent_file: bytes, book: Book) -> str | None:
         """Add a torrent to qBittorrent and return its ID."""
@@ -41,22 +54,24 @@ class Qbittorrent(TorrentClient):
                 category=self.category,
             )
 
-            logger.info(f"Added {book} to qBittorrent")
+            logger.info("Added %s to qBittorrent", book)
             logger.debug("Response: %s", tinfo)
 
             return tinfo.added_torrent_ids[0]
 
-        except Exception as e:
-            logger.error(f"Failed adding {book} to qBittorrent: {e}")
-            return None
+        except qbittorrentapi.UnsupportedMediaType415Error:
+            logger.error("Failed to add %s to qBittorrent: Unsupported media type", book)
+        except qbittorrentapi.TorrentFileNotFoundError:
+            logger.error("Failed to add %s to qBittorrent: Torrent file not found", book)
+        except qbittorrentapi.TorrentFilePermissionError:
+            logger.error("Failed to add %s to qBittorrent: Torrent file permission error", book)
+        except qbittorrentapi.Conflict409Error:
+            logger.error("Failed to add %s to qBittorrent: Torrent already downloaded", book)
+        return None
 
     def get_completed_path(self, torrent_id: str) -> str | None:
         """Get the completed path of a torrent by its ID, or None if it's not yet completed."""
-        try:
-            torrent = self.client.torrents_info(torrent_hashes=torrent_id)[0]
-        except Exception:
-            logger.error("Torrent %s not found", torrent_id)
-            return None
+        torrent = self.client.torrents_info(torrent_hashes=torrent_id)[0]
 
         if not torrent:
             return None

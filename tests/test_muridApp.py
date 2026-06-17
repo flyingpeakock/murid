@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from murid import Book, Torrent
-from murid.muridApp import MuridApp
+from murid.murid_app import MuridApp
 
 
 def make_book(id=1, title="Dune"):
@@ -37,7 +37,7 @@ def test_init_hardcover_clients():
         {"api_key": "key2", "id": 2},
     ]
 
-    from murid.muridApp import init_hardcover_clients
+    from murid.murid_app import init_hardcover_clients
 
     clients = init_hardcover_clients(config)
 
@@ -45,7 +45,7 @@ def test_init_hardcover_clients():
 
 
 def test_load_config_file_not_found():
-    from murid.muridApp import load_config
+    from murid.murid_app import load_config
 
     with pytest.raises(SystemExit):
         load_config("does_not_exist.yaml")
@@ -56,7 +56,7 @@ def test_fetch_calibre_books():
     calibre.get_books.return_value = [make_book()]
 
     app = MagicMock()
-    app.calibre = calibre
+    app.services.calibre = calibre
     app.fetch_calibre_books = MuridApp.fetch_calibre_books.__get__(app)
 
     books = app.fetch_calibre_books()
@@ -73,7 +73,7 @@ def test_fetch_hardcover_books():
     client2.get_books.return_value = [make_book(2)]
 
     app = MagicMock()
-    app.hardcover_clients = [client1, client2]
+    app.services.hardcover_clients = [client1, client2]
 
     app.fetch_hardcover_books = MuridApp.fetch_hardcover_books.__get__(app)
 
@@ -170,22 +170,24 @@ def test_handle_torrents_adds_torrents():
 
     calibre = MagicMock()
     calibre.add_book.return_value = None
+    calibre.contains_book.return_value = True
 
-    app = MagicMock()
+    matcher = MagicMock()
+
+    app = MuridApp.__new__(MuridApp)
     app.args = MagicMock(dry_run=False)
-    app.torrent_client = torrent_client
-    app.calibre = calibre
 
+    app.services = MagicMock()
+    app.services.torrent_client = torrent_client
+    app.services.calibre = calibre
+    app.matcher = matcher
+    app.services.mam = MagicMock()
+    app.notify = MagicMock()
+
+    # bind method without full init/run lifecycle
     app.handle_torrents = MuridApp.handle_torrents.__get__(app)
-
-    # break loop immediately by removing pending after first iteration
-    def fake_get_completed_path(_):
-        app.handle_torrents_running = False
-        return "/books/dune.epub"
-
-    torrent_client.get_completed_path.side_effect = fake_get_completed_path
 
     app.handle_torrents([(b"file", book)])
 
     torrent_client.add_torrent.assert_called_once()
-    calibre.add_book.assert_called()
+    calibre.add_book.assert_called_once_with(book, "/books/dune.epub")

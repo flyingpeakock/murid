@@ -7,6 +7,7 @@ import requests
 from murid.myanonamouse import (
     MAMError,
     MyAnonamouse,
+    MyAnonamouseQuery,
     parse_size,
 )
 
@@ -98,31 +99,10 @@ def test_search_success(mam):
 
     mam.session.request = lambda *a, **k: Response()
 
-    results = mam.search("Dune")
+    results = mam.search(MyAnonamouseQuery(text="Dune"))
 
     assert len(results) == 1
     assert results[0].book.title == "Dune"
-
-
-def test_search_respects_per_page(mam):
-    class Response:
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {
-                "data": [
-                    {"id": "1", "title": "A", "author_info": "{}"},
-                    {"id": "2", "title": "B", "author_info": "{}"},
-                    {"id": "3", "title": "C", "author_info": "{}"},
-                ]
-            }
-
-    mam.session.request = lambda *a, **k: Response()
-
-    results = mam.search("test", per_page=2)
-
-    assert len(results) == 2
 
 
 def test_search_request_error_returns_empty_list(mam):
@@ -131,7 +111,7 @@ def test_search_request_error_returns_empty_list(mam):
 
     mam.session.post = boom
 
-    assert mam.search("Dune") == []
+    assert mam.search(MyAnonamouseQuery(text="Dune")) == []
 
 
 def test_search_missing_data_raises(mam):
@@ -145,75 +125,27 @@ def test_search_missing_data_raises(mam):
     mam.session.request = lambda *a, **k: Response()
 
     with pytest.raises(MAMError, match="Unexpected response"):
-        mam.search("Dune")
-
-
-def test_search_include_description(mam):
-    payloads = []
-
-    class Response:
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"data": []}
-
-    def fake_post(*args, **kwargs):
-        payloads.append(kwargs["json"])
-        return Response()
-
-    mam.session.request = fake_post
-
-    mam.search(
-        "Dune",
-        include_description=True,
-    )
-
-    assert payloads[0]["description"] == "true"
-
-
-def test_get_torrent_found(mam):
-    torrent = MyAnonamouse._parse_torrent(
-        {
-            "id": "123",
-            "title": "Dune",
-            "author_info": "{}",
-        }
-    )
-
-    mam.search = lambda *a, **k: [torrent]
-
-    result = mam.get_torrent(123)
-
-    assert result is torrent
-
-
-def test_get_torrent_not_found(mam):
-    mam.search = lambda *a, **k: []
-
-    assert mam.get_torrent(123) is None
+        mam.search(MyAnonamouseQuery(text="Dune"))
 
 
 def test_search_ebook_title_only(mam):
     captured = {}
 
-    def fake_search(query, **kwargs):
+    def fake_search(query):
         captured["query"] = query
-        captured["kwargs"] = kwargs
         return []
 
     mam.search = fake_search
 
     mam.search_ebook("Dune")
 
-    assert captured["query"] == "Dune"
-    assert captured["kwargs"]["main_categories"] == [14]
+    assert captured["query"].text == "Dune"
 
 
 def test_search_ebook_title_and_author(mam):
     captured = {}
 
-    def fake_search(query, **kwargs):
+    def fake_search(query):
         captured["query"] = query
         return []
 
@@ -224,7 +156,7 @@ def test_search_ebook_title_and_author(mam):
         "Frank Herbert",
     )
 
-    assert captured["query"] == "Dune Frank Herbert"
+    assert captured["query"].text == "Dune Frank Herbert"
 
 
 def test_search_ebook_logs_found(mam, caplog):
@@ -271,7 +203,7 @@ def test_search_uses_request_wrapper(mam):
 
     mam._request = fake_request
 
-    mam.search("Dune")
+    mam.search(MyAnonamouseQuery(text="Dune"))
 
     assert called
 

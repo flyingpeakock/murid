@@ -1,3 +1,5 @@
+"""Module for matching books based on title and author similarity."""
+
 import logging
 import re
 
@@ -115,6 +117,6 @@ class BookMatcher:
             if match and score >= self.threshold:
                 matches.append((match, book_b, score))
             else:
-                logger.debug(f"No match for {book_b} in calibre db. Best similarity: {score:.2f}")
+                logger.debug("No match for %s in calibre db. Best similarity: %.2f", book_b, score)
 
         return matches

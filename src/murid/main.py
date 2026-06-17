@@ -1,3 +1,5 @@
+"""Main entry point for the murid application."""
+
 import argparse
 import logging
 import os
@@ -9,7 +11,7 @@ from rich.logging import RichHandler
 from rich_argparse import ArgumentDefaultsRichHelpFormatter
 
 from . import __version__
-from .muridApp import MuridApp
+from .murid_app import MuridApp
 
 logger = logging.getLogger("murid")
 
@@ -35,9 +37,9 @@ def get_default_config_path() -> Path:
             raise RuntimeError(f"Unsupported operating system: {platform.system()}")
 
 
-def setupLogger(logLevel: str) -> None:
+def setup_logger(log_level: str) -> None:
     """Set up the logger with the specified log level and appropriate handler."""
-    logger.setLevel(logLevel)
+    logger.setLevel(log_level)
 
     if sys.stderr.isatty():
         logger.addHandler(RichHandler(rich_tracebacks=True, tracebacks_show_locals=True))
@@ -45,7 +47,7 @@ def setupLogger(logLevel: str) -> None:
         logger.addHandler(logging.StreamHandler())
 
 
-def getArgParser(description: str) -> argparse.ArgumentParser:
+def get_arg_parser(description: str) -> argparse.ArgumentParser:
     """Create and return an argument parser with the specified description and default arguments."""
     arg_parser = argparse.ArgumentParser(
         description=description, formatter_class=ArgumentDefaultsRichHelpFormatter
@@ -100,10 +102,10 @@ def main() -> None:
 Murid automatically keeps your Calibre library in sync with your
 reading list on Hardcover, with help from myAnonamouse.
 """
-    args = getArgParser(description).parse_args()
-    setupLogger(args.log_level)
+    args = get_arg_parser(description).parse_args()
+    setup_logger(args.log_level)
 
-    logger.info(f"Starting murid v{__version__}")
+    logger.info("Starting murid v%s", __version__)
 
     app = MuridApp(args)
     if args.test_notification:
@@ -116,7 +118,7 @@ reading list on Hardcover, with help from myAnonamouse.
         else:
             app.run()
     except Exception as e:
-        logger.exception(f"An error occurred: {e}")
+        logger.exception("An error occurred: %s", e)
         raise SystemExit(1) from e
 
 

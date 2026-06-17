@@ -1,3 +1,5 @@
+"""Module for loading and validating the configuration for the Murid application."""
+
 import logging
 import os
 from io import StringIO
@@ -9,10 +11,10 @@ from croniter import croniter
 logger = logging.getLogger("murid")
 
 
-class _Missing:
+class _Missing:  # pylint: disable=too-few-public-methods
     """Sentinel class for missing config values."""
 
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         """Return a string representation of the missing value."""
         return "<MISSING>"
 
@@ -48,22 +50,14 @@ _defaults = {
 class ConfigError(Exception):
     """Custom exception for configuration-related errors."""
 
-    pass
 
-
-class EnvLoader(yaml.SafeLoader):
-    """Custom YAML loader that loads values from environment variables using the !ENV tag."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.add_constructor("!ENV", self._env_constructor)
-
-    def _env_constructor(self, loader: yaml.SafeLoader, node: yaml.Node) -> str:
-        env_var = loader.construct_scalar(node)
-        value = os.getenv(env_var)
-        if value is None:
-            raise ConfigError(f"Environment variable '{env_var}' not found") from None
-        return value
+def env_constructor(loader: yaml.SafeLoader, node: yaml.Node) -> str:
+    """YAML constructor for the !ENV tag to load values from environment variables."""
+    env_var = loader.construct_scalar(node)
+    value = os.getenv(env_var)
+    if value is None:
+        raise ConfigError(f"Environment variable '{env_var}' not found") from None
+    return value
 
 
 class Config:
@@ -72,7 +66,8 @@ class Config:
     def __init__(self, config_file: StringIO) -> None:
         """Initialize the Config class by loading and validating the configuration."""
         try:
-            config = yaml.load(config_file, Loader=EnvLoader)
+            yaml.SafeLoader.add_constructor("!ENV", env_constructor)
+            config = yaml.load(config_file, Loader=yaml.SafeLoader)
         except yaml.YAMLError as e:
             raise ConfigError(f"Error parsing config file: {e}") from e
         self._config = self._sanitize(deep_merge(_defaults, config if config is not None else {}))
@@ -80,11 +75,13 @@ class Config:
         for key in _defaults:
             if config is None or key not in config:
                 logger.info(
-                    f"Using default value for config item '{key}. Value: {self._config[key]}'"
+                    "Using default value for config item '%s. Value: %s'",
+                    key,
+                    self._config[key],
                 )
 
         self.validate()
-        logger.debug(f"Config loaded:\n{self}")
+        logger.debug("Config loaded:\n%s", self)
 
     def get(self, key: str, default: Any = _MISSING) -> Any:
         """Get a config value by key, with an optional default if the key is not found."""
@@ -108,14 +105,12 @@ class Config:
                 if env_value is None:
                     raise ConfigError(f"Environment variable '{env_var}' not found")
                 return env_value.strip()
-            else:
-                return value
-        elif isinstance(value, list):
-            return [Config._sanitize(item) for item in value]
-        elif isinstance(value, dict):
-            return {Config._sanitize(key): Config._sanitize(val) for key, val in value.items()}
-        else:
             return value
+        if isinstance(value, list):
+            return [Config._sanitize(item) for item in value]
+        if isinstance(value, dict):
+            return {Config._sanitize(key): Config._sanitize(val) for key, val in value.items()}
+        return value
 
     @staticmethod
     def redact(data: Any) -> dict:
@@ -126,21 +121,42 @@ class Config:
                 key: ("**REDACTED**" if key in sensitive_keys else Config.redact(value))
                 for key, value in data.items()
             }
-        elif isinstance(data, list):
+        if isinstance(data, list):
             return [Config.redact(item) for item in data]
-        else:
-            return data
+        return data
 
     def validate(self) -> None:
         """Validate the loaded configuration.
 
-        Ensure all required fields are present and correctly formatted.
-        """
-        for key, value in self._config.items():
-            if value is _MISSING:
-                raise ConfigError(f"Config item '{key}' is missing")
+        Ensure all required fields are present and correctly formatted."""
+        self._ensure_not_missing(self._config)
+        self._ensure_users(self.get("users"))
+        self._ensure_type(self.get("redact_sensitive_data"), bool, "redact_sensitive_data")
+        self._ensure_type(self.get("calibre_db_path"), str, "calibre_db_path")
+        self._ensure_path_exists(self.get("calibre_db_path"))
+        self._ensure_type(self.get("calibredb_executable"), str, "calibredb_executable")
+        self._ensure_type(self.get("matcher_threshold"), float, "matcher_threshold")
+        self._ensure_lang_codes(self.get("lang_codes"))
+        self._ensure_qbittorrent(self.get("qbittorrent"))
+        self._ensure_cron(self.get("schedule"))
 
-        users = self.get("users")
+        self._check_extra_keys(self._config)
+
+    @staticmethod
+    def _ensure_not_missing(data: Any) -> None:
+        """Recursively check for missing config values in the provided data structure."""
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if value is _MISSING:
+                    raise ConfigError(f"Config item '{key}' is missing")
+                Config._ensure_not_missing(value)
+        elif isinstance(data, list):
+            for item in data:
+                Config._ensure_not_missing(item)
+
+    @staticmethod
+    def _ensure_users(users: list) -> None:
+        """Ensure that the users config item is valid."""
         if not isinstance(users, list):
             raise ConfigError("Config item 'users' must be a list")
         for user in users:
@@ -153,38 +169,45 @@ class Config:
             if not isinstance(user["id"], int):
                 raise ConfigError("User 'id' must be an integer")
 
-        if not isinstance(self.get("redact_sensitive_data"), bool):
-            raise ConfigError("Config item 'redact_sensitive_data' must be a boolean")
+    @staticmethod
+    def _ensure_type(data: Any, expected_type: type, position: str) -> None:
+        """Ensure that the provided data is of the expected type."""
+        if not isinstance(data, expected_type):
+            raise ConfigError(f"Config item '{position}' must be a {expected_type.__name__}")
 
-        if not os.path.isfile(self.get("calibre_db_path")):
-            raise ConfigError("Calibre database file not found")
+    @staticmethod
+    def _ensure_path_exists(path: str) -> None:
+        if not os.path.exists(path):
+            raise ConfigError(f"Path '{path}' does not exist")
 
-        if not isinstance(self.get("matcher_threshold"), float):
-            raise ConfigError("Config item 'matcher_threshold' must be a float")
-
-        if not isinstance(self.get("lang_codes"), list):
-            raise ConfigError("Config item 'lang_codes' must be a list")
-
-        for lang in self.get("lang_codes"):
-            if not isinstance(lang, str):
-                raise ConfigError("Config item 'lang_codes' must be a list of strings")
-
-        if len(self.get("lang_codes")) == 0:
+    @staticmethod
+    def _ensure_lang_codes(lang_codes: list) -> None:
+        """Ensure that the lang_codes config item is valid."""
+        Config._ensure_type(lang_codes, list, "lang_codes")
+        for lang in lang_codes:
+            Config._ensure_type(lang, str, "lang_codes item")
+        if len(lang_codes) == 0:
             raise ConfigError("Config item 'lang_codes' must be a non-empty list")
 
-        if not isinstance(self.get("qbittorrent"), dict):
-            raise ConfigError("Config item 'qbittorrent' must be a dict")
-
-        if not valid_cron(self.get("schedule")):
-            raise ConfigError("Config item 'schedule' must be a valid cron expression")
-
-        mapping = self.get("qbittorrent").get("mapping", {})
-        if not isinstance(mapping, dict):
-            raise ConfigError("Config item 'qbittorrent.mapping' must be a dict")
-        if "qbit_path" not in mapping or "murid_path" not in mapping:
-            raise ConfigError(
-                "Config item 'qbittorrent.mapping' must have 'qbit_path' and 'murid_path' keys"
-            )
+    @staticmethod
+    def _ensure_qbittorrent(qbittorrent: dict) -> None:
+        """Ensure that the qbittorrent config item is valid."""
+        Config._ensure_type(qbittorrent, dict, "qbittorrent")
+        required_keys = ["host", "username", "password", "port"]
+        for key in required_keys:
+            if key == "port":
+                Config._ensure_type(qbittorrent[key], int, f"qbittorrent.{key}")
+            else:
+                Config._ensure_type(qbittorrent[key], str, f"qbittorrent.{key}")
+        Config._ensure_type(qbittorrent.get("verify_cert", True), bool, "qbittorrent.verify_cert")
+        Config._ensure_type(qbittorrent.get("category", "murid"), str, "qbittorrent.category")
+        Config._ensure_type(qbittorrent.get("mapping", {}), dict, "qbittorrent.mapping")
+        qbittorrent["host"] = qbittorrent["host"].rstrip("/")
+        mapping = qbittorrent.get("mapping", {})
+        if "qbit_path" not in mapping:
+            raise ConfigError("Config item 'qbittorrent.mapping' must have a 'qbit_path' key")
+        if "murid_path" not in mapping:
+            raise ConfigError("Config item 'qbittorrent.mapping' must have a 'murid_path' key")
         if mapping["murid_path"] and not os.path.exists(mapping["murid_path"]):
             raise ConfigError(f"murid path '{mapping['murid_path']}' does not exist")
         if mapping["murid_path"] and not mapping["qbit_path"]:
@@ -196,41 +219,50 @@ class Config:
                 "Config item 'qbittorrent.mapping.murid_path' must be set if 'qbit_path' is set"
             )
 
-        qbit = self.get("qbittorrent")
-        required_qbit_keys = ["host", "username", "password", "port"]
-
-        for key in required_qbit_keys:
-            if key not in qbit:
-                raise ConfigError(f"Config item 'qbittorrent' must have a '{key}' key")
-            if not isinstance(qbit[key], str) and key != "port":
-                raise ConfigError(f"Config item 'qbittorrent.{key}' must be a string")
-            if key == "port" and not isinstance(qbit[key], int):
-                raise ConfigError("Config item 'qbittorrent.port' must be an integer")
-
-        if qbit["host"].endswith("/"):
-            qbit["host"] = qbit["host"].rstrip("/")
-        if not qbit["host"].startswith("http://") and not qbit["host"].startswith("https://"):
-            raise ConfigError(
-                "Config item 'qbittorrent.host' must start with 'http://' or 'https://'"
-            )
-
-        if not isinstance(qbit["verify_cert"], bool):
-            raise ConfigError("Config item 'qbittorrent.verify_cert' must be a boolean")
-
-        if not isinstance(qbit["category"], str):
-            raise ConfigError("Config item 'qbittorrent.category' must be a string")
-
+    @staticmethod
+    def _check_extra_keys(config: dict) -> None:
+        """Check for unexpected config items in the provided config dictionary."""
         expected_keys = set(_defaults.keys())
-        for key in self._config.keys():
+        for key in config.keys():
             if key not in expected_keys:
-                logger.warning(f"Unexpected config item '{key}' found in config file")
+                logger.warning("Unexpected config item '%s' found in config file", key)
+
+    @staticmethod
+    def _ensure_cron(expr: str) -> None:
+        """Ensure that the provided string is a valid cron expression."""
+        try:
+            croniter(expr)
+        except (ValueError, KeyError):
+            raise ConfigError("Config item 'schedule' must be a valid cron expression") from None
+
+    def __getattr__(self, name: str) -> Any:
+        """Allow attribute-like access to config items."""
+        try:
+            return self._config[name]
+        except KeyError:
+            raise AttributeError(f"Config item '{name}' not found in config file") from None
+
+    def __len__(self) -> int:
+        """Allow dict-like access to get the number of config items."""
+        return len(self._config)
+
+    def __iter__(self):
+        """Allow dict-like access to iterate over config items."""
+        return iter(self._config)
+
+    def __contains__(self, key: str) -> bool:
+        """Allow dict-like access to check if a config item exists."""
+        return key in self._config
+
+    def __getitem__(self, key: str) -> Any:
+        """Allow dict-like access to config items."""
+        return self.get(key)
 
     def __str__(self) -> str:
         """Return a string representation of the configuration."""
         if self.get("redact_sensitive_data"):
             return yaml.dump(self.redact(self._config), default_flow_style=False)
-        else:
-            return yaml.dump(self._config, default_flow_style=False)
+        return yaml.dump(self._config, default_flow_style=False)
 
 
 def deep_merge(default, override):
@@ -244,12 +276,3 @@ def deep_merge(default, override):
             out[k] = deep_merge(default.get(k), v)
         return out
     return override if override is not None else default
-
-
-def valid_cron(expr: str) -> bool:
-    """Check if the provided string is a valid cron expression."""
-    try:
-        croniter(expr)
-        return True
-    except (ValueError, KeyError):
-        return False

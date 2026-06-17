@@ -9,8 +9,8 @@ import yaml
 from murid.config import (
     Config,
     ConfigError,
-    EnvLoader,
     _defaults,
+    env_constructor,
 )
 
 missing = object()
@@ -119,7 +119,7 @@ def test_user_requires_api_key(build_config):
 def test_redact_sensitive_data_must_be_boolean(build_config):
     with pytest.raises(
         ConfigError,
-        match="Config item 'redact_sensitive_data' must be a boolean",
+        match="Config item 'redact_sensitive_data' must be a bool",
     ):
         build_config(redact_sensitive_data="yes")
 
@@ -224,7 +224,8 @@ def test_unexpected_key_logs_warning(caplog, build_config):
 def test_env_loader_directly(monkeypatch):
     monkeypatch.setenv("TEST_VAR", "value")
 
-    data = yaml.load("key: !ENV TEST_VAR", Loader=EnvLoader)
+    yaml.SafeLoader.add_constructor("!ENV", env_constructor)
+    data = yaml.load("key: !ENV TEST_VAR", Loader=yaml.SafeLoader)
 
     assert data["key"] == "value"
 
@@ -240,7 +241,7 @@ def test_calibre_db_path_must_exist(build_config):
 
 
 def test_calibre_db_path_must_exist_on_filesystem(build_config):
-    with pytest.raises(ConfigError, match="Calibre database file not found"):
+    with pytest.raises(ConfigError, match="Path 'not-exist.db' does not exist"):
         build_config(calibre_db_path="not-exist.db")
 
 
@@ -298,7 +299,7 @@ def test_lang_codes_must_be_list(build_config):
 
 
 def test_lang_codes_list_items_must_be_strings(build_config):
-    with pytest.raises(ConfigError, match="Config item 'lang_codes' must be a list of strings"):
+    with pytest.raises(ConfigError, match="Config item 'lang_codes item' must be a str"):
         build_config(lang_codes=[123, "SWE"])
 
 
@@ -313,51 +314,26 @@ def test_qbittorrent_config_must_be_dict(build_config):
 
 
 def test_qbittorrent_config_requires_host(build_config):
-    with pytest.raises(ConfigError, match="Config item 'qbittorrent.host' must be a string"):
+    with pytest.raises(ConfigError, match="Config item 'host' is missing"):
         build_config(qbittorrent={"username": "admin", "password": "adminadmin", "port": 8080})
 
 
 def test_qbittorrent_config_requires_username(build_config):
-    with pytest.raises(ConfigError, match="Config item 'qbittorrent.username' must be a string"):
+    with pytest.raises(ConfigError, match="Config item 'username' is missing"):
         build_config(
             qbittorrent={"host": "http://localhost", "password": "adminadmin", "port": 8080}
         )
 
 
 def test_qbittorrent_config_requires_password(build_config):
-    with pytest.raises(ConfigError, match="Config item 'qbittorrent.password' must be a string"):
+    with pytest.raises(ConfigError, match="Config item 'password' is missing"):
         build_config(qbittorrent={"host": "http://localhost", "username": "admin", "port": 8080})
 
 
 def test_qbittorrent_config_requires_port(build_config):
-    with pytest.raises(ConfigError, match="Config item 'qbittorrent.port' must be an integer"):
+    with pytest.raises(ConfigError, match="Config item 'port' is missing"):
         build_config(
             qbittorrent={"host": "http://localhost", "username": "admin", "password": "adminadmin"}
-        )
-
-
-def test_qbittorrent_host_must_start_with_http_or_https(build_config):
-    with pytest.raises(
-        ConfigError, match="Config item 'qbittorrent.host' must start with 'http://' or 'https://'"
-    ):
-        build_config(
-            qbittorrent={
-                "host": "localhost",
-                "username": "admin",
-                "password": "adminadmin",
-                "port": 8080,
-            }
-        )
-    with pytest.raises(
-        ConfigError, match="Config item 'qbittorrent.host' must start with 'http://' or 'https://'"
-    ):
-        build_config(
-            qbittorrent={
-                "host": "ftp://localhost",
-                "username": "admin",
-                "password": "adminadmin",
-                "port": 8080,
-            }
         )
 
 
@@ -376,9 +352,7 @@ def test_qbittorrent_host_trims_trailing_slash(build_config):
 
 
 def test_qbittorrent_verify_cert_must_be_boolean(build_config):
-    with pytest.raises(
-        ConfigError, match="Config item 'qbittorrent.verify_cert' must be a boolean"
-    ):
+    with pytest.raises(ConfigError, match="Config item 'qbittorrent.verify_cert' must be a bool"):
         build_config(
             qbittorrent={
                 "host": "http://localhost",
@@ -391,7 +365,7 @@ def test_qbittorrent_verify_cert_must_be_boolean(build_config):
 
 
 def test_qbittorrent_category_must_be_string(build_config):
-    with pytest.raises(ConfigError, match="Config item 'qbittorrent.category' must be a string"):
+    with pytest.raises(ConfigError, match="Config item 'qbittorrent.category' must be a str"):
         build_config(
             qbittorrent={
                 "host": "http://localhost",

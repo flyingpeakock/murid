@@ -1,3 +1,5 @@
+"""Module for interacting with a Calibre library database."""
+
 import logging
 import os
 import sqlite3
@@ -9,7 +11,7 @@ logger = logging.getLogger("murid")
 
 
 class CalibreError(Exception):
-    pass
+    """Custom exception for Calibre-related errors."""
 
 
 class Calibre:
@@ -38,16 +40,20 @@ class Calibre:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                check=True,
             )
         except FileNotFoundError as e:
-            logger.error(f"Calibre executable not found: {self.db_executable}")
+            logger.error("Calibre executable not found: %s", self.db_executable)
             raise CalibreError(f"Calibre executable not found: {self.db_executable}") from e
+        except subprocess.CalledProcessError as e:
+            logger.error("Error running Calibre executable: %s", e)
+            raise CalibreError(f"Error running Calibre executable: {e}") from e
 
         try:
             conn = self.connect(f"file:{self.db_path}?mode=ro", uri=True)
             conn.close()
         except Exception as e:
-            logger.error(f"Error connecting to Calibre database: {e}")
+            logger.error("Error connecting to Calibre database: %s", e)
             raise CalibreError(f"Error connecting to Calibre database: {e}") from e
 
     def get_books(self) -> list[Book]:
@@ -56,7 +62,7 @@ class Calibre:
             conn = self.connect(f"file:{self.db_path}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
         except Exception as e:
-            logger.error(f"Error connecting to Calibre database: {e}")
+            logger.error("Error connecting to Calibre database: %s", e)
             raise CalibreError(f"Error connecting to Calibre database: {e}") from e
         cursor = conn.cursor()
         query = """
@@ -79,7 +85,7 @@ class Calibre:
         try:
             cursor.execute(query)
         except Exception as e:
-            logger.error(f"Error executing query on Calibre database: {e}")
+            logger.error("Error executing query on Calibre database: %s", e)
             raise
 
         rows = cursor.fetchall()
@@ -125,16 +131,20 @@ class Calibre:
 
         args.append(path)
         try:
-            logger.debug(f"Running command: {' '.join(args)}")
+            logger.debug("Running command: %s", " ".join(args))
             stdout = self.run(
                 args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                check=True,
             ).stdout
-            logger.debug(f"Calibre output: {stdout}")
+            logger.debug("Calibre output: %s", stdout)
+        except subprocess.CalledProcessError as e:
+            logger.error("Error adding book to Calibre: %s", e.stderr)
+            raise CalibreError(f"Error adding book to Calibre: {e.stderr}") from e
         except Exception as e:
-            logger.error(f"Error adding book to Calibre: {e}")
+            logger.error("Error adding book to Calibre: %s", e)
             raise CalibreError(f"Error adding book to Calibre: {e}") from e
 
     def contains_book(self, book: Book, matcher) -> bool:
@@ -143,6 +153,5 @@ class Calibre:
         best_match, score = matcher.best_match(book, existing_books)
         if best_match and score >= matcher.threshold:
             return True
-        else:
-            logger.debug(f"Book {book} does not exist in Calibre. Best similarity: {score:.2f}")
-            return False
+        logger.debug("Book %s does not exist in Calibre. Best similarity: %.2f", book, score)
+        return False

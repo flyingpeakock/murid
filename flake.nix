@@ -89,6 +89,7 @@
             pkgs.hatch
             pkgs.pyenv
             pkgs.ruff
+            pkgs.pylint
             pkgs.python3Packages.pytest
             pkgs.python3Packages.pytest-cov
             pkgs.python3Packages.virtualenv

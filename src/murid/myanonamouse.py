@@ -1,7 +1,10 @@
+"""Module for interacting with the MyAnonamouse website."""
+
 import json
 import logging
 import threading
 import time
+from dataclasses import dataclass
 from typing import Any
 
 import requests
@@ -11,10 +14,18 @@ from . import Book, Torrent
 logger = logging.getLogger("murid")
 
 
+@dataclass
+class MyAnonamouseQuery:
+    """Data class representing a search query for MyAnonamouse."""
+
+    text: str
+    categories: list[int] | None = None
+    search_fields: list[str] | None = None
+    main_categories: list[int] | None = None
+
+
 class MAMError(Exception):
     """Custom exception for errors related to MyAnonamouse interactions."""
-
-    pass
 
 
 class MyAnonamouse:
@@ -43,46 +54,30 @@ class MyAnonamouse:
             self._last_request_time = time.monotonic()
             return self.session.request(method, url, **kwargs)
 
-    def search(
-        self,
-        text: str,
-        *,
-        categories: list[int] | None = None,
-        search_fields: list[str] | None = None,
-        main_categories: list[int] | None = None,
-        search_type: str = "all",
-        per_page: int = 100,
-        start: int = 0,
-        include_description: bool = False,
-        include_download_link: bool = True,
-        include_isbn: bool = True,
-    ) -> list[Torrent]:
+    def search(self, query: MyAnonamouseQuery) -> list[Torrent]:
         """Search for torrents on MyAnonamouse matching the specified criteria."""
 
         payload = {
             "tor": {
-                "text": text,
-                "cat": categories or [0],
-                "main_cat": main_categories or [],
-                "srchIn": search_fields
+                "text": query.text,
+                "cat": query.categories or [0],
+                "main_cat": query.main_categories or [],
+                "srchIn": query.search_fields
                 or [
                     "title",
                     "author",
                     "narrator",
                 ],
-                "searchType": search_type,
+                "searchType": "all",
                 "searchIn": "torrents",
                 "sortType": "default",
-                "startNumber": str(start),
+                "startNumber": str(0),
             },
-            "dlLink": "true" if include_download_link else "",
-            "isbn": "true" if include_isbn else "",
+            "dlLink": "true",
+            "isbn": "true",
         }
 
-        if include_description:
-            payload["description"] = "true"
-
-        logger.debug(f"Searching MyAnonamouse for {text}")
+        logger.debug("Searching MyAnonamouse for %s", query.text)
         try:
             response = self._request(
                 "POST",
@@ -93,7 +88,7 @@ class MyAnonamouse:
 
             response.raise_for_status()
         except requests.RequestException as e:
-            logger.error(f"Error searching MyAnonamouse: {e}")
+            logger.error("Error searching MyAnonamouse: %s", e)
             return []
 
         data = response.json()
@@ -104,19 +99,7 @@ class MyAnonamouse:
         if "data" not in data:
             raise MAMError(f"Unexpected response: {data}")
 
-        return [self._parse_torrent(row) for row in data["data"][:per_page]]
-
-    def get_torrent(self, torrent_id: int) -> Torrent | None:
-        """Get a torrent by its ID by searching for it and filtering the results."""
-        results = self.search(
-            "",
-            include_description=True,
-        )
-
-        return next(
-            (t for t in results if t.book.id == torrent_id),
-            None,
-        )
+        return [self._parse_torrent(row) for row in data["data"][:100]]
 
     @staticmethod
     def _parse_torrent(data: dict[str, Any]) -> Torrent:
@@ -160,13 +143,17 @@ class MyAnonamouse:
             query += f" {author}"
 
         result = self.search(
-            query, main_categories=[14], search_fields=["title", "author", "series"]
+            MyAnonamouseQuery(
+                text=query, main_categories=[14], search_fields=["title", "author", "series"]
+            )
         )
         if not result:
-            logger.info(f"No potential torrents found for {query}")
+            logger.info("No potential torrents found for %s", query)
         else:
             count = len(result)
-            logger.info(f"Found {count} potential torrent{'s' if count != 1 else ''} for {query}")
+            logger.info(
+                "Found %d potential torrent%s for %s", count, "" if count == 1 else "s", query
+            )
         return result
 
     def download_torrent(self, torrent: Torrent) -> bytes | None:
@@ -176,10 +163,10 @@ class MyAnonamouse:
                 "GET", f"{self.DOWNLOAD_URL}/?tid={torrent.book.id}", timeout=30
             )
             response.raise_for_status()
-            logger.debug(f"Torrent for {torrent.book} downloaded successfully")
+            logger.debug("Torrent for %s downloaded successfully", torrent.book)
             return response.content
         except requests.RequestException as e:
-            logger.error(f"Error downloading torrent for {torrent.book}: {e}")
+            logger.error("Error downloading torrent for %s: %s", torrent.book, e)
             return None
 
 
