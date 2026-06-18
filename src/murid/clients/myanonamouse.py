@@ -9,8 +9,8 @@ from typing import Any
 
 import requests
 
-from .book import Book
-from .torrent import Torrent, TorrentMetadata
+from ..domain.book import Book
+from ..domain.torrent import Torrent, TorrentMetadata
 
 logger = logging.getLogger("murid")
 

@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from ..book import Book
+from ...domain.book import Book
 
 
 class TorrentClient(ABC):

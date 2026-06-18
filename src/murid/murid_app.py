@@ -9,15 +9,15 @@ from datetime import datetime
 import qbittorrentapi
 from croniter import croniter
 
-from .apprise import init_apprise as apprise
-from .book import Book
-from .book_matcher import BookMatcher
-from .calibre import Calibre, CalibreError
-from .config import Config, ConfigError
-from .hardcover import Hardcover
-from .myanonamouse import MyAnonamouse
-from .torrent import Torrent
-from .torrent_clients import Qbittorrent, QbittorrentConfig, TorrentClient
+from .clients.calibre import Calibre, CalibreError
+from .clients.hardcover import Hardcover
+from .clients.myanonamouse import MyAnonamouse
+from .clients.torrent_clients import Qbittorrent, QbittorrentConfig, TorrentClient
+from .config.config import Config, ConfigError
+from .domain.book import Book
+from .domain.book_matcher import BookMatcher
+from .domain.torrent import Torrent
+from .notifications.apprise import init_apprise as apprise
 
 logger = logging.getLogger("murid")
 

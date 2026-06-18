@@ -4,7 +4,7 @@ import logging
 
 import requests
 
-from .book import Book
+from ..domain.book import Book
 
 logger = logging.getLogger("murid")
 

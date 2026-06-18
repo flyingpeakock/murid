@@ -5,7 +5,7 @@ import os
 import sqlite3
 import subprocess
 
-from .book import Book
+from ..domain.book import Book
 
 logger = logging.getLogger("murid")
 
