@@ -8,6 +8,7 @@ from .config.config import Config, ConfigError
 from .domain.book import Book
 from .domain.book_matcher import BookMatcher
 from .domain.torrent import Torrent, TorrentMetadata
+from .domain.torrent_selector import TorrentSelector
 
 try:
     from ._version import __version__
@@ -29,6 +30,7 @@ __all__ = [
     "Torrent",
     "TorrentMetadata",
     "TorrentClient",
+    "TorrentSelector",
     "Qbittorrent",
     "QbittorrentConfig",
     "__version__",
