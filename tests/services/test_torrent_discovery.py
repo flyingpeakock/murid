@@ -64,6 +64,7 @@ def test_collect_downloads_filters_none():
 
     assert result == [(b"file1", book1)]
 
+
 def test_submit_downloads_happy_path(monkeypatch, mam, matcher):
     service = TorrentDiscoveryService(mam, ["eng"])
 
@@ -93,6 +94,7 @@ def test_submit_downloads_happy_path(monkeypatch, mam, matcher):
     future = list(result.keys())[0]
     assert result[future] == torrent_book
 
+
 def test_submit_downloads_skips_empty():
     service = TorrentDiscoveryService(Mock(), [])
 
@@ -106,6 +108,7 @@ def test_submit_downloads_skips_empty():
     result = service.submit_downloads(executor, {search_future: book}, Mock())
 
     assert result == {}
+
 
 def test_submit_downloads_rejected_by_selector(monkeypatch, mam):
     service = TorrentDiscoveryService(mam, ["eng"])
