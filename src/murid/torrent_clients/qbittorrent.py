@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import qbittorrentapi
 
-from .. import Book
+from ..book import Book
 from .torrent_client import TorrentClient
 
 logger = logging.getLogger("murid")

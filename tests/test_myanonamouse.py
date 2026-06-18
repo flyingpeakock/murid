@@ -4,12 +4,12 @@ from unittest.mock import patch
 import pytest
 import requests
 
-from murid.myanonamouse import (
+from murid import (
     MAMError,
     MyAnonamouse,
     MyAnonamouseQuery,
-    parse_size,
 )
+from murid.myanonamouse import parse_size
 
 
 @pytest.fixture
@@ -68,17 +68,13 @@ def test_parse_torrent():
     assert torrent.book.title == "Dune"
     assert torrent.book.authors == ["Frank Herbert"]
     assert torrent.book.id == 123
-
-    assert torrent.category == 60
-    assert torrent.main_category == 14
-
-    assert torrent.seeders == 5
-    assert torrent.leechers == 2
-
-    assert torrent.freeleech is True
-    assert torrent.vip is False
-
     assert torrent.language == "en"
+
+    assert torrent.metadata.category == 60
+    assert torrent.metadata.seeders == 5
+    assert torrent.metadata.leechers == 2
+    assert torrent.metadata.freeleech is True
+    assert torrent.metadata.vip is False
 
 
 def test_search_success(mam):

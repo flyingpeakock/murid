@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from murid.calibre import Book, Calibre, CalibreError
+from murid import Book, Calibre, CalibreError
 
 
 class Result:

@@ -9,7 +9,8 @@ from typing import Any
 
 import requests
 
-from . import Book, Torrent
+from .book import Book
+from .torrent import Torrent, TorrentMetadata
 
 logger = logging.getLogger("murid")
 
@@ -120,16 +121,15 @@ class MyAnonamouse:
                 series=series_name,
                 series_number=series_number,
             ),
-            category=int(data.get("category", 0)),
-            category_name=data.get("catname", ""),
-            main_category=int(data.get("main_cat", 0)),
-            size=parse_size(data.get("size", "")),
-            seeders=int(data.get("seeders", 0)),
-            leechers=int(data.get("leechers", 0)),
-            freeleech=bool(int(data.get("free", 0))),
-            vip=bool(int(data.get("vip", 0))),
+            metadata=TorrentMetadata(
+                category=int(data.get("category", 0)),
+                size=parse_size(data.get("size", "")),
+                seeders=int(data.get("seeders", 0)),
+                leechers=int(data.get("leechers", 0)),
+                freeleech=bool(int(data.get("free", 0))),
+                vip=bool(int(data.get("vip", 0))),
+            ),
             download_hash=data.get("dl"),
-            narrator_info=json.loads(data.get("narrator_info", "{}")),
             series_info=json.loads(data.get("series_info", "{}")),
             language=data.get("lang_code", None),
             file_types=data.get("filetype", "").split() if data.get("filetype") else [],

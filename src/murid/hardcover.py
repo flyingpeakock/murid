@@ -1,16 +1,16 @@
+"""Module for interacting with the Hardcover API to fetch user book data."""
+
 import logging
 
 import requests
 
-from . import Book
+from .book import Book
 
 logger = logging.getLogger("murid")
 
 
 class HardcoverError(Exception):
     """Custom exception for errors related to the Hardcover API."""
-
-    pass
 
 
 class Hardcover:
@@ -26,7 +26,7 @@ class Hardcover:
         }
         self._session = requests.Session()
 
-        logger.debug(f"Initialized Hardcover for user_id: {self._user_id}")
+        logger.debug("Initialized Hardcover for user_id: %s", self._user_id)
 
     def fetch_data(self) -> dict:
         """Fetch book data from the Hardcover API for the specified user."""
@@ -75,13 +75,13 @@ class Hardcover:
             )
             response.raise_for_status()
         except requests.RequestException as e:
-            logger.error(f"Error fetching data from Hardcover API: {e}")
+            logger.error("Error fetching data from Hardcover API: %s", e)
             raise HardcoverError(f"Error fetching data from Hardcover API: {e}") from e
 
         data = response.json()
 
         if "errors" in data:
-            logger.error(f"GraphQL errors: {data['errors']}")
+            logger.error("GraphQL errors: %s", data["errors"])
             raise HardcoverError(f"GraphQL errors: {data['errors']}")
 
         logger.debug("Hardcover data fetched successfully")
@@ -149,6 +149,6 @@ class Hardcover:
             )
 
         if not books:
-            logger.warning(f"No books found for user {self._user_id}.")
+            logger.warning("No books found for user %s", self._user_id)
 
         return books

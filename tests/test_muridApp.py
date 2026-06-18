@@ -2,8 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from murid import Book, Torrent
-from murid.murid_app import MuridApp
+from murid import Book, MuridApp, Torrent, TorrentMetadata
 
 
 def make_book(id=1, title="Dune"):
@@ -13,16 +12,15 @@ def make_book(id=1, title="Dune"):
 def make_torrent(book):
     return Torrent(
         book=book,
-        category=1,
-        category_name="cat",
-        main_category=1,
-        size=100,
-        seeders=1,
-        leechers=1,
-        freeleech=False,
-        vip=False,
+        metadata=TorrentMetadata(
+            category=1,
+            size=100,
+            seeders=1,
+            leechers=1,
+            freeleech=False,
+            vip=False,
+        ),
         download_hash="abc",
-        narrator_info={},
         series_info={},
         language="ENG",
         file_types=["epub"],

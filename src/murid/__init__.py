@@ -1,50 +1,37 @@
-from dataclasses import dataclass
-from typing import Any
+"""Initialization file for the murid package."""
+
+from .book import Book
+from .book_matcher import BookMatcher
+from .calibre import Calibre, CalibreError
+from .config import Config, ConfigError
+from .hardcover import Hardcover, HardcoverError
+from .murid_app import MuridApp
+from .myanonamouse import MAMError, MyAnonamouse, MyAnonamouseQuery
+from .torrent import Torrent, TorrentMetadata
+from .torrent_clients import Qbittorrent, QbittorrentConfig, TorrentClient
 
 try:
-    from ._version import __version__ as __version__
+    from ._version import __version__
 except ImportError:
     __version__ = "unknown"
 
-
-@dataclass
-class Book:
-    title: str
-    authors: list[str]
-    id: int
-    isbn: list[str | None]
-    source: str
-    series: str | None = None
-    series_number: float | None = None
-
-    def __str__(self):
-        return f"{self.title} by {', '.join(self.authors)}"
-
-
-@dataclass(slots=True)
-class Torrent:
-    book: Book
-    category: int
-    category_name: str
-    main_category: int
-    size: int
-    seeders: int
-    leechers: int
-    freeleech: bool
-    vip: bool
-    download_hash: str | None = None
-    narrator_info: dict[str, str] | None = None
-    series_info: dict[str, Any] | None = None
-    language: str | None = None
-    file_types: list[str] | None = None
-    raw: dict[str, Any] | None = None
-
-    @property
-    def download_url(self) -> str | None:
-        if not self.download_hash:
-            return None
-
-        return f"https://www.myanonamouse.net/tor/download.php/{self.download_hash}"
-
-    def __str__(self) -> str:
-        return f"https://www.myanonamouse.net/t/{self.book.id}"
+__all__ = [
+    "Book",
+    "BookMatcher",
+    "Calibre",
+    "CalibreError",
+    "Config",
+    "ConfigError",
+    "Hardcover",
+    "HardcoverError",
+    "MAMError",
+    "MuridApp",
+    "MyAnonamouse",
+    "MyAnonamouseQuery",
+    "Torrent",
+    "TorrentMetadata",
+    "TorrentClient",
+    "Qbittorrent",
+    "QbittorrentConfig",
+    "__version__",
+]

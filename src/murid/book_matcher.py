@@ -5,7 +5,7 @@ import re
 
 from rapidfuzz import fuzz
 
-from . import Book
+from .book import Book
 
 logger = logging.getLogger("murid")
 

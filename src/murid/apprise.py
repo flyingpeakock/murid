@@ -1,3 +1,5 @@
+"""Module for integrating Apprise notifications into the Murid application."""
+
 import logging
 from typing import Callable
 

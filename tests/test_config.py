@@ -6,12 +6,8 @@ from io import StringIO
 import pytest
 import yaml
 
-from murid.config import (
-    Config,
-    ConfigError,
-    _defaults,
-    env_constructor,
-)
+from murid import Config, ConfigError
+from murid.config import _defaults, env_constructor
 
 missing = object()
 base = _defaults.copy() | {

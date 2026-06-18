@@ -9,15 +9,15 @@ from datetime import datetime
 import qbittorrentapi
 from croniter import croniter
 
-from . import Book, Torrent
 from .apprise import init_apprise as apprise
+from .book import Book
 from .book_matcher import BookMatcher
 from .calibre import Calibre, CalibreError
 from .config import Config, ConfigError
 from .hardcover import Hardcover
 from .myanonamouse import MyAnonamouse
-from .torrent_clients.qbittorrent import Qbittorrent, QbittorrentConfig
-from .torrent_clients.torrent_client import TorrentClient
+from .torrent import Torrent
+from .torrent_clients import Qbittorrent, QbittorrentConfig, TorrentClient
 
 logger = logging.getLogger("murid")
 
@@ -40,7 +40,7 @@ class MuridApp:
         self.args = args
         self.config = load_config(self.args.config_file)
         self.notify = init_apprise(self.config)
-        self.matcher = None,
+        self.matcher = None
         self.services = Services(
             calibre=None,
             hardcover_clients=[],
