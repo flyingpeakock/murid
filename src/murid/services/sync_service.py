@@ -24,18 +24,18 @@ class SyncService:
         base_time = datetime.now()
         cron_iter = self.factory.cron_iter(base_time)
 
-        executor = ThreadPoolExecutor(max_workers=5)
-
         next_run = cron_iter.get_next(datetime)
-        logger.info("Next murid cycle scheduled for %s", next_run)
 
         while True:
-            next_run = cron_iter.get_next(datetime)
-            while datetime.now() < next_run:
-                sleep_time = ((next_run - datetime.now()).total_seconds()) / 2 or 1
-                time.sleep(sleep_time)
-            executor.submit(self.run)
             logger.info("Next murid cycle scheduled for %s", next_run)
+            while True:
+                now = datetime.now()
+                if now >= next_run:
+                    break
+                time.sleep(max(1, (next_run - now).total_seconds() / 2))
+
+            self.run()
+            next_run = cron_iter.get_next(datetime)
 
     def run(self) -> None:
         """Run the synchronization process."""
