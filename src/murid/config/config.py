@@ -74,7 +74,7 @@ class Config:
 
         for key in _defaults:
             if config is None or key not in config:
-                logger.info(
+                logger.debug(
                     "Using default value for config item '%s. Value: %s'",
                     key,
                     self._config[key],
