@@ -10,6 +10,7 @@ from .domain.book_matcher import BookMatcher
 from .domain.torrent import Torrent, TorrentMetadata
 from .domain.torrent_selector import TorrentSelector
 from .notifications.apprise import AppriseHandler, init_apprise, send_test_notification
+from .services.service_factory import ServiceFactory
 
 try:
     from ._version import __version__
@@ -31,6 +32,7 @@ __all__ = [
     "MyAnonamouse",
     "MyAnonamouseQuery",
     "send_test_notification",
+    "ServiceFactory",
     "Torrent",
     "TorrentMetadata",
     "TorrentClient",
