@@ -12,6 +12,7 @@ def test_book_str():
 
     assert str(book) == "Dune by Frank Herbert"
 
+
 def test_book_str_multiple_authors():
     book = Book(
         title="Good Omens",

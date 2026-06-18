@@ -29,10 +29,7 @@ def test_download_url():
         download_hash="abcdef",
     )
 
-    assert (
-        torrent.download_url
-        == "https://www.myanonamouse.net/tor/download.php/abcdef"
-    )
+    assert torrent.download_url == "https://www.myanonamouse.net/tor/download.php/abcdef"
 
 
 def test_download_url_none():

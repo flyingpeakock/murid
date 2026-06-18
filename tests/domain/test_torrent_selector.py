@@ -43,6 +43,7 @@ def make_torrent(
         file_types=file_types or ["epub"],
     )
 
+
 def test_select_returns_best_match():
     torrent = make_torrent()
 
@@ -61,6 +62,7 @@ def test_select_returns_best_match():
 
     assert result is torrent
 
+
 def test_select_returns_none_when_score_too_low():
     torrent = make_torrent()
 
@@ -71,11 +73,15 @@ def test_select_returns_none_when_score_too_low():
 
     selector = TorrentSelector({"en"})
 
-    assert selector.select(
-        make_book(),
-        [torrent],
-        matcher,
-    ) is None
+    assert (
+        selector.select(
+            make_book(),
+            [torrent],
+            matcher,
+        )
+        is None
+    )
+
 
 def test_language_filtering():
     torrent = make_torrent(language="sv")
@@ -86,11 +92,15 @@ def test_language_filtering():
 
     selector = TorrentSelector({"en"})
 
-    assert selector.select(
-        make_book(),
-        [torrent],
-        matcher,
-    ) is None
+    assert (
+        selector.select(
+            make_book(),
+            [torrent],
+            matcher,
+        )
+        is None
+    )
+
 
 def test_none_language_is_allowed():
     torrent = make_torrent(language=None)
@@ -101,11 +111,15 @@ def test_none_language_is_allowed():
 
     selector = TorrentSelector({"en"})
 
-    assert selector.select(
-        make_book(),
-        [torrent],
-        matcher,
-    ) is torrent
+    assert (
+        selector.select(
+            make_book(),
+            [torrent],
+            matcher,
+        )
+        is torrent
+    )
+
 
 def test_filetype_filtering():
     torrent = make_torrent(file_types=["cbz"])
@@ -116,11 +130,15 @@ def test_filetype_filtering():
 
     selector = TorrentSelector({"en"})
 
-    assert selector.select(
-        make_book(),
-        [torrent],
-        matcher,
-    ) is None
+    assert (
+        selector.select(
+            make_book(),
+            [torrent],
+            matcher,
+        )
+        is None
+    )
+
 
 def test_custom_filetypes():
     torrent = make_torrent(file_types=["cbz"])
@@ -134,11 +152,15 @@ def test_custom_filetypes():
         wanted_filetypes={"cbz"},
     )
 
-    assert selector.select(
-        make_book(),
-        [torrent],
-        matcher,
-    ) is torrent
+    assert (
+        selector.select(
+            make_book(),
+            [torrent],
+            matcher,
+        )
+        is torrent
+    )
+
 
 def test_no_torrents_pass_filters():
     torrent = make_torrent(
@@ -150,11 +172,15 @@ def test_no_torrents_pass_filters():
 
     selector = TorrentSelector({"en"})
 
-    assert selector.select(
-        make_book(),
-        [torrent],
-        matcher,
-    ) is None
+    assert (
+        selector.select(
+            make_book(),
+            [torrent],
+            matcher,
+        )
+        is None
+    )
+
 
 def test_returns_matching_torrent():
     torrent1 = make_torrent(title="Dune")
