@@ -80,8 +80,7 @@ class MyAnonamouse:
 
         logger.debug("Searching MyAnonamouse for %s", query.text)
         try:
-            response = self._request(
-                "POST",
+            response = self.session.post(
                 self.SEARCH_URL,
                 json=payload,
                 timeout=30,

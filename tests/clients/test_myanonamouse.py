@@ -1,5 +1,5 @@
 import time
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 import requests
@@ -182,8 +182,10 @@ def test_parse_torrent_multiple_authors():
     ]
 
 
-def test_search_uses_request_wrapper(mam):
+def test_download_torrent_uses_request_wrapper(mam):
     class Response:
+        content = b"torrent data"
+
         def raise_for_status(self):
             pass
 
@@ -198,8 +200,9 @@ def test_search_uses_request_wrapper(mam):
         return Response()
 
     mam._request = fake_request
+    torrent = Mock()
 
-    mam.search(MyAnonamouseQuery(text="Dune"))
+    mam.download_torrent(torrent)
 
     assert called
 
