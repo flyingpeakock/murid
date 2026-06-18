@@ -1,5 +1,10 @@
 # murid
 
+**Definition (Webstes's Dictionary)**  
+*Murid* (noun): of or relating to a family (Muridae) comprising the typical mice and rats and often those rodents classified as cricetids
+
+---
+
 Murid automatically syncs your reading list from Hardcover with your Calibre library and fetches missing ebooks using MyAnonamouse.
 
 It is designed to automate the full pipeline from “want to read” → “available in Calibre”.
