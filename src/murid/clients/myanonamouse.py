@@ -132,7 +132,7 @@ class MyAnonamouse:
             download_hash=data.get("dl"),
             series_info=json.loads(data.get("series_info", "{}")),
             language=data.get("lang_code", None),
-            file_types=data.get("filetype", "").split() if data.get("filetype") else [],
+            file_types=data.get("filetypes", "").split() if data.get("filetypes") else [],
             raw=data,
         )
 
