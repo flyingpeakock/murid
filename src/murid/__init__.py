@@ -12,6 +12,7 @@ from .domain.torrent_selector import TorrentSelector
 from .notifications.apprise import AppriseHandler, init_apprise, send_test_notification
 from .services.service_factory import ServiceFactory
 from .services.sync_service import SyncService
+from .services.torrent_discovery import TorrentDiscoveryService
 
 try:
     from ._version import __version__
@@ -36,6 +37,7 @@ __all__ = [
     "ServiceFactory",
     "SyncService",
     "Torrent",
+    "TorrentDiscoveryService",
     "TorrentMetadata",
     "TorrentClient",
     "TorrentSelector",

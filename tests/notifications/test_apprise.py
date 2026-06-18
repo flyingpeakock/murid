@@ -30,6 +30,7 @@ def test_emit_sends_error_notification():
     assert apprise_obj.calls[0]["body"] == "something broke"
     assert apprise_obj.calls[0]["title"] == "murid - ERROR"
 
+
 def test_emit_ignores_non_error_messages():
     class DummyApprise:
         def __init__(self):
@@ -55,6 +56,7 @@ def test_emit_ignores_non_error_messages():
 
     assert apprise_obj.calls == []
 
+
 def test_send_test_notification():
     calls = []
 
@@ -69,6 +71,7 @@ def test_send_test_notification():
     assert call["title"] == "Murid - Test Notification"
     assert call["body"] == "Hello from Murid!"
 
+
 def test_init_apprise_adds_handler():
     logger = logging.getLogger("test_apprise")
     logger.handlers.clear()
@@ -79,7 +82,4 @@ def test_init_apprise_adds_handler():
     )
 
     assert callable(notify)
-    assert any(
-        isinstance(h, AppriseHandler)
-        for h in logger.handlers
-    )
+    assert any(isinstance(h, AppriseHandler) for h in logger.handlers)

@@ -17,6 +17,7 @@ def factory():
         torrent_import=Mock(),
     )
 
+
 def test_fetch_calibre_books_logs_and_returns():
     calibre = Mock()
     calibre.get_books.return_value = ["book1", "book2"]
@@ -25,6 +26,7 @@ def test_fetch_calibre_books_logs_and_returns():
 
     assert result == ["book1", "book2"]
     calibre.get_books.assert_called_once()
+
 
 def test_fetch_hardcover_books_flattens_results():
     client1 = Mock()
@@ -37,6 +39,7 @@ def test_fetch_hardcover_books_flattens_results():
 
     assert sorted(result) == ["a", "b", "c"]
 
+
 def test_match_books_calls_matcher():
     matcher = Mock()
     matcher.match_books.return_value = [("match")]
@@ -48,6 +51,7 @@ def test_match_books_calls_matcher():
 
     assert result == ["match"]
     matcher.match_books.assert_called_once_with(calibre, hardcover)
+
 
 def test_process_books_returns_empty_when_all_matched():
     torrent_discovery = Mock()
@@ -64,6 +68,7 @@ def test_process_books_returns_empty_when_all_matched():
     )
 
     assert result == []
+
 
 def test_process_books_happy_path():
     torrent_discovery = Mock()
@@ -88,6 +93,7 @@ def test_process_books_happy_path():
 
     assert result == [("file", book)]
 
+
 def test_run_orchestrates_pipeline(factory):
     service = SyncService(factory)
 
@@ -95,9 +101,7 @@ def test_run_orchestrates_pipeline(factory):
     calibre.get_books.return_value = []
 
     hardcover_client = Mock()
-    hardcover_client.get_books.return_value = [
-        SimpleNamespace(id=1, title="Book")
-    ]
+    hardcover_client.get_books.return_value = [SimpleNamespace(id=1, title="Book")]
 
     matcher = Mock()
     matcher.match_books.return_value = []
@@ -124,6 +128,7 @@ def test_run_orchestrates_pipeline(factory):
     factory.torrent_import.assert_called_once()
 
     torrent_import.import_torrents.assert_called_once()
+
 
 def test_start_scheduler_runs_once(monkeypatch, factory):
     service = SyncService(factory)

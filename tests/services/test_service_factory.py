@@ -14,6 +14,7 @@ def args(tmp_path):
         dry_run=False,
     )
 
+
 @pytest.fixture
 def config():
     return {
@@ -35,10 +36,9 @@ def config():
             "verify_cert": False,
             "category": "books",
         },
-        "apprise": {
-            "urls": ["discord://foo"]
-        },
+        "apprise": {"urls": ["discord://foo"]},
     }
+
 
 def test_matcher(args, config, monkeypatch):
     factory = ServiceFactory(args)
@@ -48,6 +48,7 @@ def test_matcher(args, config, monkeypatch):
     matcher = factory.matcher()
 
     assert matcher.threshold == 0.9
+
 
 def test_calibre(args, config, monkeypatch):
     factory = ServiceFactory(args)
@@ -89,6 +90,7 @@ def test_calibre_error_exits(args, config, monkeypatch):
     with pytest.raises(SystemExit):
         factory.calibre()
 
+
 def test_hardcover(args, config, monkeypatch):
     factory = ServiceFactory(args)
 
@@ -110,6 +112,7 @@ def test_hardcover(args, config, monkeypatch):
     assert result == ["user-123"]
     assert created == [("secret", 123)]
 
+
 def test_myanonamouse(args, config, monkeypatch):
     factory = ServiceFactory(args)
 
@@ -122,6 +125,7 @@ def test_myanonamouse(args, config, monkeypatch):
 
     assert factory.myanonamouse() == ("mam", "mam-cookie")
 
+
 def test_notifier_disabled(args, config, monkeypatch):
     config.pop("apprise")
 
@@ -133,6 +137,7 @@ def test_notifier_disabled(args, config, monkeypatch):
 
     assert callable(notify)
     assert notify("a", "b") is None
+
 
 def test_notifier_enabled(args, config, monkeypatch):
     factory = ServiceFactory(args)
@@ -147,6 +152,7 @@ def test_notifier_enabled(args, config, monkeypatch):
     )
 
     assert factory.notifier() is notify_mock
+
 
 def test_cron_iter(args, config, monkeypatch):
     factory = ServiceFactory(args)
@@ -167,6 +173,7 @@ def test_cron_iter(args, config, monkeypatch):
         "base-time",
         marker,
     )
+
 
 def test_sync_service(args, monkeypatch):
     factory = ServiceFactory(args)
