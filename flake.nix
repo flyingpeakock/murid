@@ -72,6 +72,10 @@
           flake-checker.enable = true;
           statix.enable = true;
           ruff.enable = true;
+          pylint = {
+            enable = true;
+            files = "src";
+          };
         };
 
         devShells.default = pkgs.mkShell {
