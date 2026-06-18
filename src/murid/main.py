@@ -109,7 +109,21 @@ reading list on Hardcover, with help from myAnonamouse.
     args = get_arg_parser(description).parse_args()
     setup_logger(args.log_level)
 
-    logger.info("Starting murid v%s", __version__)
+    logger.info(
+        r"""
+     ) _     _
+    ( (^)-~-(^)
+__,-.\_( 6 6 )__,-.___
+| 'M'   \   /   'M'  |
+|        >o<         |
+    ______/\______
+   /              \
+  / starting murid \
+  \%s/
+   \______________/
+""",
+        f"v{__version__}".center(16),
+    )
 
     factory = ServiceFactory(args)
     app = factory.sync_service()
