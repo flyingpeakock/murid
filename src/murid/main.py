@@ -40,12 +40,15 @@ def get_default_config_path() -> Path:
 
 def setup_logger(log_level: str) -> None:
     """Set up the logger with the specified log level and appropriate handler."""
+    logger.handlers.clear()
     logger.setLevel(log_level)
 
     if sys.stderr.isatty():
         logger.addHandler(RichHandler(rich_tracebacks=True, tracebacks_show_locals=True))
     else:
-        logger.addHandler(logging.StreamHandler())
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+        logger.addHandler(handler)
 
 
 def get_arg_parser(description: str) -> argparse.ArgumentParser:
