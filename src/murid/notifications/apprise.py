@@ -44,3 +44,12 @@ def init_apprise(
     apprise_obj.add(apprise_conf)
     logger.addHandler(AppriseHandler(apprise_obj))
     return apprise_obj.notify
+
+
+def test_notification(notify: Callable[[str, str, apprise.NotifyType], None]) -> None:
+    """Send a test notification to verify that Apprise is working correctly."""
+    notify(
+        title="Murid - Test Notification",
+        body="Hello from Murid!",
+        notify_type=apprise.NotifyType.INFO,
+    )

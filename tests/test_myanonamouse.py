@@ -9,7 +9,7 @@ from murid import (
     MyAnonamouse,
     MyAnonamouseQuery,
 )
-from murid.myanonamouse import parse_size
+from murid.clients.myanonamouse import parse_size
 
 
 @pytest.fixture

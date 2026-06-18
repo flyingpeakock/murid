@@ -8,7 +8,6 @@ from .config.config import Config, ConfigError
 from .domain.book import Book
 from .domain.book_matcher import BookMatcher
 from .domain.torrent import Torrent, TorrentMetadata
-from .murid_app import MuridApp
 
 try:
     from ._version import __version__
@@ -25,7 +24,6 @@ __all__ = [
     "Hardcover",
     "HardcoverError",
     "MAMError",
-    "MuridApp",
     "MyAnonamouse",
     "MyAnonamouseQuery",
     "Torrent",

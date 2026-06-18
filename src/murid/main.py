@@ -11,7 +11,8 @@ from rich.logging import RichHandler
 from rich_argparse import ArgumentDefaultsRichHelpFormatter
 
 from . import __version__
-from .murid_app import MuridApp
+from .notifications.apprise import test_notification
+from .services.service_factory import ServiceFactory
 
 logger = logging.getLogger("murid")
 
@@ -107,9 +108,10 @@ reading list on Hardcover, with help from myAnonamouse.
 
     logger.info("Starting murid v%s", __version__)
 
-    app = MuridApp(args)
+    factory = ServiceFactory(args)
+    app = factory.sync_service()
     if args.test_notification:
-        app.test_notification()
+        test_notification(factory.notifier())
         return
 
     try:
@@ -118,7 +120,7 @@ reading list on Hardcover, with help from myAnonamouse.
         else:
             app.run()
     except Exception as e:
-        logger.exception("An error occurred: %s", e)
+        logger.error("An error occurred: %s", e)
         raise SystemExit(1) from e
 
 

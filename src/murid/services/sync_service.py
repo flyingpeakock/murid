@@ -1,0 +1,115 @@
+"""Synchronization service for Murid."""
+
+import logging
+import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+
+from ..domain.book import Book
+from ..domain.book_matcher import BookMatcher
+from .torrent_discovery import TorrentDiscoveryService
+
+logger = logging.getLogger("murid")
+
+
+class SyncService:
+    """Service responsible for orchestrating the synchronization process"""
+
+    def __init__(self, factory) -> None:
+        """Initializes the synchronization service."""
+        self.factory = factory
+
+    def start_scheduler(self):
+        """Start the scheduler to run the synchronization process at regular intervals."""
+        base_time = datetime.now()
+        cron_iter = self.factory.cron_iter(base_time)
+
+        executor = ThreadPoolExecutor(max_workers=5)
+
+        next_run = cron_iter.get_next(datetime)
+        logger.info("Next murid cycle scheduled for %s", next_run)
+
+        while True:
+            next_run = cron_iter.get_next(datetime)
+            while datetime.now() < next_run:
+                sleep_time = ((next_run - datetime.now()).total_seconds()) / 2 or 1
+                time.sleep(sleep_time)
+            executor.submit(self.run)
+            logger.info("Next murid cycle scheduled for %s", next_run)
+
+    def run(self) -> None:
+        """Run the synchronization process."""
+        logger.info("Starting murid cycle")
+
+        calibre = self.factory.calibre()
+        calibre_books = self.fetch_calibre_books(calibre)
+
+        hardcover = self.factory.hardcover()
+        hardcover_books = self.fetch_hardcover_books(hardcover)
+
+        matcher = self.factory.matcher()
+        present_books = self.match_books(calibre_books, hardcover_books, matcher)
+
+        torrent_discovery = self.factory.torrent_discovery()
+        wanted_torrents = self.process_books(
+            present_books, hardcover_books, torrent_discovery, matcher
+        )
+
+        torrent_import = self.factory.torrent_import()
+        torrent_import.import_torrents(wanted_torrents)
+
+        logger.info("Finished murid cycle")
+
+    @staticmethod
+    def fetch_calibre_books(calibre) -> list[Book]:
+        """Fetch books from the Calibre library."""
+        books = calibre.get_books()
+        logger.info("Feched %d books from Calibre database", len(books))
+        return books
+
+    @staticmethod
+    def fetch_hardcover_books(hardcover) -> list[Book]:
+        """Fetch books from the Hardcover API."""
+        with ThreadPoolExecutor(max_workers=min(10, len(hardcover))) as executor:
+            results = executor.map(lambda client: client.get_books(), hardcover)
+        books = [book for result in results for book in result]
+        logger.info("Fetched %d books from Hardcover API", len(books))
+        return books
+
+    @staticmethod
+    def match_books(
+        calibre_books: list[Book],
+        hardcover_books: list[Book],
+        matcher: BookMatcher,
+    ) -> list[tuple[bytes, Book]]:
+        """Match books from the Hardcover list against the Calibre library."""
+        matches = matcher.match_books(calibre_books, hardcover_books)
+        logger.debug("%d books already present in Calibre library", len(matches))
+        return matches
+
+    @staticmethod
+    def process_books(
+        present_books: list[Book],
+        wanted_books: list[Book],
+        torrent_discovery: TorrentDiscoveryService,
+        matcher: BookMatcher,
+    ) -> list[Book]:
+        """Process the matched and unmatched books to find torrents for the missing ones."""
+        matched_ids = {h.id for _, h, _ in present_books}
+        books = [h for h in wanted_books if h.id not in matched_ids]
+
+        if not books:
+            return []
+
+        logger.info("%d book%s missing from Calibre", len(books), "s" if len(books) != 1 else "")
+
+        with ThreadPoolExecutor(max_workers=min(10, len(books))) as executor:
+            search_futures = {
+                executor.submit(torrent_discovery.find_torrents, book): book for book in books
+            }
+
+            download_futures = torrent_discovery.submit_downloads(executor, search_futures, matcher)
+
+            if not download_futures:
+                return []
+            return torrent_discovery.collect_downloads(download_futures)

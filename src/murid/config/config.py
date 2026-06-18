@@ -115,7 +115,7 @@ class Config:
     @staticmethod
     def redact(data: Any) -> dict:
         """Recursively redact sensitive data from the provided data structure."""
-        sensitive_keys = ["api_key", "mam_id"]
+        sensitive_keys = ["api_key", "mam_id", "token", "password"]
         if isinstance(data, dict):
             return {
                 key: ("**REDACTED**" if key in sensitive_keys else Config.redact(value))
