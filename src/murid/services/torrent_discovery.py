@@ -15,10 +15,16 @@ logger = logging.getLogger("murid")
 class TorrentDiscoveryService:
     """Service for discovering torrents for books using MyAnonamouse."""
 
-    def __init__(self, mam: MyAnonamouse, land_codes: list[str]) -> None:
+    def __init__(
+        self,
+        mam: MyAnonamouse,
+        lang_codes: list[str],
+        torrent_selector: TorrentSelector,
+    ) -> None:
         """Service for discovering torrents for books using MyAnonamouse."""
         self.mam = mam
-        self.lang_codes = set(land_codes)
+        self.lang_codes = set(lang_codes)
+        self.torrent_selector = torrent_selector
 
     def find_torrents(self, book: Book) -> tuple[Book, list[Torrent]]:
         """Find torrents for a given book."""
@@ -68,7 +74,7 @@ class TorrentDiscoveryService:
                 [str(torrent) for torrent in tor_list],
             )
 
-            torrent = TorrentSelector(self.lang_codes).select(book, tor_list, matcher)
+            torrent = self.torrent_selector.select(book, tor_list, matcher)
 
             if not torrent:
                 continue

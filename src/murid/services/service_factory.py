@@ -11,6 +11,7 @@ from ..clients.myanonamouse import MyAnonamouse
 from ..clients.torrent_clients.qbittorrent import Qbittorrent, QbittorrentConfig
 from ..config.config import Config, ConfigError
 from ..domain.book_matcher import BookMatcher
+from ..domain.torrent_selector import TorrentSelector
 from ..notifications.apprise import init_apprise as apprise
 from .sync_service import SyncService
 from .torrent_discovery import TorrentDiscoveryService
@@ -95,7 +96,11 @@ class ServiceFactory:
 
     def torrent_discovery(self):
         """Create a TorrentDiscoveryService instance using the MyAnonamouse client."""
-        return TorrentDiscoveryService(self.myanonamouse(), self._load_config()["lang_codes"])
+        return TorrentDiscoveryService(
+            self.myanonamouse(),
+            self._load_config()["lang_codes"],
+            self.torrent_selector(),
+        )
 
     def torrent_import(self):
         """Create a TorrentImportService instance"""
@@ -116,3 +121,10 @@ class ServiceFactory:
     def sync_service(self):
         """Create a SyncService instance."""
         return SyncService(self)
+
+    def torrent_selector(self):
+        """Create a TorrentSelector instance."""
+        config = self._load_config()
+        return TorrentSelector(
+            lang_codes=set(config["lang_codes"]), wanted_filetypes=set(config["filetypes"])
+        )

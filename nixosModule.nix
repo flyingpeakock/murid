@@ -179,6 +179,18 @@ in {
                 };
               });
             };
+
+            filetypes = lib.mkOption {
+              description = "List of filetypes to consider when matching books";
+              type = lib.types.listOf lib.types.str;
+              default = [
+                "epub"
+                "mobi"
+                "azw3"
+                "azw"
+                "kfx"
+              ];
+            };
           };
         };
       };

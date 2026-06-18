@@ -44,6 +44,12 @@ _defaults = {
     },
     "schedule": "0 * * * *",
     "apprise": None,
+    "filetypes": [
+        "epub",
+        "mobi",
+        "azw3",
+        "azw",
+    ],
 }
 
 
@@ -139,6 +145,7 @@ class Config:
         self._ensure_lang_codes(self.get("lang_codes"))
         self._ensure_qbittorrent(self.get("qbittorrent"))
         self._ensure_cron(self.get("schedule"))
+        self._ensure_filetypes(self.get("filetypes"))
 
         self._check_extra_keys(self._config)
 
@@ -234,6 +241,15 @@ class Config:
             croniter(expr)
         except (ValueError, KeyError):
             raise ConfigError("Config item 'schedule' must be a valid cron expression") from None
+
+    @staticmethod
+    def _ensure_filetypes(filetypes: list) -> None:
+        """Ensure that the filetypes config item is valid."""
+        Config._ensure_type(filetypes, list, "filetypes")
+        for filetype in filetypes:
+            Config._ensure_type(filetype, str, "filetypes item")
+            if not filetype:
+                raise ConfigError("Config item 'filetypes' must not contain empty strings")
 
     def __getattr__(self, name: str) -> Any:
         """Allow attribute-like access to config items."""

@@ -30,7 +30,7 @@ def test_find_torrents_sets_series_and_returns(mam):
 
     mam.search_ebook.return_value = [torrent]
 
-    service = TorrentDiscoveryService(mam, ["eng"])
+    service = TorrentDiscoveryService(mam, ["eng"], None)
 
     result_book, torrents = service.find_torrents(book)
 
@@ -44,7 +44,7 @@ def test_find_torrents_sets_series_and_returns(mam):
 
 
 def test_collect_downloads_filters_none():
-    service = TorrentDiscoveryService(Mock(), [])
+    service = TorrentDiscoveryService(Mock(), [], None)
 
     future1 = Future()
     future1.set_result(b"file1")
@@ -65,8 +65,9 @@ def test_collect_downloads_filters_none():
     assert result == [(b"file1", book1)]
 
 
-def test_submit_downloads_happy_path(monkeypatch, mam, matcher):
-    service = TorrentDiscoveryService(mam, ["eng"])
+def test_submit_downloads_happy_path(mam, matcher):
+    service = TorrentDiscoveryService(mam, ["eng"], None)
+    service.torrent_selector = SimpleNamespace(select=lambda *a, **k: torrent)
 
     book = SimpleNamespace(title="Dune", authors=["Frank"])
     torrent_book = SimpleNamespace()
@@ -81,13 +82,6 @@ def test_submit_downloads_happy_path(monkeypatch, mam, matcher):
 
     mam.download_torrent = Mock(return_value=b"torrent-file")
 
-    # patch TorrentSelector so we don't test selection logic here
-    fake_selected = torrent
-    monkeypatch.setattr(
-        "murid.services.torrent_discovery.TorrentSelector",
-        lambda lang: SimpleNamespace(select=lambda *a, **k: fake_selected),
-    )
-
     result = service.submit_downloads(executor, search_futures, matcher)
 
     assert len(result) == 1
@@ -96,7 +90,7 @@ def test_submit_downloads_happy_path(monkeypatch, mam, matcher):
 
 
 def test_submit_downloads_skips_empty():
-    service = TorrentDiscoveryService(Mock(), [])
+    service = TorrentDiscoveryService(Mock(), [], None)
 
     book = SimpleNamespace(title="Dune")
 
@@ -110,8 +104,9 @@ def test_submit_downloads_skips_empty():
     assert result == {}
 
 
-def test_submit_downloads_rejected_by_selector(monkeypatch, mam):
-    service = TorrentDiscoveryService(mam, ["eng"])
+def test_submit_downloads_rejected_by_selector(mam):
+    service = TorrentDiscoveryService(mam, ["eng"], None)
+    service.torrent_selector = SimpleNamespace(select=lambda *a, **k: None)
 
     book = SimpleNamespace(title="Dune")
     torrent = SimpleNamespace(book=SimpleNamespace())
@@ -120,11 +115,6 @@ def test_submit_downloads_rejected_by_selector(monkeypatch, mam):
     search_future.set_result((book, [torrent]))
 
     executor = ThreadPoolExecutor(max_workers=1)
-
-    monkeypatch.setattr(
-        "murid.services.torrent_discovery.TorrentSelector",
-        lambda lang: SimpleNamespace(select=lambda *a, **k: None),
-    )
 
     result = service.submit_downloads(executor, {search_future: book}, Mock())
 

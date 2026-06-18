@@ -20,7 +20,7 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
         self.lang_codes = lang_codes
 
         if wanted_filetypes is None:
-            wanted_filetypes = {"epub", "pdf", "mobi", "azw3"}
+            wanted_filetypes = {"epub", "mobi", "azw3"}
         self.wanted_filetypes = wanted_filetypes
 
     def select(self, book: Book, torrents: list[Torrent], matcher: BookMatcher) -> Torrent | None:

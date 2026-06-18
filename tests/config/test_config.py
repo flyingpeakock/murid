@@ -418,3 +418,23 @@ def test_schedule_must_be_valid_cron(build_config):
 def test_schedule_can_be_set(build_config):
     config = build_config(schedule="*/15 * * * *")
     assert config.get("schedule") == "*/15 * * * *"
+
+
+def test_filetypes_defaults_to_epub_mobi_azw3_azw(build_config):
+    config = build_config()
+    assert config.get("filetypes") == ["epub", "mobi", "azw3", "azw"]
+
+
+def test_filetypes_must_be_list(build_config):
+    with pytest.raises(ConfigError, match="Config item 'filetypes' must be a list"):
+        build_config(filetypes="not-a-list")
+
+
+def test_filetypes_list_items_must_be_strings(build_config):
+    with pytest.raises(ConfigError, match="Config item 'filetypes item' must be a str"):
+        build_config(filetypes=[123, "epub"])
+
+
+def test_filetypes_can_be_overridden(build_config):
+    config = build_config(filetypes=["pdf", "epub"])
+    assert config.get("filetypes") == ["pdf", "epub"]

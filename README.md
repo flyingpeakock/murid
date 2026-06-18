@@ -148,6 +148,10 @@ qbittorrent:
   mapping:
     qbit_path: /downloads/completed
     murid_path: /data/downloads/completed
+  filetypes:
+    - epub
+    - mobi
+    - azw3
 ```
 
 ### Environment Variables
@@ -181,6 +185,7 @@ export MAM_ID="..."
 | `schedule`              | Cron expression             | `0 * * * *` |
 | `redact_sensitive_data` | Hide secrets in logs        | `true`      |
 | `apprise`               | Notifications via [Apprise](https://appriseit.com/getting-started/configuration/)   | `None`      |
+| `filetypes`             | List of filetypes to support | `["epub", "mobi", "azw3", "azw"]` |
 
 ### Users
 
