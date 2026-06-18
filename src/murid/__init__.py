@@ -9,6 +9,7 @@ from .domain.book import Book
 from .domain.book_matcher import BookMatcher
 from .domain.torrent import Torrent, TorrentMetadata
 from .domain.torrent_selector import TorrentSelector
+from .notifications.apprise import AppriseHandler, init_apprise, send_test_notification
 
 try:
     from ._version import __version__
@@ -16,6 +17,7 @@ except ImportError:
     __version__ = "unknown"
 
 __all__ = [
+    "AppriseHandler",
     "Book",
     "BookMatcher",
     "Calibre",
@@ -24,9 +26,11 @@ __all__ = [
     "ConfigError",
     "Hardcover",
     "HardcoverError",
+    "init_apprise",
     "MAMError",
     "MyAnonamouse",
     "MyAnonamouseQuery",
+    "send_test_notification",
     "Torrent",
     "TorrentMetadata",
     "TorrentClient",

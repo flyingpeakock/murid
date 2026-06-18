@@ -11,7 +11,7 @@ from rich.logging import RichHandler
 from rich_argparse import ArgumentDefaultsRichHelpFormatter
 
 from . import __version__
-from .notifications.apprise import test_notification
+from .notifications.apprise import send_test_notification
 from .services.service_factory import ServiceFactory
 
 logger = logging.getLogger("murid")
@@ -111,7 +111,7 @@ reading list on Hardcover, with help from myAnonamouse.
     factory = ServiceFactory(args)
     app = factory.sync_service()
     if args.test_notification:
-        test_notification(factory.notifier())
+        send_test_notification(factory.notifier())
         return
 
     try:

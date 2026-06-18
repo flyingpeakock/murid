@@ -183,7 +183,7 @@ def test_main_runs_scheduler(monkeypatch):
     assert app.started
 
 
-def test_main_test_notification(monkeypatch):
+def test_main_send_test_notification(monkeypatch):
     called = {}
 
     app = SimpleNamespace(
@@ -202,7 +202,7 @@ def test_main_test_notification(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "murid.main.test_notification",
+        "murid.main.send_test_notification",
         lambda notifier: called.setdefault(
             "notifier",
             notifier,
