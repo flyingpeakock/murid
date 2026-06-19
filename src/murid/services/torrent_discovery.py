@@ -37,21 +37,6 @@ class TorrentDiscoveryService:
             torrent.book.series_number = book.series_number
         return book, mam_books
 
-    def collect_downloads(
-        self,
-        download_futures: dict[Future, Book],
-    ) -> list[tuple[bytes, Book]]:
-        """Collect the downloaded torrent data once the download futures complete."""
-
-        torrent_files = []
-        for future in as_completed(download_futures):
-            book = download_futures[future]
-            torrent_file = future.result()
-            if torrent_file:
-                torrent_files.append((torrent_file, book))
-
-        return torrent_files
-
     def submit_downloads(
         self,
         executor: ThreadPoolExecutor,
@@ -82,3 +67,34 @@ class TorrentDiscoveryService:
             download_future = executor.submit(self.mam.download_torrent, torrent)
             download_futures[download_future] = torrent.book
         return download_futures
+
+    def collect_downloads(
+        self,
+        download_futures: dict[Future, Book],
+    ) -> list[tuple[bytes, Book]]:
+        """Collect the downloaded torrent data once the download futures complete."""
+
+        torrent_files = []
+        for future in as_completed(download_futures):
+            book = download_futures[future]
+            torrent_file = future.result()
+            if torrent_file:
+                torrent_files.append((torrent_file, book))
+
+        return torrent_files
+
+    def download_torrents(
+        self, books: list[Book], matcher: BookMatcher
+    ) -> list[tuple[bytes, Book]]:
+        """Find and download torrents for a list of books."""
+        logger.info(
+            "Searching for torrents for %d book%s", len(books), "s" if len(books) != 1 else ""
+        )
+        with ThreadPoolExecutor(max_workers=min(10, len(books))) as executor:
+            search_futures = {executor.submit(self.find_torrents, book): book for book in books}
+
+            download_futures = self.submit_downloads(executor, search_futures, matcher)
+
+            if not download_futures:
+                return []
+            return self.collect_downloads(download_futures)

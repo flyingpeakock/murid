@@ -5,6 +5,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
+from ..clients.calibre import Calibre
+from ..clients.hardcover import Hardcover
 from ..domain.book import Book
 from ..domain.book_matcher import BookMatcher
 from .torrent_discovery import TorrentDiscoveryService
@@ -19,7 +21,7 @@ class SyncService:
         """Initializes the synchronization service."""
         self.factory = factory
 
-    def start_scheduler(self):
+    def start_scheduler(self) -> None:
         """Start the scheduler to run the synchronization process at regular intervals."""
         base_time = datetime.now()
         cron_iter = self.factory.cron_iter(base_time)
@@ -61,14 +63,14 @@ class SyncService:
         logger.info("Finished murid cycle")
 
     @staticmethod
-    def fetch_calibre_books(calibre) -> list[Book]:
+    def fetch_calibre_books(calibre: Calibre) -> list[Book]:
         """Fetch books from the Calibre library."""
         books = calibre.get_books()
         logger.info("Feched %d books from Calibre database", len(books))
         return books
 
     @staticmethod
-    def fetch_hardcover_books(hardcover) -> list[Book]:
+    def fetch_hardcover_books(hardcover: list[Hardcover]) -> list[Book]:
         """Fetch books from the Hardcover API."""
         with ThreadPoolExecutor(max_workers=min(10, len(hardcover))) as executor:
             results = executor.map(lambda client: client.get_books(), hardcover)
@@ -81,7 +83,7 @@ class SyncService:
         calibre_books: list[Book],
         hardcover_books: list[Book],
         matcher: BookMatcher,
-    ) -> list[tuple[bytes, Book]]:
+    ) -> list[tuple[Book, Book, float]]:
         """Match books from the Hardcover list against the Calibre library."""
         matches = matcher.match_books(calibre_books, hardcover_books)
         logger.debug("%d books already present in Calibre library", len(matches))
@@ -89,27 +91,15 @@ class SyncService:
 
     @staticmethod
     def process_books(
-        present_books: list[Book],
+        present_books: list[tuple[Book, Book, float]],
         wanted_books: list[Book],
         torrent_discovery: TorrentDiscoveryService,
         matcher: BookMatcher,
-    ) -> list[Book]:
+    ) -> list[tuple[bytes, Book]]:
         """Process the matched and unmatched books to find torrents for the missing ones."""
         matched_ids = {h.id for _, h, _ in present_books}
-        books = [h for h in wanted_books if h.id not in matched_ids]
+        missing_books = [h for h in wanted_books if h.id not in matched_ids]
 
-        if not books:
+        if not missing_books:
             return []
-
-        logger.info("%d book%s missing from Calibre", len(books), "s" if len(books) != 1 else "")
-
-        with ThreadPoolExecutor(max_workers=min(10, len(books))) as executor:
-            search_futures = {
-                executor.submit(torrent_discovery.find_torrents, book): book for book in books
-            }
-
-            download_futures = torrent_discovery.submit_downloads(executor, search_futures, matcher)
-
-            if not download_futures:
-                return []
-            return torrent_discovery.collect_downloads(download_futures)
+        return torrent_discovery.download_torrents(missing_books, matcher)

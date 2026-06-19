@@ -21,5 +21,5 @@ class TorrentClient(ABC):
         Returns the path if the torrent is completed, or None if it's not yet completed."""
 
     @abstractmethod
-    def add_tag(self, torrent_id: str, tag: str):
+    def add_tag(self, torrent_id: str, tag: str) -> None:
         """Add a tag to a torrent by its ID."""

@@ -70,30 +70,6 @@ def test_process_books_returns_empty_when_all_matched():
     assert result == []
 
 
-def test_process_books_happy_path():
-    torrent_discovery = Mock()
-
-    book = SimpleNamespace(id=1, title="Book")
-
-    present_books = []
-    wanted_books = [book]
-
-    torrent_discovery.find_torrents.return_value = ["torrent"]
-    torrent_discovery.submit_downloads.return_value = {"future": "torrent"}
-    torrent_discovery.collect_downloads.return_value = [("file", book)]
-
-    matcher = Mock()
-
-    result = SyncService.process_books(
-        present_books,
-        wanted_books,
-        torrent_discovery,
-        matcher,
-    )
-
-    assert result == [("file", book)]
-
-
 def test_run_orchestrates_pipeline(factory):
     service = SyncService(factory)
 

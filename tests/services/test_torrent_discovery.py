@@ -119,3 +119,15 @@ def test_submit_downloads_rejected_by_selector(mam):
     result = service.submit_downloads(executor, {search_future: book}, Mock())
 
     assert result == {}
+
+def test_download_torrents_happy_path(mam, matcher):
+    service = TorrentDiscoveryService(mam, ["eng"], None)
+    service.find_torrents = Mock(return_value=(SimpleNamespace(), ["torrent"]))
+    service.submit_downloads = Mock(return_value={"future": "torrent"})
+    service.collect_downloads = Mock(return_value=[(b"file", SimpleNamespace())])
+
+    books = [SimpleNamespace(title="Dune")]
+
+    result = service.download_torrents(books, matcher)
+
+    assert result == [(b"file", SimpleNamespace())]

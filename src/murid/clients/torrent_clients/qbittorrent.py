@@ -25,7 +25,7 @@ class QbittorrentConfig:
 class Qbittorrent(TorrentClient):
     """Torrent client implementation for qBittorrent."""
 
-    def __init__(self, config: QbittorrentConfig, poll_interval=2):
+    def __init__(self, config: QbittorrentConfig, poll_interval=2) -> None:
         """Initialize the qBittorrent client with the provided parameters."""
         self.client = config.client
         self.category = config.category
@@ -34,7 +34,7 @@ class Qbittorrent(TorrentClient):
         self.mapping = config.mapping
         self._validate()
 
-    def _validate(self):
+    def _validate(self) -> None:
         """Validate the connection to qBittorrent by attempting to log in."""
         try:
             self.client.auth_log_in()
@@ -93,6 +93,6 @@ class Qbittorrent(TorrentClient):
 
         return path
 
-    def add_tag(self, torrent_id: str, tag: str):
+    def add_tag(self, torrent_id: str, tag: str) -> None:
         """Add a tag to a torrent by its ID."""
         self.client.torrents_add_tags(tags=tag, torrent_hashes=torrent_id)
