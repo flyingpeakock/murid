@@ -153,10 +153,10 @@ qbittorrent:
   mapping:
     qbit_path: /downloads/completed
     murid_path: /data/downloads/completed
-  filetypes:
-    - epub
-    - mobi
-    - azw3
+filetypes:
+  - epub
+  - mobi
+  - azw3
 ```
 
 ### Environment Variables
