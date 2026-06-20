@@ -1,6 +1,6 @@
 # murid
 
-**Definition (Webstes's Dictionary)**  
+**Definition (Webster's Dictionary)**  
 *Murid* (noun): of or relating to a family (Muridae) comprising the typical mice and rats and often those rodents classified as cricetids
 
 ---
