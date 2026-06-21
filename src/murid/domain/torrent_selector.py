@@ -17,10 +17,15 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
         self,
         lang_codes: set[str],
         wanted_filetypes: set[str] | None = None,
+        blacklist: set[str] | None = None,
     ):
         self.lang_codes = lang_codes
 
-        if wanted_filetypes is None:
+        if not blacklist:
+            blacklist = set()
+        self.blacklist = blacklist
+
+        if not wanted_filetypes:
             wanted_filetypes = {"epub", "mobi", "azw3"}
         self.wanted_filetypes = wanted_filetypes
 
@@ -33,6 +38,7 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
             for t in torrents
             if (t.language is None or t.language in self.lang_codes)
             and self.wanted_filetypes.intersection(t.file_types or [])
+            and t.book.id not in self.blacklist
         }
 
         if not torrent_books:

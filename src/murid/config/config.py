@@ -50,6 +50,7 @@ _defaults = {
         "azw3",
         "azw",
     ],
+    "blacklisted_torrent_ids": [],
 }
 
 
@@ -152,6 +153,7 @@ class Config:
         self._ensure_qbittorrent(self.get("qbittorrent"))
         self._ensure_cron(self.get("schedule"))
         self._ensure_filetypes(self.get("filetypes"))
+        self._ensure_blacklisted_torrent_ids(self.get("blacklisted_torrent_ids"))
 
         self._check_extra_keys(self._config)
 
@@ -182,7 +184,11 @@ class Config:
     def _ensure_type(data: Any, expected_type: type, position: str) -> None:
         """Ensure that the provided data is of the expected type."""
         if not isinstance(data, expected_type):
-            raise ConfigError(f"Config item '{position}' must be a {expected_type.__name__}")
+            raise ConfigError(
+                f"Config item '{position}' must be an {expected_type.__name__}"
+                if expected_type.__name__[0].lower() in "aeiou"
+                else f"Config item '{position}' must be a {expected_type.__name__}"
+            )
 
     @staticmethod
     def _ensure_path_exists(path: str) -> None:
@@ -252,6 +258,13 @@ class Config:
             Config._ensure_type(filetype, str, "filetypes item")
             if not filetype:
                 raise ConfigError("Config item 'filetypes' must not contain empty strings")
+
+    @staticmethod
+    def _ensure_blacklisted_torrent_ids(ids: list[str]) -> None:
+        """Ensure that the blacklisted_torrent_ids config item is valid."""
+        Config._ensure_type(ids, list, "blacklisted_torrent_ids")
+        for torrent_id in ids:
+            Config._ensure_type(torrent_id, int, "blacklisted_torrent_ids item")
 
     def copy(self) -> dict:
         """Return a copy of the configuration dictionary."""

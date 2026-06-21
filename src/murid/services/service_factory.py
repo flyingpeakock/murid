@@ -33,7 +33,6 @@ class ServiceFactory:
             self.config = config
         self.notify = self._init_apprise()
 
-
     def _init_apprise(self):
         """Initialize the Apprise notifier."""
         if not self.config.get("apprise", None):
@@ -143,4 +142,5 @@ class ServiceFactory:
         return TorrentSelector(
             lang_codes=set(self.config["lang_codes"]),
             wanted_filetypes=set(self.config["filetypes"]),
+            blacklist=set(self.config["blacklisted_torrent_ids"]),
         )

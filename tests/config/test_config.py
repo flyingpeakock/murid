@@ -432,6 +432,7 @@ def test_hardcover_api_keys_must_start_with_bearer(build_config):
     ):
         build_config(hardcover_api_keys=["not-a-bearer-token"])
 
+
 def test_editing_copy_does_not_modify_original(build_config):
     config = build_config()
     copy = config.copy()
@@ -439,3 +440,20 @@ def test_editing_copy_does_not_modify_original(build_config):
 
     assert "new_key" not in config
     assert copy["new_key"] == "new_value"
+
+
+def test_blacklisted_torrent_ids_must_be_list(build_config):
+    with pytest.raises(ConfigError, match="Config item 'blacklisted_torrent_ids' must be a list"):
+        build_config(blacklisted_torrent_ids="not-a-list")
+
+
+def test_blacklisted_torrent_ids_list_items_must_be_int(build_config):
+    with pytest.raises(
+        ConfigError, match="Config item 'blacklisted_torrent_ids item' must be an int"
+    ):
+        build_config(blacklisted_torrent_ids=[123, "not-an-int"])
+
+
+def test_blacklisted_torrent_ids_can_be_set(build_config):
+    config = build_config(blacklisted_torrent_ids=[123, 456])
+    assert config.get("blacklisted_torrent_ids") == [123, 456]

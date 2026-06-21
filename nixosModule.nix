@@ -179,6 +179,12 @@ in {
                 "kfx"
               ];
             };
+
+            blacklisted_torrent_ids = lib.mkOption {
+              description = "List of blacklisted torrent ID's to ignore when fetching data from trackers";
+              type = lib.types.listOf lib.types.int;
+              default = [];
+            };
           };
         };
       };

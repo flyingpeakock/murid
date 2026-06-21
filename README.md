@@ -196,6 +196,7 @@ export MAM_ID="..."
 | `redact_sensitive_data` | Hide secrets in logs        | `true`      |
 | `apprise`               | Notifications via [Apprise](https://appriseit.com/getting-started/configuration/)   | `None`      |
 | `filetypes`             | List of filetypes to support | `["epub", "mobi", "azw3", "azw"]` |
+| `blacklisted_torrent_ids`| List of MaM torrent id's to blacklist | `[]` |
 
 ### qBittorrent
 

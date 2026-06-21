@@ -28,9 +28,10 @@ def make_torrent(
     title="Dune",
     language="en",
     file_types=None,
+    id=1,
 ):
     return Torrent(
-        book=make_book(title=title),
+        book=make_book(title=title, book_id=id),
         metadata=TorrentMetadata(
             category=1,
             size=100,
@@ -198,7 +199,34 @@ def test_returns_matching_torrent():
         matcher,
     )
 
-    print(result)
-    print(torrent2)
-
     assert result is torrent2
+
+
+def test_blacklist_filters_torrents():
+    torrent = make_torrent(title="Dune", id=123)
+
+    matcher = DummyMatcher((torrent.book, 1.0))
+
+    selector = TorrentSelector({"en"}, blacklist={123})
+    result = selector.select(
+        make_book(),
+        [torrent],
+        matcher,
+    )
+
+    assert result is None
+
+
+def test_blacklist_does_not_filter_non_matching_torrents():
+    torrent = make_torrent(title="Dune", id=1234)
+
+    matcher = DummyMatcher((torrent.book, 1.0))
+
+    selector = TorrentSelector({"en"}, blacklist={123})
+    result = selector.select(
+        make_book(),
+        [torrent],
+        matcher,
+    )
+
+    assert result is torrent
