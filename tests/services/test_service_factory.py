@@ -21,12 +21,7 @@ def config():
         "matcher_threshold": 0.9,
         "calibre_db_path": "/tmp/metadata.db",
         "calibredb_executable": "calibredb",
-        "users": [
-            {
-                "api_key": "secret",
-                "id": 123,
-            }
-        ],
+        "hardcover_api_keys": ["Bearer secret"],
         "mam_id": "mam-cookie",
         "lang_codes": ["eng"],
         "schedule": "0 * * * *",
@@ -98,9 +93,10 @@ def test_hardcover(args, config, monkeypatch):
 
     created = []
 
-    def fake_hardcover(api_key, user_id):
-        created.append((api_key, user_id))
-        return f"user-{user_id}"
+    def fake_hardcover(api_key):
+        # created.append((api_key, user_id))
+        created.append(api_key)
+        return f"user-{api_key}"
 
     monkeypatch.setattr(
         "murid.services.service_factory.Hardcover",
@@ -109,8 +105,8 @@ def test_hardcover(args, config, monkeypatch):
 
     result = factory.hardcover()
 
-    assert result == ["user-123"]
-    assert created == [("secret", 123)]
+    assert result == ["user-Bearer secret"]
+    assert created == ["Bearer secret"]
 
 
 def test_myanonamouse(args, config, monkeypatch):

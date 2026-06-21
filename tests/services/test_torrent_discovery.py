@@ -120,6 +120,7 @@ def test_submit_downloads_rejected_by_selector(mam):
 
     assert result == {}
 
+
 def test_download_torrents_happy_path(mam, matcher):
     service = TorrentDiscoveryService(mam, ["eng"], None)
     service.find_torrents = Mock(return_value=(SimpleNamespace(), ["torrent"]))

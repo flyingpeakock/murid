@@ -4,12 +4,12 @@ from unittest.mock import Mock
 import pytest
 import requests
 
-from murid import Hardcover, HardcoverError
+from murid import Hardcover, HardcoverError, HardcoverUser
 
 
 @pytest.fixture
 def hardcover():
-    return Hardcover("api-key", "1234")
+    return Hardcover("api-key", HardcoverUser(id=123, name="Test User"))
 
 
 def test_extract_isbn_none():
@@ -66,7 +66,7 @@ def test_fetch_data_success(hardcover):
 def test_fetch_data_http_error(hardcover):
     hardcover._session.post = Mock(side_effect=requests.RequestException("boom"))
 
-    with pytest.raises(HardcoverError, match="Error fetching data from Hardcover API: boom"):
+    with pytest.raises(HardcoverError, match="Error making query to Hardcover API: boom"):
         hardcover.fetch_data()
 
 

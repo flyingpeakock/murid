@@ -23,7 +23,7 @@ _MISSING = _Missing()
 
 
 _defaults = {
-    "users": _MISSING,
+    "hardcover_api_keys": _MISSING,
     "redact_sensitive_data": True,
     "calibre_db_path": _MISSING,
     "calibredb_executable": "calibredb",
@@ -121,7 +121,13 @@ class Config:
     @staticmethod
     def redact(data: Any) -> dict:
         """Recursively redact sensitive data from the provided data structure."""
-        sensitive_keys = ["api_key", "mam_id", "token", "password"]
+        sensitive_keys = [
+            "api_key",
+            "mam_id",
+            "token",
+            "password",
+            "hardcover_api_keys",
+        ]
         if isinstance(data, dict):
             return {
                 key: ("**REDACTED**" if key in sensitive_keys else Config.redact(value))
@@ -136,7 +142,7 @@ class Config:
 
         Ensure all required fields are present and correctly formatted."""
         self._ensure_not_missing(self._config)
-        self._ensure_users(self.get("users"))
+        self._ensure_hardcover_api_keys(self.get("hardcover_api_keys"))
         self._ensure_type(self.get("redact_sensitive_data"), bool, "redact_sensitive_data")
         self._ensure_type(self.get("calibre_db_path"), str, "calibre_db_path")
         self._ensure_path_exists(self.get("calibre_db_path"))
@@ -162,19 +168,15 @@ class Config:
                 Config._ensure_not_missing(item)
 
     @staticmethod
-    def _ensure_users(users: list) -> None:
+    def _ensure_hardcover_api_keys(keys: list) -> None:
         """Ensure that the users config item is valid."""
-        if not isinstance(users, list):
-            raise ConfigError("Config item 'users' must be a list")
-        for user in users:
-            if not isinstance(user, dict):
-                raise ConfigError("Each user must be a dict")
-            if "id" not in user:
-                raise ConfigError("Each user must have an 'id' key")
-            if "api_key" not in user:
-                raise ConfigError("Each user must have an 'api_key' key")
-            if not isinstance(user["id"], int):
-                raise ConfigError("User 'id' must be an integer")
+        Config._ensure_type(keys, list, "hardcover_api_keys")
+        for key in keys:
+            if not key:
+                raise ConfigError("Config item 'hardcover_api_keys' must not contain empty strings")
+            Config._ensure_type(key, str, "hardcover_api_keys item")
+            if not key.startswith("Bearer "):
+                raise ConfigError("Config item 'hardcover_api_keys item' must start with 'Bearer '")
 
     @staticmethod
     def _ensure_type(data: Any, expected_type: type, position: str) -> None:

@@ -105,6 +105,10 @@ Module options are defined in [nixosModule.nix](nixosModule.nix)
 
 ## Usage
 
+1. Mark books as "Want to Read" on hardcover.
+2. Run this script.
+3. Start reading
+
 ```
 Usage: murid [-h] [--version] [--log-level {DEBUG,INFO,WARNING,ERROR,CRITICAL}] [--dry-run] [--schedule] [--test-notification] [--config CONFIG_FILE]
 
@@ -128,9 +132,9 @@ Options:
 Create a yaml configuration file:
 
 ```yaml
-users:
-  - id: 12345
-    api_key: your-hardcover-api-key
+hardcover_api_kyes:
+  - Bearer secret123
+  - Bearer secret321
 
 calibre_db_path: "/path/to/Calibre Library/metadata.db"
 
@@ -165,15 +169,16 @@ filetypes:
 Sensitive information can be injected via environment variables:
 
 ```yaml
-users:
-  - id: 12345
-    api_key: !ENV HARDCOVER_API_KEY
+hardcover_api_keys:
+  - !ENV HARDCOVER_API_KEY1
+  - !ENV HARDCOVER_API_KEY2
 
 mam_id: !ENV MAM_ID
 ```
 
 ```bash
-export HARDCOVER_API_KEY="..."
+export HARDCOVER_API_KEY1="..."
+export HARDCOVER_API_KEY2="..."
 export MAM_ID="..."
 ```
 
@@ -181,7 +186,7 @@ export MAM_ID="..."
 
 | Option                  | Description                 | Default     |
 | ----------------------- | --------------------------- | ----------- |
-| `users`                 | Hardcover accounts          | required    |
+| `hardcover_api_keys`    | Hardcover api keys          | required    |
 | `qbittorrent`           | qBittorrent connection      | required    |
 | `calibre_db_path`       | Path to Calibre metadata.db | required    |
 | `calibredb_executable`  | Path to calibredb           | `calibredb` |
@@ -192,14 +197,6 @@ export MAM_ID="..."
 | `redact_sensitive_data` | Hide secrets in logs        | `true`      |
 | `apprise`               | Notifications via [Apprise](https://appriseit.com/getting-started/configuration/)   | `None`      |
 | `filetypes`             | List of filetypes to support | `["epub", "mobi", "azw3", "azw"]` |
-
-### Users
-
-| Option    | Description       | Default  |
-| --------- | ----------------- | -------- |
-| `id`      | Hardcover user ID | required |
-| `api_key` | Hardcover API key | required |
-
 
 ### qBittorrent
 
@@ -236,10 +233,6 @@ qbittorrent:
 This allows murid to correctly locate files reported by qBittorrent.
 
 ## Credentials
-
-### Hardcover User ID
-
-Available via your Hardcover account or API response
 
 ### Hardcover API Key
 

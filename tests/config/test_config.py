@@ -11,7 +11,7 @@ from murid.config.config import _defaults, env_constructor
 
 missing = object()
 base = _defaults.copy() | {
-    "users": [{"id": 1234, "api_key": "secret123"}],
+    "hardcover_api_keys": ["Bearer secret123"],
     "calibre_db_path": "metadata.db",
     "mam_id": "abc123",
     "qbittorrent": {
@@ -57,12 +57,7 @@ def make_config(yaml_text: str) -> Config:
 def test_load_valid_config(build_config):
     config = build_config()
 
-    assert config.get("users") == [
-        {
-            "id": 1234,
-            "api_key": "secret123",
-        }
-    ]
+    assert config.get("hardcover_api_keys") == ["Bearer secret123"]
     assert config.get("redact_sensitive_data") is True
 
 
@@ -71,14 +66,9 @@ def test_default_redact_sensitive_data(build_config):
     assert config.get("redact_sensitive_data") is True
 
 
-def test_missing_users_raises(build_config):
-    with pytest.raises(ConfigError, match="Config item 'users' is missing"):
-        build_config(users=missing)
-
-
 def test_get_existing_key(build_config):
     config = build_config()
-    assert config.get("users")[0]["id"] == 1234
+    assert config.get("hardcover_api_keys")[0] == "Bearer secret123"
 
 
 def test_get_default_value(build_config):
@@ -90,26 +80,6 @@ def test_get_missing_key_raises(build_config):
     config = build_config()
     with pytest.raises(KeyError, match="Config item 'missing_key' not found"):
         config.get("missing_key")
-
-
-def test_users_must_be_list(build_config):
-    with pytest.raises(ConfigError, match="Config item 'users' must be a list"):
-        build_config(users="not-a-list")
-
-
-def test_user_must_be_dict(build_config):
-    with pytest.raises(ConfigError, match="Each user must be a dict"):
-        build_config(users=["not-a-dict"])
-
-
-def test_user_requires_id(build_config):
-    with pytest.raises(ConfigError, match="Each user must have an 'id' key"):
-        build_config(users=[{"api_key": "secret"}])
-
-
-def test_user_requires_api_key(build_config):
-    with pytest.raises(ConfigError, match="Each user must have an 'api_key' key"):
-        build_config(users=[{"id": 123410}])
 
 
 def test_redact_sensitive_data_must_be_boolean(build_config):
@@ -195,6 +165,7 @@ def test_redact_list(build_config):
 def test_str_redacts_api_keys(build_config):
     config = build_config()
     output = str(config)
+    print(output)
     assert "**REDACTED**" in output
     assert "secret123" not in output
 
@@ -224,11 +195,6 @@ def test_env_loader_directly(monkeypatch):
     data = yaml.load("key: !ENV TEST_VAR", Loader=yaml.SafeLoader)
 
     assert data["key"] == "value"
-
-
-def test_user_id_must_be_int(build_config):
-    with pytest.raises(ConfigError, match="User 'id' must be an integer"):
-        build_config(users=[{"id": "not-an-int", "api_key": "secret"}])
 
 
 def test_calibre_db_path_must_exist(build_config):
@@ -438,3 +404,30 @@ def test_filetypes_list_items_must_be_strings(build_config):
 def test_filetypes_can_be_overridden(build_config):
     config = build_config(filetypes=["pdf", "epub"])
     assert config.get("filetypes") == ["pdf", "epub"]
+
+
+def test_hardcover_api_keys_must_be_present(build_config):
+    with pytest.raises(ConfigError, match="Config item 'hardcover_api_keys' is missing"):
+        build_config(hardcover_api_keys=missing)
+
+
+def test_hardcover_api_keys_must_be_list(build_config):
+    with pytest.raises(ConfigError, match="Config item 'hardcover_api_keys' must be a list"):
+        build_config(hardcover_api_keys="not-a-list")
+
+
+def test_hardcover_api_keys_list_items_must_be_strings(build_config):
+    with pytest.raises(ConfigError, match="Config item 'hardcover_api_keys item' must be a str"):
+        build_config(hardcover_api_keys=[123, "Bearer secret123"])
+
+
+def test_hardcover_api_keys_can_be_set(build_config):
+    config = build_config(hardcover_api_keys=["Bearer newsecret"])
+    assert config.get("hardcover_api_keys") == ["Bearer newsecret"]
+
+
+def test_hardcover_api_keys_must_start_with_bearer(build_config):
+    with pytest.raises(
+        ConfigError, match="Config item 'hardcover_api_keys item' must start with 'Bearer '"
+    ):
+        build_config(hardcover_api_keys=["not-a-bearer-token"])

@@ -4,6 +4,7 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from itertools import chain
 
 from ..clients.calibre import Calibre
 from ..clients.hardcover import Hardcover
@@ -74,7 +75,7 @@ class SyncService:
         """Fetch books from the Hardcover API."""
         with ThreadPoolExecutor(max_workers=min(10, len(hardcover))) as executor:
             results = executor.map(lambda client: client.get_books(), hardcover)
-        books = [book for result in results for book in result]
+            books = list(chain.from_iterable(results))
         logger.info("Fetched %d books from Hardcover API", len(books))
         return books
 

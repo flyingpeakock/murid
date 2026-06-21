@@ -1,7 +1,7 @@
 """Initialization file for the murid package."""
 
 from .clients.calibre import Calibre, CalibreError
-from .clients.hardcover import Hardcover, HardcoverError
+from .clients.hardcover import Hardcover, HardcoverError, HardcoverUser
 from .clients.myanonamouse import MAMError, MyAnonamouse, MyAnonamouseQuery
 from .clients.torrent_clients import Qbittorrent, QbittorrentConfig, TorrentClient
 from .config.config import Config, ConfigError
@@ -30,6 +30,7 @@ __all__ = [
     "ConfigError",
     "Hardcover",
     "HardcoverError",
+    "HardcoverUser",
     "init_apprise",
     "MAMError",
     "MyAnonamouse",

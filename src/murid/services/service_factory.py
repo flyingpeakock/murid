@@ -1,6 +1,7 @@
 """Factory for creating service instances based on configuration."""
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 import qbittorrentapi
 from croniter import croniter
@@ -60,8 +61,10 @@ class ServiceFactory:
 
     def hardcover(self) -> list[Hardcover]:
         """Create a list of Hardcover instances for each user specified in the configuration."""
-        config = self._load_config()
-        return [Hardcover(user["api_key"], user["id"]) for user in config["users"]]
+        keys = self._load_config()["hardcover_api_keys"]
+        with ThreadPoolExecutor(max_workers=min(10, len(keys))) as executor:
+            hardcover_clients = list(executor.map(Hardcover, keys))
+        return hardcover_clients
 
     def myanonamouse(self):
         """Create a MyAnonamouse instance using the MAM ID from the configuration."""

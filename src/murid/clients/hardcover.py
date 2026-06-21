@@ -1,12 +1,21 @@
 """Module for interacting with the Hardcover API to fetch user book data."""
 
 import logging
+from dataclasses import dataclass
 
 import requests
 
 from ..domain.book import Book
 
 logger = logging.getLogger("murid")
+
+
+@dataclass
+class HardcoverUser:
+    """Data class representing a Hardcover user."""
+
+    id: int
+    name: str
 
 
 class HardcoverError(Exception):
@@ -16,17 +25,62 @@ class HardcoverError(Exception):
 class Hardcover:
     """Class for interacting with the Hardcover API to fetch user book data."""
 
-    def __init__(self, api: str, user_id: str) -> None:
+    def __init__(self, api: str, user: HardcoverUser | None = None) -> None:
         """Initialize the Hardcover class with the API token and user ID."""
         self.url = "https://api.hardcover.app/v1/graphql"
-        self._user_id = user_id
         self._headers = {
             "Content-Type": "application/json",
             "Authorization": api,
         }
         self._session = requests.Session()
 
-        logger.debug("Initialized Hardcover for user_id: %s", self._user_id)
+        if not user:
+            self.user = self.get_user()
+        else:
+            self.user = user
+
+        logger.debug("Initialized Hardcover for user: %s", self.user.name)
+
+    def make_query(self, query: str, variables: dict | None = None) -> dict:
+        """Make a GraphQL query to the Hardcover API."""
+        payload = {"query": query}
+        if variables:
+            payload["variables"] = variables
+
+        try:
+            response = self._session.post(
+                self.url,
+                json=payload,
+                headers=self._headers,
+                timeout=30,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if "errors" in data:
+                logger.error("GraphQL errors: %s", data["errors"])
+                raise HardcoverError(f"GraphQL errors: {data['errors']}")
+
+            logger.debug("Hardcover data fetched successfully for query: %s", query)
+            return data
+        except requests.RequestException as e:
+            logger.error("Error making query to Hardcover API: %s", e)
+            raise HardcoverError(f"Error making query to Hardcover API: {e}") from e
+
+    def get_user(self) -> HardcoverUser:
+        """Fetch the current user information from the Hardcover API."""
+        query = """
+        query  {
+            me {
+                id
+                name
+            }
+        }
+        """
+        data = self.make_query(query)
+        user = HardcoverUser(**data["data"]["me"][0])
+        logger.debug("Fetched Hardcover user info: %s", user)
+        return user
 
     def fetch_data(self) -> dict:
         """Fetch book data from the Hardcover API for the specified user."""
@@ -63,27 +117,8 @@ class Hardcover:
           }
         }
         """
-
-        variables = {"user_id": self._user_id}
-
-        try:
-            response = self._session.post(
-                self.url,
-                json={"query": query, "variables": variables},
-                headers=self._headers,
-                timeout=30,
-            )
-            response.raise_for_status()
-        except requests.RequestException as e:
-            logger.error("Error fetching data from Hardcover API: %s", e)
-            raise HardcoverError(f"Error fetching data from Hardcover API: {e}") from e
-
-        data = response.json()
-
-        if "errors" in data:
-            logger.error("GraphQL errors: %s", data["errors"])
-            raise HardcoverError(f"GraphQL errors: {data['errors']}")
-
+        variables = {"user_id": self.user.id}
+        data = self.make_query(query, variables=variables)
         logger.debug("Hardcover data fetched successfully")
         return data
 
@@ -149,6 +184,6 @@ class Hardcover:
             )
 
         if not books:
-            logger.warning("No books found for user %s", self._user_id)
+            logger.warning("No books found for user %s", self.user.name)
 
         return books
