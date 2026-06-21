@@ -14,19 +14,6 @@ in {
 
     configEnvType = lib.types.addCheck lib.types.str (val: lib.strings.hasPrefix "!ENV " val);
 
-    configUserType = lib.types.listOf (lib.types.submodule {
-      options = {
-        id = lib.mkOption {
-          description = "User ID for hardcover";
-          type = lib.types.int;
-        };
-        api_key = lib.mkOption {
-          description = "API key for hardcover";
-          type = configEnvType;
-        };
-      };
-    });
-
     configQbittorrentType = lib.types.submodule {
       options = {
         host = lib.mkOption {
@@ -118,9 +105,10 @@ in {
         default = {};
         type = lib.types.submodule {
           options = {
-            users = lib.mkOption {
-              description = "Hardcover user ids and their corresponding API keys";
-              type = configUserType;
+            hardcover_api_keys = lib.mkOption {
+              description = "List of API keys for hardcover";
+              type = lib.types.listOf configEnvType;
+              default = [];
             };
 
             redact_sensitive_data = lib.mkOption {
