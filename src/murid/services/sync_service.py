@@ -38,13 +38,13 @@ class SyncService:
                     break
                 time.sleep(max(1, (next_run - now).total_seconds() / 2))
 
+            logger.info("Starting murid cycle")
             self.run()
+            logger.info("Finished murid cycle")
             next_run = cron_iter.get_next(datetime)
 
     def run(self) -> None:
         """Run the synchronization process."""
-        logger.info("Starting murid cycle")
-
         calibre = self.factory.calibre()
         calibre_books = self.fetch_calibre_books(calibre)
 
@@ -61,8 +61,6 @@ class SyncService:
 
         torrent_import = self.factory.torrent_import()
         torrent_import.import_torrents(wanted_torrents)
-
-        logger.info("Finished murid cycle")
 
     @staticmethod
     def fetch_calibre_books(calibre: Calibre) -> set[Book]:
