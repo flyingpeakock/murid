@@ -42,7 +42,13 @@ def init_apprise(
 
     apprise_obj = apprise.Apprise(asset=asset)
     apprise_obj.add(apprise_conf)
+
+    for handler in list(logger.handlers):
+        if isinstance(handler, AppriseHandler):
+            logger.debug("Removing existing AppriseHandler from logger.")
+            logger.removeHandler(handler)
     logger.addHandler(AppriseHandler(apprise_obj))
+
     return apprise_obj.notify
 
 
