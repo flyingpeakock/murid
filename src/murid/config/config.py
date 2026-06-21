@@ -253,6 +253,10 @@ class Config:
             if not filetype:
                 raise ConfigError("Config item 'filetypes' must not contain empty strings")
 
+    def copy(self) -> dict:
+        """Return a copy of the configuration dictionary."""
+        return self._config.copy()
+
     def __getattr__(self, name: str) -> Any:
         """Allow attribute-like access to config items."""
         try:

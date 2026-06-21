@@ -24,9 +24,17 @@ logger = logging.getLogger("murid")
 class ServiceFactory:
     """Factory for creating service instances."""
 
-    def __init__(self, args):
+    def __init__(self, args, config=None):
         """Initialize the service factory with command-line arguments."""
         self.args = args
+        if not config:
+            self.config = self._load_config()
+        else:
+            self.config = config
+
+    def reload_config(self):
+        """Reload the configuration from the file."""
+        self.config = self._load_config()
 
     def _load_config(self) -> dict:
         """Load configuration from a file."""
@@ -37,7 +45,7 @@ class ServiceFactory:
             logger.error("Error loading config: %s", e)
             raise SystemExit(1) from e
         except FileNotFoundError as e:
-            logger.error("Config file not found: %s", self.args.config_path)
+            logger.error("Config file not found: %s", self.args.config_file)
             raise SystemExit(1) from e
         except Exception as e:
             logger.error("Unexpected error loading config: %s", e)
@@ -45,15 +53,14 @@ class ServiceFactory:
 
     def matcher(self) -> BookMatcher:
         """Create a BookMatcher instance using the matcher threshold from the configuration."""
-        return BookMatcher(self._load_config()["matcher_threshold"])
+        return BookMatcher(self.config["matcher_threshold"])
 
     def calibre(self):
         """Create a Calibre instance using the configuration file."""
-        config = self._load_config()
         try:
             return Calibre(
-                config["calibre_db_path"],
-                config["calibredb_executable"],
+                self.config["calibre_db_path"],
+                self.config["calibredb_executable"],
             )
         except CalibreError as e:
             logger.error("Error initializing Calibre: %s", e)
@@ -61,18 +68,18 @@ class ServiceFactory:
 
     def hardcover(self) -> set[Hardcover]:
         """Create a list of Hardcover instances for each user specified in the configuration."""
-        keys = self._load_config()["hardcover_api_keys"]
+        keys = self.config["hardcover_api_keys"]
         with ThreadPoolExecutor(max_workers=min(10, len(keys))) as executor:
             hardcover_clients = set(executor.map(Hardcover, keys))
         return hardcover_clients
 
     def myanonamouse(self):
         """Create a MyAnonamouse instance using the MAM ID from the configuration."""
-        return MyAnonamouse(self._load_config()["mam_id"])
+        return MyAnonamouse(self.config["mam_id"])
 
     def qbittorrent(self):
         """Create a Qbittorrent instance using the configuration for qBittorrent."""
-        config = self._load_config()
+        config = self.config.copy()  # Make a copy to avoid modifying the original config
         qbittorrent_config = config["qbittorrent"]
         mapping = qbittorrent_config.pop("mapping", None)
         category = qbittorrent_config.pop("category", "murid")
@@ -88,11 +95,10 @@ class ServiceFactory:
 
     def notifier(self):
         """Create an Apprise instance for notifications or a no-op function."""
-        config = self._load_config()
-        if not config.get("apprise", None):
+        if not self.config.get("apprise", None):
             return lambda *args, **kwargs: None
         try:
-            return apprise(logger, config["apprise"])
+            return apprise(logger, self.config["apprise"])
         except Exception as e:
             logger.error("Error initializing Apprise: %s", e)
             raise SystemExit(1) from e
@@ -101,7 +107,7 @@ class ServiceFactory:
         """Create a TorrentDiscoveryService instance using the MyAnonamouse client."""
         return TorrentDiscoveryService(
             self.myanonamouse(),
-            self._load_config()["lang_codes"],
+            self.config["lang_codes"],
             self.torrent_selector(),
         )
 
@@ -119,7 +125,7 @@ class ServiceFactory:
 
     def cron_iter(self, base_time):
         """Create a croniter instance for scheduling based on the configuration."""
-        return croniter(self._load_config()["schedule"], base_time)
+        return croniter(self.config["schedule"], base_time)
 
     def sync_service(self):
         """Create a SyncService instance."""
@@ -127,7 +133,7 @@ class ServiceFactory:
 
     def torrent_selector(self):
         """Create a TorrentSelector instance."""
-        config = self._load_config()
         return TorrentSelector(
-            lang_codes=set(config["lang_codes"]), wanted_filetypes=set(config["filetypes"])
+            lang_codes=set(self.config["lang_codes"]),
+            wanted_filetypes=set(self.config["filetypes"]),
         )

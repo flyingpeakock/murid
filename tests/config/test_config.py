@@ -431,3 +431,11 @@ def test_hardcover_api_keys_must_start_with_bearer(build_config):
         ConfigError, match="Config item 'hardcover_api_keys item' must start with 'Bearer '"
     ):
         build_config(hardcover_api_keys=["not-a-bearer-token"])
+
+def test_editing_copy_does_not_modify_original(build_config):
+    config = build_config()
+    copy = config.copy()
+    copy["new_key"] = "new_value"
+
+    assert "new_key" not in config
+    assert copy["new_key"] == "new_value"

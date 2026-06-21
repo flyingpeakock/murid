@@ -35,10 +35,8 @@ def config():
     }
 
 
-def test_matcher(args, config, monkeypatch):
-    factory = ServiceFactory(args)
-
-    monkeypatch.setattr(factory, "_load_config", lambda: config)
+def test_matcher(args, config):
+    factory = ServiceFactory(args, config)
 
     matcher = factory.matcher()
 
@@ -46,11 +44,9 @@ def test_matcher(args, config, monkeypatch):
 
 
 def test_calibre(args, config, monkeypatch):
-    factory = ServiceFactory(args)
+    factory = ServiceFactory(args, config)
 
     created = Mock()
-
-    monkeypatch.setattr(factory, "_load_config", lambda: config)
 
     def fake_calibre(db, exe):
         created(db, exe)
@@ -70,9 +66,7 @@ def test_calibre(args, config, monkeypatch):
 
 
 def test_calibre_error_exits(args, config, monkeypatch):
-    factory = ServiceFactory(args)
-
-    monkeypatch.setattr(factory, "_load_config", lambda: config)
+    factory = ServiceFactory(args, config)
 
     def fail(*args):
         raise CalibreError("boom")
@@ -87,9 +81,7 @@ def test_calibre_error_exits(args, config, monkeypatch):
 
 
 def test_hardcover(args, config, monkeypatch):
-    factory = ServiceFactory(args)
-
-    monkeypatch.setattr(factory, "_load_config", lambda: config)
+    factory = ServiceFactory(args, config)
 
     created = []
 
@@ -110,9 +102,7 @@ def test_hardcover(args, config, monkeypatch):
 
 
 def test_myanonamouse(args, config, monkeypatch):
-    factory = ServiceFactory(args)
-
-    monkeypatch.setattr(factory, "_load_config", lambda: config)
+    factory = ServiceFactory(args, config)
 
     monkeypatch.setattr(
         "murid.services.service_factory.MyAnonamouse",
@@ -122,12 +112,10 @@ def test_myanonamouse(args, config, monkeypatch):
     assert factory.myanonamouse() == ("mam", "mam-cookie")
 
 
-def test_notifier_disabled(args, config, monkeypatch):
+def test_notifier_disabled(args, config):
     config.pop("apprise")
 
-    factory = ServiceFactory(args)
-
-    monkeypatch.setattr(factory, "_load_config", lambda: config)
+    factory = ServiceFactory(args, config)
 
     notify = factory.notifier()
 
@@ -136,9 +124,7 @@ def test_notifier_disabled(args, config, monkeypatch):
 
 
 def test_notifier_enabled(args, config, monkeypatch):
-    factory = ServiceFactory(args)
-
-    monkeypatch.setattr(factory, "_load_config", lambda: config)
+    factory = ServiceFactory(args, config)
 
     notify_mock = Mock()
 
@@ -151,9 +137,7 @@ def test_notifier_enabled(args, config, monkeypatch):
 
 
 def test_cron_iter(args, config, monkeypatch):
-    factory = ServiceFactory(args)
-
-    monkeypatch.setattr(factory, "_load_config", lambda: config)
+    factory = ServiceFactory(args, config)
 
     marker = object()
 
@@ -171,8 +155,8 @@ def test_cron_iter(args, config, monkeypatch):
     )
 
 
-def test_sync_service(args, monkeypatch):
-    factory = ServiceFactory(args)
+def test_sync_service(args, config, monkeypatch):
+    factory = ServiceFactory(args, config)
 
     monkeypatch.setattr(
         "murid.services.service_factory.SyncService",

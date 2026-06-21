@@ -39,6 +39,7 @@ class SyncService:
                 time.sleep(max(1, (next_run - now).total_seconds() / 2))
 
             logger.info("Starting murid cycle")
+            self.factory.reload_config()
             self.run()
             logger.info("Finished murid cycle")
             next_run = cron_iter.get_next(datetime)
