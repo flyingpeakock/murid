@@ -132,9 +132,8 @@ Options:
 Create a yaml configuration file:
 
 ```yaml
-hardcover_api_kyes:
-  - Bearer secret123
-  - Bearer secret321
+hardcover_api_keys:
+  - Bearer your-hardcover-api-key
 
 calibre_db_path: "/path/to/Calibre Library/metadata.db"
 
@@ -186,7 +185,7 @@ export MAM_ID="..."
 
 | Option                  | Description                 | Default     |
 | ----------------------- | --------------------------- | ----------- |
-| `hardcover_api_keys`    | Hardcover api keys          | required    |
+| `hardcover_api_keys`    | List of hardcover api keys  | required    |
 | `qbittorrent`           | qBittorrent connection      | required    |
 | `calibre_db_path`       | Path to Calibre metadata.db | required    |
 | `calibredb_executable`  | Path to calibredb           | `calibredb` |
