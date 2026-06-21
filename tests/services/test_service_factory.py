@@ -124,14 +124,14 @@ def test_notifier_disabled(args, config):
 
 
 def test_notifier_enabled(args, config, monkeypatch):
-    factory = ServiceFactory(args, config)
-
     notify_mock = Mock()
 
     monkeypatch.setattr(
         "murid.services.service_factory.apprise",
         lambda logger, cfg: notify_mock,
     )
+
+    factory = ServiceFactory(args, config)
 
     assert factory.notifier() is notify_mock
 

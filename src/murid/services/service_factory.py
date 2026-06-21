@@ -31,10 +31,23 @@ class ServiceFactory:
             self.config = self._load_config()
         else:
             self.config = config
+        self.notify = self._init_apprise()
 
-    def reload_config(self):
+
+    def _init_apprise(self):
+        """Initialize the Apprise notifier."""
+        if not self.config.get("apprise", None):
+            return lambda *args, **kwargs: None
+        try:
+            return apprise(logger, self.config["apprise"])
+        except Exception as e:
+            logger.error("Error initializing Apprise: %s", e)
+            raise SystemExit(1) from e
+
+    def reload(self):
         """Reload the configuration from the file."""
         self.config = self._load_config()
+        self.notify = self._init_apprise()
 
     def _load_config(self) -> dict:
         """Load configuration from a file."""
@@ -94,14 +107,8 @@ class ServiceFactory:
         return Qbittorrent(config)
 
     def notifier(self):
-        """Create an Apprise instance for notifications or a no-op function."""
-        if not self.config.get("apprise", None):
-            return lambda *args, **kwargs: None
-        try:
-            return apprise(logger, self.config["apprise"])
-        except Exception as e:
-            logger.error("Error initializing Apprise: %s", e)
-            raise SystemExit(1) from e
+        """Get the Apprise notify function."""
+        return self.notify
 
     def torrent_discovery(self):
         """Create a TorrentDiscoveryService instance using the MyAnonamouse client."""
