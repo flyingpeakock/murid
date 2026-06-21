@@ -59,11 +59,11 @@ class ServiceFactory:
             logger.error("Error initializing Calibre: %s", e)
             raise SystemExit(1) from e
 
-    def hardcover(self) -> list[Hardcover]:
+    def hardcover(self) -> set[Hardcover]:
         """Create a list of Hardcover instances for each user specified in the configuration."""
         keys = self._load_config()["hardcover_api_keys"]
         with ThreadPoolExecutor(max_workers=min(10, len(keys))) as executor:
-            hardcover_clients = list(executor.map(Hardcover, keys))
+            hardcover_clients = set(executor.map(Hardcover, keys))
         return hardcover_clients
 
     def myanonamouse(self):

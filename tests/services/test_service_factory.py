@@ -105,7 +105,7 @@ def test_hardcover(args, config, monkeypatch):
 
     result = factory.hardcover()
 
-    assert result == ["user-Bearer secret"]
+    assert result == {"user-Bearer secret"}
     assert created == ["Bearer secret"]
 
 

@@ -5,6 +5,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from itertools import chain
+from typing import Iterable
 
 from ..clients.calibre import Calibre
 from ..clients.hardcover import Hardcover
@@ -64,27 +65,27 @@ class SyncService:
         logger.info("Finished murid cycle")
 
     @staticmethod
-    def fetch_calibre_books(calibre: Calibre) -> list[Book]:
+    def fetch_calibre_books(calibre: Calibre) -> set[Book]:
         """Fetch books from the Calibre library."""
         books = calibre.get_books()
         logger.info("Feched %d books from Calibre database", len(books))
         return books
 
     @staticmethod
-    def fetch_hardcover_books(hardcover: list[Hardcover]) -> list[Book]:
+    def fetch_hardcover_books(hardcover: list[Hardcover]) -> set[Book]:
         """Fetch books from the Hardcover API."""
         with ThreadPoolExecutor(max_workers=min(10, len(hardcover))) as executor:
             results = executor.map(lambda client: client.get_books(), hardcover)
-            books = list(chain.from_iterable(results))
+            books = set(chain.from_iterable(results))
         logger.info("Fetched %d books from Hardcover API", len(books))
         return books
 
     @staticmethod
     def match_books(
-        calibre_books: list[Book],
-        hardcover_books: list[Book],
+        calibre_books: Iterable[Book],
+        hardcover_books: Iterable[Book],
         matcher: BookMatcher,
-    ) -> list[tuple[Book, Book, float]]:
+    ) -> set[tuple[Book, Book, float]]:
         """Match books from the Hardcover list against the Calibre library."""
         matches = matcher.match_books(calibre_books, hardcover_books)
         logger.debug("%d books already present in Calibre library", len(matches))
@@ -92,15 +93,15 @@ class SyncService:
 
     @staticmethod
     def process_books(
-        present_books: list[tuple[Book, Book, float]],
-        wanted_books: list[Book],
+        present_books: Iterable[tuple[Book, Book, float]],
+        wanted_books: Iterable[Book],
         torrent_discovery: TorrentDiscoveryService,
         matcher: BookMatcher,
-    ) -> list[tuple[bytes, Book]]:
+    ) -> set[tuple[bytes, Book]]:
         """Process the matched and unmatched books to find torrents for the missing ones."""
         matched_ids = {h.id for _, h, _ in present_books}
-        missing_books = [h for h in wanted_books if h.id not in matched_ids]
+        missing_books = {h for h in wanted_books if h.id not in matched_ids}
 
         if not missing_books:
-            return []
+            return set()
         return torrent_discovery.download_torrents(missing_books, matcher)

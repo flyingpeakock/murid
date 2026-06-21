@@ -83,7 +83,7 @@ def test_get_books_empty(tmp_path):
 
     books = calibre.get_books()
 
-    assert books == []
+    assert books == set()
 
 
 def test_get_books_single(tmp_path):
@@ -110,11 +110,12 @@ def test_get_books_single(tmp_path):
 
     books = calibre.get_books()
 
+    book = next(iter(books))
     assert len(books) == 1
-    assert books[0].id == 1
-    assert books[0].title == "Dune"
-    assert books[0].authors == ["Frank Herbert"]
-    assert books[0].isbn == ["1234567890"]
+    assert book.id == 1
+    assert book.title == "Dune"
+    assert book.authors == ["Frank Herbert"]
+    assert book.isbn == ["1234567890"]
 
 
 def test_multiple_authors(tmp_path):
@@ -141,8 +142,8 @@ def test_multiple_authors(tmp_path):
     )
 
     books = calibre.get_books()
-
-    assert books[0].authors == ["A1", "A2"]
+    book = next(iter(books))
+    assert book.authors == ["A1", "A2"]
 
 
 def test_run_failure(tmp_path):

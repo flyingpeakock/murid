@@ -7,6 +7,19 @@ import pytest
 from murid import TorrentDiscoveryService
 
 
+class FakeBook:
+    def __init__(self, title, authors=None, series=None, series_number=None):
+        self.title = title
+        self.authors = authors or []
+        self.series = series
+        self.series_number = series_number
+
+
+class FakeTorrent:
+    def __init__(self, book):
+        self.book = book
+
+
 @pytest.fixture
 def mam():
     return Mock()
@@ -52,8 +65,8 @@ def test_collect_downloads_filters_none():
     future2 = Future()
     future2.set_result(None)
 
-    book1 = SimpleNamespace(title="A")
-    book2 = SimpleNamespace(title="B")
+    book1 = FakeBook(title="A")
+    book2 = FakeBook(title="B")
 
     download_futures = {
         future1: book1,
@@ -62,7 +75,7 @@ def test_collect_downloads_filters_none():
 
     result = service.collect_downloads(download_futures)
 
-    assert result == [(b"file1", book1)]
+    assert result == {(b"file1", book1)}
 
 
 def test_submit_downloads_happy_path(mam, matcher):
@@ -108,7 +121,7 @@ def test_submit_downloads_rejected_by_selector(mam):
     service = TorrentDiscoveryService(mam, ["eng"], None)
     service.torrent_selector = SimpleNamespace(select=lambda *a, **k: None)
 
-    book = SimpleNamespace(title="Dune")
+    book = FakeBook(title="Dune")
     torrent = SimpleNamespace(book=SimpleNamespace())
 
     search_future = Future()

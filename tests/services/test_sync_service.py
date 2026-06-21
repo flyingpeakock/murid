@@ -6,6 +6,15 @@ import pytest
 from murid import SyncService
 
 
+class FakeBook:
+    def __init__(self, title, authors=None, series=None, series_number=None, id=1):
+        self.title = title
+        self.authors = authors or []
+        self.series = series
+        self.series_number = series_number
+        self.id = id
+
+
 @pytest.fixture
 def factory():
     return SimpleNamespace(
@@ -67,7 +76,7 @@ def test_process_books_returns_empty_when_all_matched():
         matcher,
     )
 
-    assert result == []
+    assert result == set()
 
 
 def test_run_orchestrates_pipeline(factory):
@@ -77,7 +86,7 @@ def test_run_orchestrates_pipeline(factory):
     calibre.get_books.return_value = []
 
     hardcover_client = Mock()
-    hardcover_client.get_books.return_value = [SimpleNamespace(id=1, title="Book")]
+    hardcover_client.get_books.return_value = [FakeBook(title="Book", authors=["Author"])]
 
     matcher = Mock()
     matcher.match_books.return_value = []

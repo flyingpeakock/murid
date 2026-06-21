@@ -150,7 +150,7 @@ class Hardcover:
 
         return isbns
 
-    def get_books(self) -> list[Book]:
+    def get_books(self) -> set[Book]:
         """Fetch the user's "Want to Read" books from the Hardcover API.
 
         Return them as a list of Book objects.
@@ -158,7 +158,7 @@ class Hardcover:
         data = self.fetch_data()
         items = data.get("data", {}).get("user_books", [])
 
-        books: list[Book] = []
+        books: set[Book] = set()
 
         for item in items:
             book = item.get("book", {})
@@ -171,7 +171,7 @@ class Hardcover:
             isbn = self._extract_isbn(editions)
             series, series_number = self._extract_series_info(book)
 
-            books.append(
+            books.add(
                 Book(
                     id=book.get("id"),
                     title=book.get("title"),

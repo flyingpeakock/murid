@@ -56,7 +56,7 @@ class Calibre:
             logger.error("Error connecting to Calibre database: %s", e)
             raise CalibreError(f"Error connecting to Calibre database: {e}") from e
 
-    def get_books(self) -> list[Book]:
+    def get_books(self) -> set[Book]:
         """Retrieve a list of books from the Calibre database."""
         try:
             conn = self.connect(f"file:{self.db_path}?mode=ro", uri=True)
@@ -90,7 +90,7 @@ class Calibre:
 
         rows = cursor.fetchall()
         conn.close()
-        books = [
+        books = {
             Book(
                 id=row["id"],
                 title=row["title"],
@@ -100,7 +100,7 @@ class Calibre:
                 source="calibre",
             )
             for row in rows
-        ]
+        }
         return books
 
     def add_book(self, book: Book, path: str) -> None:

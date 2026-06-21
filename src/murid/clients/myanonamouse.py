@@ -55,7 +55,7 @@ class MyAnonamouse:
             self._last_request_time = time.monotonic()
             return self.session.request(method, url, **kwargs)
 
-    def search(self, query: MyAnonamouseQuery) -> list[Torrent]:
+    def search(self, query: MyAnonamouseQuery) -> set[Torrent]:
         """Search for torrents on MyAnonamouse matching the specified criteria."""
 
         payload = {
@@ -89,17 +89,17 @@ class MyAnonamouse:
             response.raise_for_status()
         except requests.RequestException as e:
             logger.error("Error searching MyAnonamouse: %s", e)
-            return []
+            return set()
 
         data = response.json()
 
         if "error" in data:
-            return []
+            return set()
 
         if "data" not in data:
             raise MAMError(f"Unexpected response: {data}")
 
-        return [self._parse_torrent(row) for row in data["data"][:100]]
+        return {self._parse_torrent(row) for row in data["data"][:100]}
 
     @staticmethod
     def _parse_torrent(data: dict[str, Any]) -> Torrent:
@@ -135,7 +135,7 @@ class MyAnonamouse:
             raw=data,
         )
 
-    def search_ebook(self, title: str, author: str | None = None) -> list[Torrent]:
+    def search_ebook(self, title: str, author: str | None = None) -> set[Torrent]:
         """Search for ebooks on MyAnonamouse matching the specified title and optional author."""
         query = title
         if author:

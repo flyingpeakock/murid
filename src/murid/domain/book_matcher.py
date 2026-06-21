@@ -2,6 +2,7 @@
 
 import logging
 import re
+from typing import Iterable
 
 from rapidfuzz import fuzz
 
@@ -105,17 +106,17 @@ class BookMatcher:
 
     def match_books(
         self,
-        books_a: list[Book],
-        books_b: list[Book],
-    ) -> list[tuple[Book, Book, float]]:
+        books_a: Iterable[Book],
+        books_b: Iterable[Book],
+    ) -> set[tuple[Book, Book, float]]:
         """Match books from two lists and return a list of matched pairs and their similarity."""
 
-        matches = []
+        matches = set()
 
         for book_b in books_b:
             match, score = self.best_match(book_b, books_a)
             if match and score >= self.threshold:
-                matches.append((match, book_b, score))
+                matches.add((match, book_b, score))
             else:
                 logger.debug("No match for %s in calibre db. Best similarity: %.2f", book_b, score)
 

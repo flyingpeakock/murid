@@ -98,16 +98,17 @@ def test_search_success(mam):
     results = mam.search(MyAnonamouseQuery(text="Dune"))
 
     assert len(results) == 1
-    assert results[0].book.title == "Dune"
+    result = next(iter(results))
+    assert result.book.title == "Dune"
 
 
-def test_search_request_error_returns_empty_list(mam):
+def test_search_request_error_returns_empty_set(mam):
     def boom(*args, **kwargs):
         raise requests.RequestException("boom")
 
     mam.session.post = boom
 
-    assert mam.search(MyAnonamouseQuery(text="Dune")) == []
+    assert mam.search(MyAnonamouseQuery(text="Dune")) == set()
 
 
 def test_search_missing_data_raises(mam):

@@ -230,7 +230,7 @@ def test_match_books():
 
     assert len(matches) == 1
 
-    a, b, score = matches[0]
+    a, b, score = next(iter(matches))
 
     assert a.id == 1
     assert b.id == 2
@@ -255,7 +255,7 @@ def test_match_books_no_match():
         ],
     )
 
-    assert matches == []
+    assert matches == set()
 
 
 def test_match_books_threshold():
@@ -266,7 +266,7 @@ def test_match_books_threshold():
         [make_book(title="Dune Messiah")],
     )
 
-    assert matches == []
+    assert matches == set()
 
 
 def test_similarity_ignores_none_isbn_values():

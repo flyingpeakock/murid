@@ -1,6 +1,7 @@
 """Class for selecting the best matching torrent for a given book"""
 
 import logging
+from typing import Iterable
 
 from .book import Book
 from .book_matcher import BookMatcher
@@ -23,14 +24,16 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
             wanted_filetypes = {"epub", "mobi", "azw3"}
         self.wanted_filetypes = wanted_filetypes
 
-    def select(self, book: Book, torrents: list[Torrent], matcher: BookMatcher) -> Torrent | None:
+    def select(
+        self, book: Book, torrents: Iterable[Torrent], matcher: BookMatcher
+    ) -> Torrent | None:
         """Select the best matching torrent for the given book from the list of torrents"""
-        torrent_books = [
+        torrent_books = {
             t.book
             for t in torrents
             if (t.language is None or t.language in self.lang_codes)
             and self.wanted_filetypes.intersection(t.file_types or [])
-        ]
+        }
 
         if not torrent_books:
             logger.debug("No torrents for %s passed language and file type filters", book)

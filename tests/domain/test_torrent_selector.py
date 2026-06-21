@@ -198,4 +198,7 @@ def test_returns_matching_torrent():
         matcher,
     )
 
+    print(result)
+    print(torrent2)
+
     assert result is torrent2

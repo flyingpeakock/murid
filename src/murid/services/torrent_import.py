@@ -3,7 +3,7 @@
 import logging
 import time
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Iterable
 
 import apprise
 
@@ -37,7 +37,7 @@ class TorrentImportService:
         self.dry_run = config.dry_run
         self.matcher = config.matcher
 
-    def import_torrents(self, torrent_files: list[tuple[bytes, Book]]) -> None:
+    def import_torrents(self, torrent_files: Iterable[tuple[bytes, Book]]) -> None:
         """Import the given torrent files into the torrent client and track their completion."""
         if not torrent_files:
             logger.info("No torrents to import")

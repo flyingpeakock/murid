@@ -87,7 +87,7 @@ def test_get_books_empty(hardcover, caplog):
     with caplog.at_level(logging.WARNING):
         books = hardcover.get_books()
 
-    assert books == []
+    assert books == set()
     assert "No books found" in caplog.text
 
 
@@ -113,8 +113,7 @@ def test_get_books_single_book(hardcover):
 
     assert len(books) == 1
 
-    book = books[0]
-
+    book = next(iter(books))
     assert book.id == 1
     assert book.title == "Dune"
     assert book.authors == ["Frank Herbert"]
@@ -143,8 +142,8 @@ def test_get_books_multiple_authors(hardcover):
     )
 
     books = hardcover.get_books()
-
-    assert books[0].authors == [
+    book = next(iter(books))
+    assert book.authors == [
         "Neil Gaiman",
         "Terry Pratchett",
     ]
@@ -172,8 +171,8 @@ def test_get_books_ignores_missing_author(hardcover):
     )
 
     books = hardcover.get_books()
-
-    assert books[0].authors == ["Real Author"]
+    book = next(iter(books))
+    assert book.authors == ["Real Author"]
 
 
 def test_get_books_without_isbn(hardcover):
@@ -195,5 +194,5 @@ def test_get_books_without_isbn(hardcover):
     )
 
     books = hardcover.get_books()
-
-    assert books[0].isbn == []
+    book = next(iter(books))
+    assert book.isbn == []

@@ -2,6 +2,7 @@
 
 import logging
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from typing import Iterable
 
 from ..clients.myanonamouse import MyAnonamouse
 from ..domain.book import Book
@@ -26,7 +27,7 @@ class TorrentDiscoveryService:
         self.lang_codes = set(lang_codes)
         self.torrent_selector = torrent_selector
 
-    def find_torrents(self, book: Book) -> tuple[Book, list[Torrent]]:
+    def find_torrents(self, book: Book) -> tuple[Book, set[Torrent]]:
         """Find torrents for a given book."""
         mam_books = self.mam.search_ebook(book.title, book.authors[0] if book.authors else None)
 
@@ -71,21 +72,21 @@ class TorrentDiscoveryService:
     def collect_downloads(
         self,
         download_futures: dict[Future, Book],
-    ) -> list[tuple[bytes, Book]]:
+    ) -> set[tuple[bytes, Book]]:
         """Collect the downloaded torrent data once the download futures complete."""
 
-        torrent_files = []
+        torrent_files = set()
         for future in as_completed(download_futures):
             book = download_futures[future]
             torrent_file = future.result()
             if torrent_file:
-                torrent_files.append((torrent_file, book))
+                torrent_files.add((torrent_file, book))
 
         return torrent_files
 
     def download_torrents(
-        self, books: list[Book], matcher: BookMatcher
-    ) -> list[tuple[bytes, Book]]:
+        self, books: Iterable[Book], matcher: BookMatcher
+    ) -> set[tuple[bytes, Book]]:
         """Find and download torrents for a list of books."""
         logger.info(
             "Searching for torrents for %d book%s", len(books), "s" if len(books) != 1 else ""
@@ -96,5 +97,5 @@ class TorrentDiscoveryService:
             download_futures = self.submit_downloads(executor, search_futures, matcher)
 
             if not download_futures:
-                return []
+                return set()
             return self.collect_downloads(download_futures)
