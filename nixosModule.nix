@@ -185,6 +185,11 @@ in {
               type = lib.types.listOf lib.types.int;
               default = [];
             };
+
+            torrent_timeout_seconds = lib.mkOption {
+              description = "Number of seconds before a torrent download is considered timed out";
+              default = 1800; # 30 minutes
+            };
           };
         };
       };

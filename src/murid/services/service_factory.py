@@ -14,6 +14,7 @@ from ..config.config import Config, ConfigError
 from ..domain.book_matcher import BookMatcher
 from ..domain.torrent_selector import TorrentSelector
 from ..notifications.apprise import init_apprise as apprise
+from .retry_service import RetryService
 from .sync_service import SyncService
 from .torrent_discovery import TorrentDiscoveryService
 from .torrent_import import TorrentImportConfig, TorrentImportService
@@ -91,8 +92,10 @@ class ServiceFactory:
 
     def qbittorrent(self):
         """Create a Qbittorrent instance using the configuration for qBittorrent."""
-        config = self.config.copy()  # Make a copy to avoid modifying the original config
-        qbittorrent_config = config["qbittorrent"]
+        # config = self.config.copy()  # Make a copy to avoid modifying the original config
+        qbittorrent_config = self.config[
+            "qbittorrent"
+        ].copy()  # Make a copy to avoid modifying the original config
         mapping = qbittorrent_config.pop("mapping", None)
         category = qbittorrent_config.pop("category", "murid")
         qbittorrent_config["VERIFY_WEBUI_CERTIFICATE"] = qbittorrent_config.pop("verify_cert", True)
@@ -126,6 +129,7 @@ class ServiceFactory:
                 matcher=self.matcher(),
                 notify=self.notifier(),
                 dry_run=self.args.dry_run,
+                timeout=self.config["torrent_timeout_seconds"],
             )
         )
 
@@ -143,4 +147,12 @@ class ServiceFactory:
             lang_codes=set(self.config["lang_codes"]),
             wanted_filetypes=set(self.config["filetypes"]),
             blacklist=set(self.config["blacklisted_torrent_ids"]),
+        )
+
+    def retry_service(self):
+        """Create a RetryService instance."""
+        return RetryService(
+            self.qbittorrent(),
+            self.torrent_import(),
+            self.myanonamouse(),
         )

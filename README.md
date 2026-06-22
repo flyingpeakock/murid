@@ -183,20 +183,21 @@ export MAM_ID="..."
 
 ## Configuration Reference
 
-| Option                  | Description                 | Default     |
-| ----------------------- | --------------------------- | ----------- |
-| `hardcover_api_keys`    | List of hardcover api keys  | required    |
-| `qbittorrent`           | qBittorrent connection      | required    |
-| `calibre_db_path`       | Path to Calibre metadata.db | required    |
-| `calibredb_executable`  | Path to calibredb           | `calibredb` |
-| `mam_id`                | MyAnonamouse session cookie | required    |
-| `matcher_threshold`     | Fuzzy match sensitivity     | `0.7`       |
-| `lang_codes`            | Allowed languages           | `["ENG"]`   |
-| `schedule`              | Cron expression             | `0 * * * *` |
-| `redact_sensitive_data` | Hide secrets in logs        | `true`      |
-| `apprise`               | Notifications via [Apprise](https://appriseit.com/getting-started/configuration/)   | `None`      |
-| `filetypes`             | List of filetypes to support | `["epub", "mobi", "azw3", "azw"]` |
-| `blacklisted_torrent_ids`| List of MaM torrent id's to blacklist | `[]` |
+| Option                    | Description                           | Default     |
+| ------------------------- | ------------------------------------- | ----------- |
+| `hardcover_api_keys`      | List of hardcover api keys            | required    |
+| `qbittorrent`             | qBittorrent connection                | required    |
+| `calibre_db_path`         | Path to Calibre metadata.db           | required    |
+| `calibredb_executable`    | Path to calibredb                     | `calibredb` |
+| `mam_id`                  | MyAnonamouse session cookie           | required    |
+| `matcher_threshold`       | Fuzzy match sensitivity               | `0.7`       |
+| `lang_codes`              | Allowed languages                     | `["ENG"]`   |
+| `schedule`                | Cron expression                       | `0 * * * *` |
+| `redact_sensitive_data`   | Hide secrets in logs                  | `true`      |
+| `apprise`                 | Notifications via [Apprise](https://appriseit.com/getting-started/configuration/)   | `None`      |
+| `filetypes`               | List of filetypes to support          | `["epub", "mobi", "azw3", "azw"]` |
+| `blacklisted_torrent_ids` | List of MaM torrent id's to blacklist | `[]` |
+| `torrent_timeout_seconds` | Seconds before a torrent is considered to have timed out | `1800` |
 
 ### qBittorrent
 

@@ -51,6 +51,7 @@ _defaults = {
         "azw",
     ],
     "blacklisted_torrent_ids": [],
+    "torrent_timeout_seconds": 1800,
 }
 
 
@@ -154,6 +155,7 @@ class Config:
         self._ensure_cron(self.get("schedule"))
         self._ensure_filetypes(self.get("filetypes"))
         self._ensure_blacklisted_torrent_ids(self.get("blacklisted_torrent_ids"))
+        self._ensure_type(self.get("torrent_timeout_seconds"), int, "torrent_timeout_seconds")
 
         self._check_extra_keys(self._config)
 

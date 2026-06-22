@@ -457,3 +457,8 @@ def test_blacklisted_torrent_ids_list_items_must_be_int(build_config):
 def test_blacklisted_torrent_ids_can_be_set(build_config):
     config = build_config(blacklisted_torrent_ids=[123, 456])
     assert config.get("blacklisted_torrent_ids") == [123, 456]
+
+
+def test_torrent_timeout_seconds_must_be_int(build_config):
+    with pytest.raises(ConfigError, match="Config item 'torrent_timeout_seconds' must be an int"):
+        build_config(torrent_timeout_seconds="not-an-int")

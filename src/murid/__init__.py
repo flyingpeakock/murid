@@ -10,6 +10,7 @@ from .domain.book_matcher import BookMatcher
 from .domain.torrent import Torrent, TorrentMetadata
 from .domain.torrent_selector import TorrentSelector
 from .notifications.apprise import AppriseHandler, init_apprise, send_test_notification
+from .services.retry_service import RetryService
 from .services.service_factory import ServiceFactory
 from .services.sync_service import SyncService
 from .services.torrent_discovery import TorrentDiscoveryService
@@ -35,6 +36,7 @@ __all__ = [
     "MAMError",
     "MyAnonamouse",
     "MyAnonamouseQuery",
+    "RetryService",
     "send_test_notification",
     "ServiceFactory",
     "SyncService",

@@ -23,6 +23,7 @@ class MyAnonamouseQuery:
     categories: list[int] | None = None
     search_fields: list[str] | None = None
     main_categories: list[int] | None = None
+    id: int | None = None
 
 
 class MAMError(Exception):
@@ -73,12 +74,13 @@ class MyAnonamouse:
                 "searchIn": "torrents",
                 "sortType": "default",
                 "startNumber": str(0),
+                "id": str(query.id) if query.id is not None else "",
             },
             "dlLink": "true",
             "isbn": "true",
         }
 
-        logger.debug("Searching MyAnonamouse for %s", query.text)
+        logger.debug("Searching MyAnonamouse for %s", query.text if query.text else str(query.id))
         try:
             response = self.session.post(
                 self.SEARCH_URL,

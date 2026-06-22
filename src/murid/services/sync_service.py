@@ -46,6 +46,9 @@ class SyncService:
 
     def run(self) -> None:
         """Run the synchronization process."""
+        retry_service = self.factory.retry_service()
+        retry_service.retry_torrents()
+
         calibre = self.factory.calibre()
         calibre_books = self.fetch_calibre_books(calibre)
 

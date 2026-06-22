@@ -1,3 +1,4 @@
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -102,7 +103,7 @@ def test_calibre_error_adds_tag(service, torrent_client, calibre, book):
 
     service.process_torrent("abc123", book)
 
-    torrent_client.add_tag.assert_called_once_with("abc123", "import_failed")
+    torrent_client.add_tag.assert_called_once_with("abc123", "murid_import_failed")
 
 
 def test_success_triggers_notification(service, torrent_client, calibre, notify, book):
@@ -123,7 +124,7 @@ def test_failed_verification_adds_tag(service, torrent_client, calibre, book):
 
     service.process_torrent("abc123", book)
 
-    torrent_client.add_tag.assert_called_once_with("abc123", "import_failed")
+    torrent_client.add_tag.assert_called_once_with("abc123", "murid_import_failed")
 
 
 def test_process_torrent_no_retry(service, torrent_client, calibre, book):
@@ -134,3 +135,84 @@ def test_process_torrent_no_retry(service, torrent_client, calibre, book):
     assert result is False
     assert torrent_client.get_completed_path.call_count == 1
     calibre.add_book.assert_not_called()
+
+
+def test_is_timeout_returns_false_before_timeout(service):
+    service.timeout = 1800
+
+    result = service._is_timeout(
+        start_time=time.time(),
+        pending={"abc": "book"},
+    )
+
+    assert result is False
+
+
+def test_is_timeout_returns_true_after_timeout(
+    service,
+    torrent_client,
+    notify,
+):
+    service.timeout = 1
+
+    pending = {
+        "abc123": "Dune",
+    }
+
+    result = service._is_timeout(
+        start_time=time.time() - 10,
+        pending=pending,
+    )
+
+    assert result is True
+
+    notify.assert_called_once()
+
+    torrent_client.add_tag.assert_called_once_with(
+        "abc123",
+        "murid_timeout",
+    )
+
+
+def test_is_timeout_tags_all_pending_torrents(
+    service,
+    torrent_client,
+    notify,
+):
+    service.timeout = 1
+
+    pending = {
+        "a": "Book A",
+        "b": "Book B",
+        "c": "Book C",
+    }
+
+    service._is_timeout(
+        start_time=time.time() - 10,
+        pending=pending,
+    )
+
+    assert torrent_client.add_tag.call_count == 3
+
+    torrent_client.add_tag.assert_any_call("a", "murid_timeout")
+    torrent_client.add_tag.assert_any_call("b", "murid_timeout")
+    torrent_client.add_tag.assert_any_call("c", "murid_timeout")
+
+    assert notify.call_count == 3
+
+
+def test_timeout_notification_contains_timeout_value(
+    service,
+    torrent_client,
+    notify,
+):
+    service.timeout = 123
+
+    service._is_timeout(
+        start_time=time.time() - 1000,
+        pending={"abc": "Dune"},
+    )
+
+    _, kwargs = notify.call_args
+
+    assert "123 seconds" in kwargs["body"]
