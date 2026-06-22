@@ -23,3 +23,11 @@ class TorrentClient(ABC):
     @abstractmethod
     def add_tag(self, torrent_id: str, tag: str) -> None:
         """Add a tag to a torrent by its ID."""
+
+    @abstractmethod
+    def remove_tag(self, torrent_id: str, tag: str) -> None:
+        """Remove a tag from a torrent by its ID."""
+
+    @abstractmethod
+    def get_torrents_with_tag(self, tag: str) -> dict:
+        """Get a list of torrent ID's that have the specified tag"""

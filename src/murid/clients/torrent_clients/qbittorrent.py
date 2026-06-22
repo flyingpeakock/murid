@@ -102,7 +102,7 @@ class Qbittorrent(TorrentClient):
         self.client.torrents_remove_tags(tags=tag, torrent_hashes=torrent_id)
 
     def get_torrents_with_tag(self, tag: str) -> dict:
-        """Get a list of torrent IDs and MaM IDs that have the specified tag."""
+        """Get a list of torrent IDs that have the specified tag."""
         torrents = [
             t for t in self.client.torrents_info(tags=tag) if tag in (t.tags or "").split(", ")
         ]
