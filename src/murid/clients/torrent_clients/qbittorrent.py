@@ -96,3 +96,14 @@ class Qbittorrent(TorrentClient):
     def add_tag(self, torrent_id: str, tag: str) -> None:
         """Add a tag to a torrent by its ID."""
         self.client.torrents_add_tags(tags=tag, torrent_hashes=torrent_id)
+
+    def remove_tag(self, torrent_id: str, tag: str) -> None:
+        """Remove a tag from a torrent by its ID."""
+        self.client.torrents_remove_tags(tags=tag, torrent_hashes=torrent_id)
+
+    def get_torrents_with_tag(self, tag: str) -> dict:
+        """Get a list of torrent IDs and MaM IDs that have the specified tag."""
+        torrents = [
+            t for t in self.client.torrents_info(tags=tag) if tag in (t.tags or "").split(", ")
+        ]
+        return torrents

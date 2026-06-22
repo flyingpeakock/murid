@@ -24,6 +24,7 @@ def factory():
         matcher=Mock(),
         torrent_discovery=Mock(),
         torrent_import=Mock(),
+        retry_service=Mock(),
     )
 
 
@@ -98,11 +99,14 @@ def test_run_orchestrates_pipeline(factory):
 
     torrent_import = Mock()
 
+    retry_service = Mock()
+
     factory.calibre.return_value = calibre
     factory.hardcover.return_value = [hardcover_client]
     factory.matcher.return_value = matcher
     factory.torrent_discovery.return_value = torrent_discovery
     factory.torrent_import.return_value = torrent_import
+    factory.retry_service.return_value = retry_service
 
     service.run()
 
@@ -111,6 +115,7 @@ def test_run_orchestrates_pipeline(factory):
     factory.matcher.assert_called_once()
     factory.torrent_discovery.assert_called_once()
     factory.torrent_import.assert_called_once()
+    factory.retry_service.assert_called_once()
 
     torrent_import.import_torrents.assert_called_once()
 
