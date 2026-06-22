@@ -1,0 +1,79 @@
+# Murid Configuration
+
+# One or more Hardcover API tokens.
+# Must start with "Bearer "
+hardcover_api_keys:
+  - "Bearer YOUR_HARDCOVER_TOKEN"
+
+# Redact secrets from logs and config dumps
+redact_sensitive_data: true
+
+# Path to your Calibre metadata.db
+calibre_db_path: "/path/to/calibre/metadata.db"
+
+# Path to calibredb executable (or just "calibredb" if in PATH)
+calibredb_executable: "calibredb"
+
+# Match confidence threshold (0.0 - 1.0)
+matcher_threshold: 0.7
+
+# MyAnonamouse cookie
+mam_id: !ENV MAM_ID
+
+# Preferred language codes when searching
+lang_codes:
+  - "ENG"
+
+# qBittorrent connection settings
+qbittorrent:
+  host: "localhost"
+  port: 8080
+  username: "admin"
+  password: "changeme"
+
+  # Verify TLS certificates
+  verify_cert: true
+
+  # Category assigned to torrents added by Murid
+  category: "murid"
+
+  # Optional path mapping when qBittorrent runs in a different environment
+  # (e.g. Docker container)
+  mapping:
+    qbit_path: null
+    murid_path: null
+
+    # Example:
+    # qbit_path: "/downloads"
+    # murid_path: "/mnt/downloads"
+
+# Cron schedule for automatic runs
+# Default: every hour
+schedule: "0 * * * *"
+
+# Optional Apprise notification URLs
+# Set to null to disable notifications
+apprise: null
+
+# Example:
+# apprise:
+#   - "discord://webhook_id/webhook_token"
+#   - "telegram://bot_token/chat_id"
+
+# Accepted ebook formats
+filetypes:
+  - epub
+  - mobi
+  - azw3
+  - azw
+
+# Torrent IDs that should never be processed
+blacklisted_torrent_ids: []
+
+# Example:
+# blacklisted_torrent_ids:
+#   - 12345
+#   - 67890
+
+# Maximum time to wait for a torrent to complete (seconds)
+torrent_timeout_seconds: 1800
