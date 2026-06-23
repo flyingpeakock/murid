@@ -42,7 +42,7 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
         }
 
         if not torrent_books:
-            logger.debug("No torrents for %s passed language and file type filters", book)
+            logger.info("No torrents for %s passed language and file type filters", book)
             return None
 
         best_match, score = matcher.best_match(book, torrent_books)
