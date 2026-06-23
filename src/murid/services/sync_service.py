@@ -70,7 +70,7 @@ class SyncService:
     def fetch_calibre_books(calibre: Calibre) -> set[Book]:
         """Fetch books from the Calibre library."""
         books = calibre.get_books()
-        logger.info("Feched %d books from Calibre database", len(books))
+        logger.info("Fetched %d books from Calibre database", len(books))
         return books
 
     @staticmethod
