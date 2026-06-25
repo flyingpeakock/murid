@@ -155,10 +155,13 @@ class Hardcover:
 
         Return them as a list of Book objects.
         """
-        data = self.fetch_data()
-        items = data.get("data", {}).get("user_books", [])
-
         books: set[Book] = set()
+
+        try:
+            data = self.fetch_data()
+            items = data.get("data", {}).get("user_books", [])
+        except requests.RequestException:
+            return books
 
         for item in items:
             book = item.get("book", {})
