@@ -8,7 +8,7 @@ from itertools import chain
 from typing import Iterable
 
 from ..clients.calibre import Calibre
-from ..clients.hardcover import Hardcover
+from ..clients.hardcover import Hardcover, HardcoverError
 from ..domain.book import Book
 from ..domain.book_matcher import BookMatcher
 from .torrent_discovery import TorrentDiscoveryService
@@ -52,7 +52,11 @@ class SyncService:
         calibre = self.factory.calibre()
         calibre_books = self.fetch_calibre_books(calibre)
 
-        hardcover = self.factory.hardcover()
+        try:
+            hardcover = self.factory.hardcover()
+        except HardcoverError as e:
+            logger.error("Failed to initialize Hardcover client: %s", e)
+            return
         hardcover_books = self.fetch_hardcover_books(hardcover)
 
         matcher = self.factory.matcher()
