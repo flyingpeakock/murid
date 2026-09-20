@@ -85,7 +85,7 @@ class MyAnonamouse:
             response = self.session.post(
                 self.SEARCH_URL,
                 json=payload,
-                timeout=30,
+                timeout=120,
             )
 
             response.raise_for_status()
@@ -161,7 +161,7 @@ class MyAnonamouse:
         """Download the torrent file for the specified torrent."""
         try:
             response = self._request(
-                "GET", f"{self.DOWNLOAD_URL}/?tid={torrent.book.id}", timeout=30
+                "GET", f"{self.DOWNLOAD_URL}/?tid={torrent.book.id}", timeout=120
             )
             response.raise_for_status()
             logger.debug("Torrent for %s downloaded successfully", torrent.book)
