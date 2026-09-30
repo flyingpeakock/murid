@@ -227,11 +227,7 @@ in {
         server_url_not_null = cfg.config.calibre.server_url != null;
       in [
         {
-          assertion = cfg.config.calibre.library_path != null || cfg.config.calibre.server_url != null;
-          message = "Either calibre.library_path or calibre.server_url must be set in the murid configuration";
-        }
-        {
-          assertion = library_path_not_null && server_url_not_null;
+          assertion = library_path_not_null != server_url_not_null;
           message = "Only one of calibre.library_path or calibre.server_url can be set in the murid configuration";
         }
       ];
