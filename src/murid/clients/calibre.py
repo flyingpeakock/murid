@@ -75,7 +75,10 @@ class Calibre:
         try:
             data = json.loads(response.stdout)
         except json.JSONDecodeError as e:
-            logger.error("Error decoding JSON response from Calibre: %s", e)
+            logger.error("JSON error: %s", e)
+            logger.error("stdout length: %d", len(response.stdout))
+            logger.error("stdout tail: %r", response.stdout[-500:])
+            logger.error("at error position: %r", response.stdout[e.pos : e.pos + 500])
             raise CalibreError(f"Error decoding JSON response from Calibre: {e}") from e
         books = {
             Book(
