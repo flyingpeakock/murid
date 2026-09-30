@@ -1,4 +1,3 @@
-from pathlib import Path
 
 import pytest
 
@@ -11,7 +10,7 @@ class Result:
 
 
 def test_init_success(tmp_path):
-    db = tmp_path / "calibre.db"
+    db = tmp_path
 
     calibre = Calibre(
         CalibreConfig(
@@ -25,7 +24,7 @@ def test_init_success(tmp_path):
 
 
 def test_missing_executable(tmp_path):
-    db = tmp_path / "calibre.db"
+    db = tmp_path
 
     def fake_run(*args, **kwargs):
         raise FileNotFoundError("calibredb not found")
@@ -35,7 +34,7 @@ def test_missing_executable(tmp_path):
 
 
 def test_get_books_empty(tmp_path):
-    db = tmp_path / "calibre.db"
+    db = tmp_path
 
     calibre = Calibre(
         CalibreConfig(
@@ -51,7 +50,7 @@ def test_get_books_empty(tmp_path):
 
 
 def test_get_books_single(tmp_path):
-    db = Path("calibre.db")
+    db = tmp_path
 
     calibre = Calibre(
         CalibreConfig(
@@ -73,7 +72,7 @@ def test_get_books_single(tmp_path):
 
 
 def test_run_failure(tmp_path):
-    db = tmp_path / "calibre.db"
+    db = tmp_path
 
     def boom(*args, **kwargs):
         raise FileNotFoundError()
@@ -130,7 +129,7 @@ def test_add_book(tmp_path):
 
 
 def test_add_book_multiple_authors(tmp_path):
-    db = tmp_path / "calibre.db"
+    db = tmp_path
 
     calls = []
 
@@ -162,7 +161,7 @@ def test_add_book_multiple_authors(tmp_path):
 
 
 def test_add_book_failure(tmp_path):
-    db = tmp_path / "calibre.db"
+    db = tmp_path
 
     call_count = 0
 
