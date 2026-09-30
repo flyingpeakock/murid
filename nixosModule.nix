@@ -147,12 +147,6 @@ in {
               default = true;
             };
 
-            calibredb_executable = lib.mkOption {
-              description = "Path to the calibredb executable";
-              type = lib.types.str;
-              default = "${pkgs.calibre}/bin/calibredb";
-            };
-
             matcher_threshold = lib.mkOption {
               description = "Threshold for the matcher to consider a match valid (between 0 and 1)";
               type = lib.types.float;
