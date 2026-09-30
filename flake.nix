@@ -32,7 +32,7 @@
         }
         // {
           pname = "murid";
-          version = "0.3.0";
+          version = "0.4.0";
 
           nativeCheckInputs = [
             pkgs.python3Packages.pytestCheckHook
