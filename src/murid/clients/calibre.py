@@ -1,9 +1,10 @@
 """Module for interacting with a Calibre library database."""
 
+import json
 import logging
 import os
-import sqlite3
 import subprocess
+from dataclasses import dataclass
 
 from ..domain.book import Book
 
@@ -14,107 +15,85 @@ class CalibreError(Exception):
     """Custom exception for Calibre-related errors."""
 
 
+@dataclass
+class CalibreConfig:
+    """Configuration for the Calibre client."""
+
+    executable: str
+    library_path: str | None = None
+    server_url: str | None = None
+    server_username: str | None = None
+    server_password: str | None = None
+
+
 class Calibre:
     """Class for interacting with a Calibre library database."""
 
-    def __init__(
-        self,
-        db_path: str,
-        db_executable: str = "calibredb",
-        run=subprocess.run,
-        connect=sqlite3.connect,
-    ) -> None:
-        """Initialize the Calibre class with the path to the database and the executable."""
-        self.db_path = db_path
-        self.db_executable = db_executable
-        self.library_path = os.path.dirname(db_path)
+    def __init__(self, config: CalibreConfig, run=subprocess.run) -> None:
+        """Initialize the Calibre client."""
+        self.config = config
         self.run = run
-        self.connect = connect
         self.validate()
 
     def validate(self) -> None:
         """Validate that the Calibre executable is available and that the database is accessible."""
         try:
             self.run(
-                [self.db_executable, "--version"],
+                [self.config.executable, "--version"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 check=True,
             )
         except FileNotFoundError as e:
-            logger.error("Calibre executable not found: %s", self.db_executable)
-            raise CalibreError(f"Calibre executable not found: {self.db_executable}") from e
+            logger.error("Calibre executable not found: %s", self.config.executable)
+            raise CalibreError(f"Calibre executable not found: {self.config.executable}") from e
         except subprocess.CalledProcessError as e:
             logger.error("Error running Calibre executable: %s", e)
             raise CalibreError(f"Error running Calibre executable: {e}") from e
 
-        try:
-            conn = self.connect(f"file:{self.db_path}?mode=ro", uri=True)
-            conn.close()
-        except Exception as e:
-            logger.error("Error connecting to Calibre database: %s", e)
-            raise CalibreError(f"Error connecting to Calibre database: {e}") from e
-
     def get_books(self) -> set[Book]:
         """Retrieve a list of books from the Calibre database."""
+        args = self._calibredb_args(
+            "list",
+            "--for-machine",
+            "--fields",
+            "id,title,authors,isbn",
+        )
         try:
-            conn = self.connect(f"file:{self.db_path}?mode=ro", uri=True)
-            conn.row_factory = sqlite3.Row
-        except Exception as e:
-            logger.error("Error connecting to Calibre database: %s", e)
-            raise CalibreError(f"Error connecting to Calibre database: {e}") from e
-        cursor = conn.cursor()
-        query = """
-            SELECT
-                b.id,
-                b.title,
-                GROUP_CONCAT(a.name, ', ') AS authors,
-                i.val AS isbn
-            FROM books b
-            LEFT JOIN books_authors_link bal
-                ON b.id = bal.book
-            LEFT JOIN authors a
-                ON bal.author = a.id
-            LEFT JOIN identifiers i
-                ON b.id = i.book
-                AND i.type = 'isbn'
-            GROUP BY b.id
-            ORDER BY b.title;
-        """
-        try:
-            cursor.execute(query)
-        except Exception as e:
-            logger.error("Error executing query on Calibre database: %s", e)
-            raise
+            response = self.run(
+                args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.error("Error retrieving books from Calibre server: %s", e.stderr)
+            raise CalibreError(f"Error retrieving books from Calibre server: {e.stderr}") from e
 
-        rows = cursor.fetchall()
-        conn.close()
+        try:
+            data = json.loads(response.stdout)
+        except json.JSONDecodeError as e:
+            logger.error("Error decoding JSON response from Calibre: %s", e)
+            raise CalibreError(f"Error decoding JSON response from Calibre: {e}") from e
         books = {
             Book(
-                id=row["id"],
-                title=row["title"],
-                # authors=row["authors"],
-                authors=[a.strip() for a in row["authors"].split(",")] if row["authors"] else [],
-                isbn=[row["isbn"]],
+                id=book["id"],
+                title=book["title"],
+                authors=[a.strip() for a in book["authors"].split(",")] if book["authors"] else [],
+                isbn=[book.get("isbn")] if book.get("isbn") else [],
                 source="calibre",
             )
-            for row in rows
+            for book in data
         }
         return books
 
     def add_book(self, book: Book, path: str) -> None:
         """Add a book to the Calibre library using the calibredb command-line tool."""
-        args = [
-            self.db_executable,
-            "add",
-            "--with-library",
-            self.library_path,
-            "--title",
-            book.title,
-            "--authors",
-            ", ".join(book.authors),
-        ]
+        args = self._calibredb_args(
+            "add", "--title", book.title, "--authors", ", ".join(book.authors)
+        )
 
         if os.path.isdir(path):
             args.extend(["--recurse", "--one-book-per-directory"])
@@ -155,3 +134,27 @@ class Calibre:
             return True
         logger.debug("Book %s does not exist in Calibre. Best similarity: %.2f", book, score)
         return False
+
+    def _calibredb_args(self, *args: str) -> list[str]:
+        """Construct the command-line arguments for calibredb."""
+        if self.config.library_path:
+            library = self.config.library_path
+        elif self.config.server_url:
+            library = self.config.server_url
+        else:
+            raise CalibreError(
+                "Calibre requires either a library path or a server URL to be specified."
+            )
+
+        command = [
+            self.config.executable,
+            "--with-library",
+            library,
+        ]
+
+        if self.config.server_username:
+            command.extend(["--username", self.config.server_username])
+        if self.config.server_password:
+            command.extend(["--password", self.config.server_password])
+        command.extend(args)
+        return command

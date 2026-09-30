@@ -135,8 +135,6 @@ Create a yaml configuration file:
 hardcover_api_keys:
   - Bearer your-hardcover-api-key
 
-calibre_db_path: "/path/to/Calibre Library/metadata.db"
-
 mam_id: your-mam-session-cookie
 
 matcher_threshold: 0.85
@@ -145,6 +143,13 @@ lang_codes:
   - ENG
 
 schedule: "0 * * * *"
+
+# Exactly one of `library_path` or `server_url` must be specified
+calibre:
+  calibredb_executable: "calibredb"
+  server_url: "http://localhost:8080/#books"
+  server_username: !ENV CALIBRE_USERNAME
+  server_password: !ENV CALIBRE_PASSWORD
 
 qbittorrent:
   host: "http://localhost"
@@ -187,8 +192,7 @@ export MAM_ID="..."
 | ------------------------- | ------------------------------------- | ----------- |
 | `hardcover_api_keys`      | List of hardcover api keys            | required    |
 | `qbittorrent`             | qBittorrent connection                | required    |
-| `calibre_db_path`         | Path to Calibre metadata.db           | required    |
-| `calibredb_executable`    | Path to calibredb                     | `calibredb` |
+| `calibre`                 | Calibre configuration                 | required    |
 | `mam_id`                  | MyAnonamouse session cookie           | required    |
 | `matcher_threshold`       | Fuzzy match sensitivity               | `0.7`       |
 | `lang_codes`              | Allowed languages                     | `["ENG"]`   |
@@ -198,6 +202,16 @@ export MAM_ID="..."
 | `filetypes`               | List of filetypes to support          | `["epub", "mobi", "azw3", "azw"]` |
 | `blacklisted_torrent_ids` | List of MaM torrent id's to blacklist | `[]` |
 | `torrent_timeout_seconds` | Seconds before a torrent is considered to have timed out | `1800` |
+
+### Calibre
+
+| Option                 | Description                     | Default     |
+| ---------------------- | ------------------------------- | ----------- |
+| `calibredb_executable` | Path to calibredb executable    | `calibredb` |
+| `library_path`         | Path to calibre library         | `None`      |
+| `server_url`           | URL to calibre content server   | `None`      |
+| `server_username`      | Calibre content server username | `None`      |
+| `server_password`      | Calibre content server password | `None`      |
 
 ### qBittorrent
 

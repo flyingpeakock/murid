@@ -4,7 +4,7 @@ from unittest.mock import Mock
 import pytest
 
 from murid import ServiceFactory
-from murid.clients.calibre import CalibreError
+from murid.clients.calibre import CalibreConfig, CalibreError
 
 
 @pytest.fixture
@@ -19,8 +19,10 @@ def args(tmp_path):
 def config():
     return {
         "matcher_threshold": 0.9,
-        "calibre_db_path": "/tmp/metadata.db",
-        "calibredb_executable": "calibredb",
+        "calibre": {
+            "library_path": "/tmp/metadata.db",
+            "calibredb_executable": "calibredb",
+        },
         "hardcover_api_keys": ["Bearer secret"],
         "mam_id": "mam-cookie",
         "lang_codes": ["eng"],
@@ -48,8 +50,8 @@ def test_calibre(args, config, monkeypatch):
 
     created = Mock()
 
-    def fake_calibre(db, exe):
-        created(db, exe)
+    def fake_calibre(config):
+        created(config)
         return "CALIBRE"
 
     monkeypatch.setattr(
@@ -60,8 +62,10 @@ def test_calibre(args, config, monkeypatch):
     assert factory.calibre() == "CALIBRE"
 
     created.assert_called_once_with(
-        "/tmp/metadata.db",
-        "calibredb",
+        CalibreConfig(
+            executable="calibredb",
+            library_path="/tmp/metadata.db",
+        )
     )
 
 

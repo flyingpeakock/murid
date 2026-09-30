@@ -14,6 +14,36 @@ in {
 
     configEnvType = lib.types.addCheck lib.types.str (val: lib.strings.hasPrefix "!ENV " val);
 
+    configCalibreType = lib.types.submodule {
+      options = {
+        calibredb_executable = lib.mkOption {
+          description = "Path to the calibredb executable";
+          type = lib.types.str;
+          default = "${pkgs.calibre}/bin/calibredb";
+        };
+        library_path = lib.mkOption {
+          description = "Path to the Calibre library";
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+        };
+        server_url = lib.mkOption {
+          description = "URL to the Calibre server";
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+        };
+        server_username = lib.mkOption {
+          description = "Username for the Calibre server";
+          type = lib.types.nullOr configEnvType;
+          default = null;
+        };
+        server_password = lib.mkOption {
+          description = "Password for the Calibre server";
+          type = lib.types.nullOr configEnvType;
+          default = null;
+        };
+      };
+    };
+
     configQbittorrentType = lib.types.submodule {
       options = {
         host = lib.mkOption {
@@ -117,11 +147,6 @@ in {
               default = true;
             };
 
-            calibre_db_path = lib.mkOption {
-              description = "Path to the calibre database file";
-              type = lib.types.str;
-            };
-
             calibredb_executable = lib.mkOption {
               description = "Path to the calibredb executable";
               type = lib.types.str;
@@ -148,6 +173,11 @@ in {
             qbittorrent = lib.mkOption {
               description = "QBittorrent configuration";
               type = configQbittorrentType;
+            };
+
+            calibre = lib.mkOption {
+              description = "Calibre configuration";
+              type = configCalibreType;
             };
 
             schedule = lib.mkOption {

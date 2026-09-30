@@ -12,7 +12,9 @@ from murid.config.config import _defaults, env_constructor
 missing = object()
 base = _defaults.copy() | {
     "hardcover_api_keys": ["Bearer secret123"],
-    "calibre_db_path": "metadata.db",
+    "calibre": {
+        "library_path": "metadata.db",
+    },
     "mam_id": "abc123",
     "qbittorrent": {
         "host": "http://localhost",
@@ -35,15 +37,11 @@ def build_config(tmp_path):
             else:
                 data[key] = value
 
-        # Materialize file
-        if (
-            "calibre_db_path" in data
-            and data["calibre_db_path"] is not missing
-            and data["calibre_db_path"] != "not-exist.db"
-        ):
-            db_path = tmp_path / data["calibre_db_path"]
-            db_path.write_text("")
-            data["calibre_db_path"] = str(db_path)
+        calibre = data.get("calibre")
+        if calibre and calibre.get("library_path") and calibre["library_path"] != "not-exist.db":
+            library_path = tmp_path / calibre["library_path"]
+            library_path.write_text("")
+            calibre["library_path"] = str(library_path)
 
         return Config(StringIO(yaml.dump(data)))
 
@@ -197,24 +195,24 @@ def test_env_loader_directly(monkeypatch):
     assert data["key"] == "value"
 
 
-def test_calibre_db_path_must_exist(build_config):
-    with pytest.raises(ConfigError, match="Config item 'calibre_db_path' is missing"):
-        build_config(calibre_db_path=missing)
-
-
-def test_calibre_db_path_must_exist_on_filesystem(build_config):
-    with pytest.raises(ConfigError, match="Path 'not-exist.db' does not exist"):
-        build_config(calibre_db_path="not-exist.db")
-
-
 def test_calibredb_executable_path_defaults_to_calibredb(build_config):
     config = build_config()
-    assert config.get("calibredb_executable") == "calibredb"
+    assert config.get("calibre").get("calibredb_executable") == "calibredb"
 
 
 def test_calibredb_executable_path_can_be_overridden(build_config):
-    config = build_config(calibredb_executable="/custom/path/calibredb")
-    assert config.get("calibredb_executable") == "/custom/path/calibredb"
+    config = build_config(
+        calibre={"calibredb_executable": "/custom/path/calibredb", "library_path": "fake-path"}
+    )
+    assert config.get("calibre")["calibredb_executable"] == "/custom/path/calibredb"
+
+
+def test_calibre_cannot_have_library_path_and_server_url(build_config):
+    with pytest.raises(
+        ConfigError,
+        match="Config item 'calibre' must have exactly one of 'library_path' or 'server_url' set",
+    ):
+        build_config(calibre={"library_path": "metadata.db", "server_url": "http://localhost:8080"})
 
 
 def test_matcher_threshold_defaults_to_0_7(build_config):

@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import qbittorrentapi
 from croniter import croniter
 
-from ..clients.calibre import Calibre, CalibreError
+from ..clients.calibre import Calibre, CalibreConfig, CalibreError
 from ..clients.hardcover import Hardcover
 from ..clients.myanonamouse import MyAnonamouse
 from ..clients.torrent_clients.qbittorrent import Qbittorrent, QbittorrentConfig
@@ -72,8 +72,13 @@ class ServiceFactory:
         """Create a Calibre instance using the configuration file."""
         try:
             return Calibre(
-                self.config["calibre_db_path"],
-                self.config["calibredb_executable"],
+                CalibreConfig(
+                    executable=self.config["calibre"]["calibredb_executable"],
+                    library_path=self.config["calibre"]["library_path"],
+                    server_url=self.config["calibre"].get("server_url"),
+                    server_username=self.config["calibre"].get("server_username"),
+                    server_password=self.config["calibre"].get("server_password"),
+                )
             )
         except CalibreError as e:
             logger.error("Error initializing Calibre: %s", e)

@@ -25,11 +25,16 @@ _MISSING = _Missing()
 _defaults = {
     "hardcover_api_keys": _MISSING,
     "redact_sensitive_data": True,
-    "calibre_db_path": _MISSING,
-    "calibredb_executable": "calibredb",
     "matcher_threshold": 0.7,
     "mam_id": _MISSING,
     "lang_codes": ["ENG"],
+    "calibre": {
+        "calibredb_executable": "calibredb",
+        "library_path": None,
+        "server_url": None,
+        "server_username": None,
+        "server_password": None,
+    },
     "qbittorrent": {
         "host": _MISSING,
         "username": _MISSING,
@@ -146,9 +151,6 @@ class Config:
         self._ensure_not_missing(self._config)
         self._ensure_hardcover_api_keys(self.get("hardcover_api_keys"))
         self._ensure_type(self.get("redact_sensitive_data"), bool, "redact_sensitive_data")
-        self._ensure_type(self.get("calibre_db_path"), str, "calibre_db_path")
-        self._ensure_path_exists(self.get("calibre_db_path"))
-        self._ensure_type(self.get("calibredb_executable"), str, "calibredb_executable")
         self._ensure_type(self.get("matcher_threshold"), float, "matcher_threshold")
         self._ensure_lang_codes(self.get("lang_codes"))
         self._ensure_qbittorrent(self.get("qbittorrent"))
@@ -156,6 +158,7 @@ class Config:
         self._ensure_filetypes(self.get("filetypes"))
         self._ensure_blacklisted_torrent_ids(self.get("blacklisted_torrent_ids"))
         self._ensure_type(self.get("torrent_timeout_seconds"), int, "torrent_timeout_seconds")
+        self._ensure_calibre(self.get("calibre"))
 
         self._check_extra_keys(self._config)
 
@@ -235,6 +238,33 @@ class Config:
             raise ConfigError(
                 "Config item 'qbittorrent.mapping.murid_path' must be set if 'qbit_path' is set"
             )
+
+    @staticmethod
+    def _ensure_calibre(calibre: dict) -> None:
+        """Ensure that the calibre config item is valid."""
+        Config._ensure_type(calibre, dict, "calibre")
+        if "library_path" in calibre and calibre["library_path"] is not None:
+            Config._ensure_type(calibre["library_path"], str, "calibre.library_path")
+            if not os.path.exists(calibre["library_path"]):
+                raise ConfigError(
+                    f"Calibre database path '{calibre['library_path']}' does not exist"
+                )
+        if "calibredb_executable" in calibre and calibre["calibredb_executable"] is not None:
+            Config._ensure_type(
+                calibre["calibredb_executable"], str, "calibre.calibredb_executable"
+            )
+        has_library_path = "library_path" in calibre and calibre["library_path"] is not None
+        has_server_url = "server_url" in calibre and calibre["server_url"] is not None
+        if has_library_path == has_server_url:
+            raise ConfigError(
+                "Config item 'calibre' must have exactly one of 'library_path' or 'server_url' set"
+            )
+        if "server_url" in calibre and calibre["server_url"] is not None:
+            Config._ensure_type(calibre["server_url"], str, "calibre.server_url")
+        if "server_username" in calibre and calibre["server_username"] is not None:
+            Config._ensure_type(calibre["server_username"], str, "calibre.server_username")
+        if "server_password" in calibre and calibre["server_password"] is not None:
+            Config._ensure_type(calibre["server_password"], str, "calibre.server_password")
 
     @staticmethod
     def _check_extra_keys(config: dict) -> None:

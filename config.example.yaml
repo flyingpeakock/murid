@@ -8,12 +8,6 @@ hardcover_api_keys:
 # Redact secrets from logs and config dumps
 redact_sensitive_data: true
 
-# Path to your Calibre metadata.db
-calibre_db_path: "/path/to/calibre/metadata.db"
-
-# Path to calibredb executable (or just "calibredb" if in PATH)
-calibredb_executable: "calibredb"
-
 # Match confidence threshold (0.0 - 1.0)
 matcher_threshold: 0.7
 
@@ -23,6 +17,13 @@ mam_id: !ENV MAM_ID
 # Preferred language codes when searching
 lang_codes:
   - "ENG"
+
+# Calibre settings
+calibre:
+  calibredb_executable: "calibredb"
+  server_url: "http://localhost:8080/#books"
+  server_username: "user"
+  server_password: "password"
 
 # qBittorrent connection settings
 qbittorrent:
