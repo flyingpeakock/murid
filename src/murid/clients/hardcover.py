@@ -160,7 +160,8 @@ class Hardcover:
         try:
             data = self.fetch_data()
             items = data.get("data", {}).get("user_books", [])
-        except requests.RequestException:
+        except HardcoverError:
+            logger.error("Failed to fetch books for user %s", self.user.name)
             return books
 
         for item in items:

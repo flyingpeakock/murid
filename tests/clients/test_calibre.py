@@ -223,6 +223,7 @@ def test_password_is_via_stdin(tmp_path):
     assert "secret" not in args[0]  # password should not be in command-line arguments
     assert "<stdin>" in args[0]  # password should be indicated as coming from stdin
 
+
 def test_get_books_extra_data(tmp_path, caplog):
     caplog.set_level("DEBUG")
     db = tmp_path
