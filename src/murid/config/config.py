@@ -134,6 +134,7 @@ class Config:
             "token",
             "password",
             "hardcover_api_keys",
+            "server_password",
         ]
         if isinstance(data, dict):
             return {
