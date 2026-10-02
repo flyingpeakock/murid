@@ -222,3 +222,22 @@ def test_password_is_via_stdin(tmp_path):
     assert kwargs["input"] == "secret\n"
     assert "secret" not in args[0]  # password should not be in command-line arguments
     assert "<stdin>" in args[0]  # password should be indicated as coming from stdin
+
+def test_get_books_extra_data(tmp_path, caplog):
+    caplog.set_level("DEBUG")
+    db = tmp_path
+
+    calibre = Calibre(
+        CalibreConfig(
+            executable="calibredb",
+            library_path=str(db),
+        ),
+        run=lambda *args, **kwargs: Result(
+            '[{"id": 1, "title": "Dune", "authors": "Frank Herbert", "isbn": "1234567890"}]\nextra'
+        ),
+    )
+
+    books = calibre.get_books()
+
+    assert len(books) == 1
+    assert "Extra data after JSON response: 'extra'" in caplog.text

@@ -66,13 +66,18 @@ class Calibre:
             raise CalibreError(f"Error retrieving books from Calibre server: {e.stderr}") from e
 
         try:
-            data, _ = json.JSONDecoder().raw_decode(stdout)
+            data, idx = json.JSONDecoder().raw_decode(stdout)
         except json.JSONDecodeError as e:
             logger.error("JSON error: %s", e)
             logger.error("stdout length: %d", len(stdout))
             logger.error("stdout tail: %r", stdout[-500:])
             logger.error("at error position: %r", stdout[e.pos : e.pos + 500])
             raise CalibreError(f"Error decoding JSON response from Calibre: {e}") from e
+
+        extra_data = stdout[idx:].strip()
+        if extra_data:
+            logger.debug("Extra data after JSON response: %r", extra_data)
+
         books = {
             Book(
                 id=book["id"],
