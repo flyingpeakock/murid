@@ -54,31 +54,24 @@ class Calibre:
 
     def get_books(self) -> set[Book]:
         """Retrieve a list of books from the Calibre database."""
-        args = self._calibredb_args(
-            "list",
-            "--for-machine",
-            "--fields",
-            "id,title,authors,isbn",
-        )
         try:
-            response = self.run(
-                args,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=True,
+            stdout = self._calibredb(
+                "list",
+                "--for-machine",
+                "--fields",
+                "id,title,authors,isbn",
             )
         except subprocess.CalledProcessError as e:
             logger.error("Error retrieving books from Calibre server: %s", e.stderr)
             raise CalibreError(f"Error retrieving books from Calibre server: {e.stderr}") from e
 
         try:
-            data, _ = json.JSONDecoder().raw_decode(response.stdout)
+            data, _ = json.JSONDecoder().raw_decode(stdout)
         except json.JSONDecodeError as e:
             logger.error("JSON error: %s", e)
-            logger.error("stdout length: %d", len(response.stdout))
-            logger.error("stdout tail: %r", response.stdout[-500:])
-            logger.error("at error position: %r", response.stdout[e.pos : e.pos + 500])
+            logger.error("stdout length: %d", len(stdout))
+            logger.error("stdout tail: %r", stdout[-500:])
+            logger.error("at error position: %r", stdout[e.pos : e.pos + 500])
             raise CalibreError(f"Error decoding JSON response from Calibre: {e}") from e
         books = {
             Book(
@@ -94,9 +87,7 @@ class Calibre:
 
     def add_book(self, book: Book, path: str) -> None:
         """Add a book to the Calibre library using the calibredb command-line tool."""
-        args = self._calibredb_args(
-            "add", "--title", book.title, "--authors", ", ".join(book.authors)
-        )
+        args = ["add", "--title", book.title, "--authors", ", ".join(book.authors)]
 
         if os.path.isdir(path):
             args.extend(["--recurse", "--one-book-per-directory"])
@@ -113,14 +104,7 @@ class Calibre:
 
         args.append(path)
         try:
-            logger.debug("Running command: %s", " ".join(args))
-            stdout = self.run(
-                args,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=True,
-            ).stdout
+            stdout = self._calibredb(*args)
             logger.debug("Calibre output: %s", stdout)
         except subprocess.CalledProcessError as e:
             logger.error("Error adding book to Calibre: %s", e.stderr)
@@ -138,8 +122,8 @@ class Calibre:
         logger.debug("Book %s does not exist in Calibre. Best similarity: %.2f", book, score)
         return False
 
-    def _calibredb_args(self, *args: str) -> list[str]:
-        """Construct the command-line arguments for calibredb."""
+    def _calibredb(self, *args: str) -> str:
+        """Run the calibredb command with the given arguments."""
         if self.config.library_path:
             library = self.config.library_path
         elif self.config.server_url:
@@ -158,6 +142,18 @@ class Calibre:
         if self.config.server_username:
             command.extend(["--username", self.config.server_username])
         if self.config.server_password:
-            command.extend(["--password", self.config.server_password])
+            command.extend(["--password", "<stdin>"])
         command.extend(args)
-        return command
+
+        logger.debug("Running command: %s", " ".join(command))
+
+        password = f"{self.config.server_password}\n" if self.config.server_password else None
+
+        return self.run(
+            command,
+            input=password,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ).stdout

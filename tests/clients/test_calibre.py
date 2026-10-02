@@ -1,4 +1,3 @@
-
 import pytest
 
 from murid import Book, Calibre, CalibreConfig, CalibreError
@@ -196,3 +195,30 @@ def test_add_book_failure(tmp_path):
         match="Error adding book to Calibre",
     ):
         calibre.add_book(book, "/tmp/dune.epub")
+
+
+def test_password_is_via_stdin(tmp_path):
+    db = tmp_path
+
+    calls = []
+
+    def fake_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        return Result()
+
+    calibre = Calibre(
+        CalibreConfig(
+            executable="calibredb",
+            library_path=str(db),
+            server_password="secret",
+        ),
+        run=fake_run,
+    )
+
+    calibre._calibredb()
+
+    args, kwargs = calls[1]  # first call is validate()
+
+    assert kwargs["input"] == "secret\n"
+    assert "secret" not in args[0]  # password should not be in command-line arguments
+    assert "<stdin>" in args[0]  # password should be indicated as coming from stdin
