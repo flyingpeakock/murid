@@ -1,10 +1,12 @@
 """Service for discovering torrents for books using MyAnonamouse."""
 
 import logging
+import re
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from typing import Iterable
 
 from ..clients.myanonamouse import MyAnonamouse
+from ..clients.torrent_clients import TorrentClient
 from ..domain.book import Book
 from ..domain.book_matcher import BookMatcher
 from ..domain.torrent import Torrent
@@ -21,11 +23,28 @@ class TorrentDiscoveryService:
         mam: MyAnonamouse,
         lang_codes: list[str],
         torrent_selector: TorrentSelector,
+        torrent_client: TorrentClient | None = None,
     ) -> None:
         """Service for discovering torrents for books using MyAnonamouse."""
         self.mam = mam
         self.lang_codes = set(lang_codes)
         self.torrent_selector = torrent_selector
+        self.torrent_client = torrent_client
+
+    def _mam_ids_with_tag(self, tag: str) -> set[str]:
+        """Return MAM IDs for torrents carrying the specified client tag."""
+        if self.torrent_client is None:
+            return set()
+
+        mam_ids = set()
+        tagged_torrents = self.torrent_client.get_torrents_with_tag(tag)
+        for torrent in tagged_torrents:
+            comment = getattr(torrent, "comment", None) or ""
+            # qBittorrent keeps the MAM torrent ID in the .torrent comment.
+            match = re.search(r"MID=(\d+)", comment)
+            if match:
+                mam_ids.add(match.group(1))
+        return mam_ids
 
     def find_torrents(self, book: Book) -> tuple[Book, set[Torrent]]:
         """Find torrents for a given book."""
@@ -79,10 +98,18 @@ class TorrentDiscoveryService:
         """Download the best matching torrent for each book once the search futures complete."""
 
         download_futures = {}
+        failed_import_mam_ids = self._mam_ids_with_tag("murid_import_failed")
 
         for future in as_completed(search_futures):
             book = search_futures[future]
             _, tor_list = future.result()
+
+            if failed_import_mam_ids:
+                tor_list = {
+                    torrent
+                    for torrent in tor_list
+                    if str(torrent.book.id) not in failed_import_mam_ids
+                }
 
             if not tor_list:
                 continue
@@ -97,6 +124,12 @@ class TorrentDiscoveryService:
                 title_only_torrents = self._search_without_author(
                     book, book.authors[0] if book.authors else None
                 )
+                if failed_import_mam_ids:
+                    title_only_torrents = {
+                        torrent
+                        for torrent in title_only_torrents
+                        if str(torrent.book.id) not in failed_import_mam_ids
+                    }
                 if title_only_torrents:
                     torrent = self.torrent_selector.select(book, title_only_torrents, matcher)
 
@@ -124,14 +157,41 @@ class TorrentDiscoveryService:
         return torrent_files
 
     def download_torrents(
-        self, books: Iterable[Book], matcher: BookMatcher
+        self,
+        books: Iterable[Book],
+        matcher: BookMatcher,
+        incomplete_timed_out_books: Iterable[Book] = (),
     ) -> set[tuple[bytes, Book]]:
         """Find and download torrents for a list of books."""
+        books = list(books)
+        incomplete_timed_out_books = list(incomplete_timed_out_books)
+        books_to_search = [
+            book
+            for book in books
+            if not any(
+                matcher.similarity(book, timed_out_book) >= matcher.threshold
+                for timed_out_book in incomplete_timed_out_books
+            )
+        ]
+        skipped_count = len(books) - len(books_to_search)
         logger.info(
-            "Searching for torrents for %d book%s", len(books), "s" if len(books) != 1 else ""
+            "Searching for torrents for %d book%s",
+            len(books_to_search),
+            "s" if len(books_to_search) != 1 else "",
         )
-        with ThreadPoolExecutor(max_workers=min(10, len(books))) as executor:
-            search_futures = {executor.submit(self.find_torrents, book): book for book in books}
+        if skipped_count:
+            logger.info(
+                "Skipping search for %d book%s with an incomplete timed-out torrent",
+                skipped_count,
+                "s" if skipped_count != 1 else "",
+            )
+        if not books_to_search:
+            return set()
+
+        with ThreadPoolExecutor(max_workers=min(10, len(books_to_search))) as executor:
+            search_futures = {
+                executor.submit(self.find_torrents, book): book for book in books_to_search
+            }
 
             download_futures = self.submit_downloads(executor, search_futures, matcher)
 

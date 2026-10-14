@@ -100,6 +100,7 @@ def test_run_orchestrates_pipeline(factory):
     torrent_import = Mock()
 
     retry_service = Mock()
+    retry_service.retry_torrents.return_value = {"incomplete-book"}
 
     factory.calibre.return_value = calibre
     factory.hardcover.return_value = [hardcover_client]
@@ -118,6 +119,8 @@ def test_run_orchestrates_pipeline(factory):
     factory.retry_service.assert_called_once()
 
     torrent_import.import_torrents.assert_called_once()
+    torrent_discovery.download_torrents.assert_called_once()
+    assert torrent_discovery.download_torrents.call_args.args[2] == {"incomplete-book"}
 
 
 @pytest.mark.parametrize("failure", [RuntimeError("reload failed"), SystemExit(1)])

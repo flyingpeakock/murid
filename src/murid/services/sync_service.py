@@ -57,7 +57,7 @@ class SyncService:
     def run(self) -> None:
         """Run the synchronization process."""
         retry_service = self.factory.retry_service()
-        retry_service.retry_torrents()
+        incomplete_timed_out_books = retry_service.retry_torrents()
 
         calibre = self.factory.calibre()
         calibre_books = self.fetch_calibre_books(calibre)
@@ -75,7 +75,11 @@ class SyncService:
 
         torrent_discovery = self.factory.torrent_discovery()
         wanted_torrents = self.process_books(
-            present_books, hardcover_books, torrent_discovery, matcher
+            present_books,
+            hardcover_books,
+            torrent_discovery,
+            matcher,
+            incomplete_timed_out_books,
         )
 
         torrent_import = self.factory.torrent_import()
@@ -114,6 +118,7 @@ class SyncService:
         wanted_books: Iterable[Book],
         torrent_discovery: TorrentDiscoveryService,
         matcher: BookMatcher,
+        incomplete_timed_out_books: Iterable[Book] = (),
     ) -> set[tuple[bytes, Book]]:
         """Process the matched and unmatched books to find torrents for the missing ones."""
         matched_ids = {h.id for _, h, _ in present_books}
@@ -121,4 +126,6 @@ class SyncService:
 
         if not missing_books:
             return set()
-        return torrent_discovery.download_torrents(missing_books, matcher)
+        return torrent_discovery.download_torrents(
+            missing_books, matcher, incomplete_timed_out_books
+        )

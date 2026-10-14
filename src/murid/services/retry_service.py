@@ -26,8 +26,9 @@ class RetryService:
         self.import_service = import_service
         self.myanonamouse = myanonamouse
 
-    def retry_torrents(self) -> None:
-        """Retry torrents that previously timed out during import."""
+    def retry_torrents(self) -> set[Book]:
+        """Retry timed-out torrents and return books whose torrents remain incomplete."""
+        incomplete_books = set()
         for torrent_id, mam_id in self.fetch_previous_torrents():
             book = self.get_book_by_mam_id(mam_id)
             if book:
@@ -35,6 +36,8 @@ class RetryService:
                     self.torrent_client.remove_tag(torrent_id, "murid_timeout")
                 else:
                     logger.warning("Could not import %s, will retry later", book)
+                    incomplete_books.add(book)
+        return incomplete_books
 
     def fetch_previous_torrents(self) -> Iterator[tuple[str, int]]:
         """Fetch torrents that previously timed out during import."""

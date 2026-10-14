@@ -126,6 +126,85 @@ def test_submit_downloads_happy_path(mam, matcher):
     assert result[future] == torrent_book
 
 
+def test_submit_downloads_skips_torrent_tagged_import_failed(mam, matcher):
+    failed_torrent = Mock()
+    failed_torrent.book.id = 123
+    available_torrent = Mock()
+    available_torrent.book.id = 456
+
+    torrent_client = Mock()
+    torrent_client.get_torrents_with_tag.side_effect = lambda tag: (
+        [SimpleNamespace(comment="MyAnonamouse MID=123")]
+        if tag == "murid_import_failed"
+        else []
+    )
+    service = TorrentDiscoveryService(mam, ["eng"], None, torrent_client)
+    service.torrent_selector = SimpleNamespace(select=Mock(return_value=available_torrent))
+    mam.download_torrent.return_value = b"torrent-file"
+
+    book = SimpleNamespace(title="Dune", authors=["Frank"])
+    search_future = Future()
+    search_future.set_result((book, {failed_torrent, available_torrent}))
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        result = service.submit_downloads(executor, {search_future: book}, matcher)
+
+    torrent_client.get_torrents_with_tag.assert_called_once_with("murid_import_failed")
+    service.torrent_selector.select.assert_called_once_with(
+        book, {available_torrent}, matcher
+    )
+    assert len(result) == 1
+    mam.download_torrent.assert_called_once_with(available_torrent)
+
+
+def test_download_torrents_skips_books_with_incomplete_timed_out_torrent(mam, matcher):
+    service = TorrentDiscoveryService(mam, ["eng"], None)
+    service.find_torrents = Mock()
+    matcher.threshold = 0.9
+    matcher.similarity.return_value = 0.99
+
+    book = SimpleNamespace(id=456, title="Dune", authors=["Frank"])
+    timed_out_book = SimpleNamespace(id=123, title="Dune", authors=["Frank"])
+
+    result = service.download_torrents([book], matcher, [timed_out_book])
+
+    assert result == set()
+    service.find_torrents.assert_not_called()
+    mam.search_ebook.assert_not_called()
+    matcher.similarity.assert_called_once_with(book, timed_out_book)
+    mam.download_torrent.assert_not_called()
+
+
+def test_submit_downloads_filters_failed_torrent_from_title_only_fallback(mam, matcher):
+    original_torrent = Mock()
+    original_torrent.book.id = 111
+    failed_torrent = Mock()
+    failed_torrent.book.id = 222
+
+    torrent_client = Mock()
+    torrent_client.get_torrents_with_tag.side_effect = lambda tag: (
+        [SimpleNamespace(comment="MyAnonamouse MID=222")]
+        if tag == "murid_import_failed"
+        else []
+    )
+    service = TorrentDiscoveryService(mam, ["eng"], None, torrent_client)
+    service.torrent_selector = SimpleNamespace(select=Mock(return_value=None))
+    mam.search_ebook.return_value = {failed_torrent}
+
+    book = SimpleNamespace(title="Dune", authors=["Frank"])
+    search_future = Future()
+    search_future.set_result((book, {original_torrent}))
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        result = service.submit_downloads(executor, {search_future: book}, matcher)
+
+    assert result == {}
+    service.torrent_selector.select.assert_called_once_with(
+        book, {original_torrent}, matcher
+    )
+    mam.download_torrent.assert_not_called()
+
+
 def test_submit_downloads_retries_title_only_when_matcher_rejects(mam, matcher):
     service = TorrentDiscoveryService(mam, ["eng"], None)
     original_torrent = Mock()
@@ -198,7 +277,7 @@ def test_download_torrents_happy_path(mam, matcher):
     service.submit_downloads = Mock(return_value={"future": "torrent"})
     service.collect_downloads = Mock(return_value=[(b"file", SimpleNamespace())])
 
-    books = [SimpleNamespace(title="Dune")]
+    books = [SimpleNamespace(id=42, title="Dune")]
 
     result = service.download_torrents(books, matcher)
 

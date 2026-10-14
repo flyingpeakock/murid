@@ -143,7 +143,7 @@ def test_retry_torrents_success(
 
     import_service.process_torrent.return_value = True
 
-    service.retry_torrents()
+    assert service.retry_torrents() == set()
 
     torrent_client.remove_tag.assert_called_once_with(
         "torrent1",
@@ -151,7 +151,7 @@ def test_retry_torrents_success(
     )
 
 
-def test_retry_torrents_import_failed(
+def test_retry_torrents_returns_book_while_torrent_is_incomplete(
     service,
     import_service,
     torrent_client,
@@ -163,7 +163,7 @@ def test_retry_torrents_import_failed(
 
     import_service.process_torrent.return_value = False
 
-    service.retry_torrents()
+    assert service.retry_torrents() == {book}
 
     torrent_client.remove_tag.assert_not_called()
 
@@ -177,7 +177,7 @@ def test_retry_torrents_book_not_found(
 
     service.get_book_by_mam_id = Mock(return_value=None)
 
-    service.retry_torrents()
+    assert service.retry_torrents() == set()
 
     import_service.process_torrent.assert_not_called()
     torrent_client.remove_tag.assert_not_called()

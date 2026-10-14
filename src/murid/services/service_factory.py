@@ -131,6 +131,7 @@ class ServiceFactory:
             self.myanonamouse(),
             self.config["lang_codes"],
             self.torrent_selector(),
+            self.qbittorrent(),
         )
 
     def torrent_import(self):
