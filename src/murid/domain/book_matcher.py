@@ -19,6 +19,7 @@ _SERIES_POSITION_BONUS = 0.04
 _TITLE_VARIANT_PENALTIES = {
     "volume": 0.97,
     "subtitle": 0.94,
+    "omnibus": 0.97,
 }
 
 
@@ -251,11 +252,21 @@ class BookMatcher:
         variants: dict[str, float] = {full: 1.0}
         cls._add_connector_title_variant(variants, full)
         cls._add_core_title_variant(variants, full, authors)
+        cls._add_omnibus_title_variant(variants, full)
         cls._add_subtitle_variant(variants, original, full)
         cls._add_series_title_variant(variants, full, series)
         cls._add_alternative_title_variants(variants, alternative_titles, authors, series)
 
         return tuple(variants.items())
+
+    @staticmethod
+    def _add_omnibus_title_variant(variants: dict[str, float], full: str) -> None:
+        """Treat a trailing omnibus label as packaging metadata."""
+        suffix = " omnibus"
+        if full.endswith(suffix):
+            core = full[: -len(suffix)].strip()
+            if core:
+                variants[core] = _TITLE_VARIANT_PENALTIES["omnibus"]
 
     @classmethod
     def _add_connector_title_variant(cls, variants: dict[str, float], full: str) -> None:

@@ -618,6 +618,22 @@ def test_subtitle_variant_can_match_main_title():
     assert matcher.is_match(a, b)
 
 
+def test_omnibus_variant_matches_trilogy_title():
+    matcher = BookMatcher()
+    trilogy = make_book(
+        title="The Farseer Trilogy",
+        authors=["Robin Hobb"],
+        source="hardcover",
+    )
+    omnibus = make_book(
+        title="The Farseer Trilogy Omnibus",
+        authors=["Robin Hobb"],
+        source="calibre",
+    )
+
+    assert matcher.is_match(trilogy, omnibus)
+
+
 def test_split_part_annotation_matches_the_complete_book_title():
     matcher = BookMatcher()
     split_part = Book(
