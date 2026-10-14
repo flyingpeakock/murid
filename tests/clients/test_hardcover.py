@@ -125,9 +125,7 @@ def test_extract_alternative_titles_and_identifiers():
         "title": "Harry Potter and the Philosopher's Stone",
         "subtitle": "A Novel",
         "alternative_titles": {"en-US": "Harry Potter and the Sorcerer's Stone"},
-        "book_mappings": [
-            {"external_id": "goodreads-book-id", "platform": {"name": "Goodreads"}}
-        ],
+        "book_mappings": [{"external_id": "goodreads-book-id", "platform": {"name": "Goodreads"}}],
     }
     editions = [
         {

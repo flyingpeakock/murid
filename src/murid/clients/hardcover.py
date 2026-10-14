@@ -177,9 +177,7 @@ class Hardcover:
             return [text for item in value for text in Hardcover._extract_text_values(item)]
         if isinstance(value, dict):
             preferred = [
-                value[key]
-                for key in ("title", "name", "alternative_title")
-                if key in value
+                value[key] for key in ("title", "name", "alternative_title") if key in value
             ]
             values = preferred if preferred else list(value.values())
             return [text for item in values for text in Hardcover._extract_text_values(item)]
@@ -246,9 +244,7 @@ class Hardcover:
             book = item.get("book", {})
 
             authors = [
-                c["author"]["name"]
-                for c in (book.get("contributions") or [])
-                if c.get("author")
+                c["author"]["name"] for c in (book.get("contributions") or []) if c.get("author")
             ]
 
             editions = book.get("editions") or []

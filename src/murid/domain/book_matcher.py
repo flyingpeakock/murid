@@ -268,9 +268,7 @@ class BookMatcher:
         if not suffix_match:
             return
 
-        short_title = cls._remove_article(
-            f"{suffix_match.group(3)} {suffix_match.group(4)}"
-        )
+        short_title = cls._remove_article(f"{suffix_match.group(3)} {suffix_match.group(4)}")
         prefix_words = suffix_match.group(1).split()
         suffix_words = short_title.split()
         connector = suffix_match.group(2)
@@ -388,9 +386,7 @@ class BookMatcher:
             isbns=frozenset(cls.normalized_isbns(book)),
             identifiers=frozenset(cls.normalized_identifiers(book)),
             series=cls.canonicalize_title(getattr(book, "series", None) or ""),
-            series_number=cls._normalize_series_number(
-                getattr(book, "series_number", None)
-            ),
+            series_number=cls._normalize_series_number(getattr(book, "series_number", None)),
         )
         return features
 
@@ -406,11 +402,7 @@ class BookMatcher:
     @staticmethod
     def _alternative_titles(book: Book) -> list[str]:
         """Return nonempty alternate titles as strings."""
-        return [
-            str(value)
-            for value in (getattr(book, "alternative_titles", None) or [])
-            if value
-        ]
+        return [str(value) for value in (getattr(book, "alternative_titles", None) or []) if value]
 
     @classmethod
     def _prepared_title_names(
@@ -465,16 +457,10 @@ class BookMatcher:
             and "".join(given_a) == "".join(given_b)
         )
         first_initial_matches = (
-            len(given_a) == 1
-            and len(given_a[0]) == 1
-            and given_b
-            and given_a[0] == given_b[0][0]
+            len(given_a) == 1 and len(given_a[0]) == 1 and given_b and given_a[0] == given_b[0][0]
         )
         second_initial_matches = (
-            len(given_b) == 1
-            and len(given_b[0]) == 1
-            and given_a
-            and given_b[0] == given_a[0][0]
+            len(given_b) == 1 and len(given_b[0]) == 1 and given_a and given_b[0] == given_a[0][0]
         )
         return bool(all_initials_match or first_initial_matches or second_initial_matches)
 
@@ -627,7 +613,17 @@ class BookMatcher:
             conflict = cls._conflicting_identifier_metadata(a, b)
             return not conflict
 
-        if cls._conflicting_title_words(a.title, b.title) and not a.titles & b.titles:
+        series_position_conflict = bool(
+            a.series
+            and a.series == b.series
+            and a.series_number is not None
+            and b.series_number is not None
+            and not math.isclose(a.series_number, b.series_number)
+        )
+
+        if series_position_conflict or (
+            cls._conflicting_title_words(a.title, b.title) and not a.titles & b.titles
+        ):
             return False
 
         if a.authors and b.authors and cls._author_similarity(a.authors, b.authors) == 0.0:
@@ -861,8 +857,7 @@ class BookMatcher:
             self._log_ambiguity(target, scored)
 
             scored_pairs.extend(
-                (candidate_score, candidate, target)
-                for candidate, candidate_score in qualifying
+                (candidate_score, candidate, target) for candidate, candidate_score in qualifying
             )
 
         return self._assign_matches(scored_pairs)
