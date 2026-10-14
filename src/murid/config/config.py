@@ -171,6 +171,8 @@ class Config:
     def _ensure_hardcover_api_keys(keys: list) -> None:
         """Ensure that the users config item is valid."""
         Config._ensure_type(keys, list, "hardcover_api_keys")
+        if not keys:
+            raise ConfigError("Config item 'hardcover_api_keys' must be a non-empty list")
         for key in keys:
             if not key:
                 raise ConfigError("Config item 'hardcover_api_keys' must not contain empty strings")

@@ -414,6 +414,14 @@ def test_hardcover_api_keys_must_be_list(build_config):
         build_config(hardcover_api_keys="not-a-list")
 
 
+def test_hardcover_api_keys_must_not_be_empty(build_config):
+    with pytest.raises(
+        ConfigError,
+        match="Config item 'hardcover_api_keys' must be a non-empty list",
+    ):
+        build_config(hardcover_api_keys=[])
+
+
 def test_hardcover_api_keys_list_items_must_be_strings(build_config):
     with pytest.raises(ConfigError, match="Config item 'hardcover_api_keys item' must be a str"):
         build_config(hardcover_api_keys=[123, "Bearer secret123"])
