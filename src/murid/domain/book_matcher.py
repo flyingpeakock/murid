@@ -1,8 +1,9 @@
-"""Module for matching books based on title and author similarity."""
+"""Match books using ISBNs, normalized titles, and author similarity."""
 
 import logging
 import re
-from typing import Iterable
+from collections.abc import Iterable
+from dataclasses import dataclass
 
 from rapidfuzz import fuzz
 
@@ -10,114 +11,529 @@ from .book import Book
 
 logger = logging.getLogger("murid")
 
+_MIN_TITLE_SIMILARITY = 0.85
+_TITLE_VARIANT_PENALTIES = {
+    "volume": 0.97,
+    "subtitle": 0.94,
+}
+
+
+@dataclass(frozen=True)
+class _BookFeatures:
+    """Preprocessed metadata used during book comparisons."""
+
+    book: Book
+    title: str
+    title_variants: tuple[tuple[str, float], ...]
+    authors: frozenset[str]
+    isbns: frozenset[str]
+
 
 class BookMatcher:
-    """Class for matching books based on title and author similarity."""
+    """Match books conservatively using identifiers and metadata."""
 
     def __init__(self, threshold: float = 0.92):
-        """Initialize the BookMatcher with a similarity threshold."""
+        if not 0.0 <= threshold <= 1.0:
+            raise ValueError("threshold must be between 0.0 and 1.0")
         self.threshold = threshold
 
     @staticmethod
     def normalize(text: str) -> str:
-        """Normalize text by lowercasing and removing non-alphanumeric characters."""
-        return "".join(c.lower() for c in text if c.isalnum() or c.isspace()).strip()
+        """Normalize text without discarding Unicode letters or digits."""
+        text = text.casefold()
+        text = "".join(char if char.isalnum() else " " for char in text)
+        return " ".join(text.split())
+
+    @classmethod
+    def canonicalize_title(cls, title: str) -> str:
+        """Normalize a title while preserving meaningful title words."""
+        return cls._remove_article(cls.normalize(title or ""))
 
     @staticmethod
-    def canonicalize_title(title: str) -> str:
-        """Canonicalize a book title by applying various transformations to improve matching."""
-        title = title.lower()
-
-        # Remove leading articles
-        for prefix in ("the ", "a ", "an "):
+    def _remove_article(title: str) -> str:
+        """Remove a leading English article."""
+        for prefix in ("the ", "an ", "a "):
             if title.startswith(prefix):
-                title = title[len(prefix) :]
-                break
+                return title[len(prefix) :]
+        return title
 
-        # Prefer bracketed title if present
-        match = re.search(r"\[([^\]]+)\]", title)
-        if match:
-            title = match.group(1)
+    @classmethod
+    def _normalize_author(cls, author: str) -> str:
+        """Normalize an author name, including 'Surname, Given' notation."""
+        if "," in author:
+            surname, given = author.split(",", 1)
+            if surname.strip() and given.strip():
+                author = f"{given} {surname}"
+        return cls.normalize(author)
 
-        # Remove parenthetical metadata
-        title = re.sub(r"\([^)]*\)", "", title)
+    @classmethod
+    def normalize_isbn(cls, isbn: str | None) -> str | None:
+        """Validate an ISBN and convert ISBN-10 to ISBN-13."""
+        if not isbn:
+            return None
 
-        # Remove subtitles
-        if ":" in title:
-            title = title.split(":", 1)[0]
+        isbn = re.sub(r"[^0-9Xx]", "", str(isbn)).upper()
 
-        # Get title before comma
-        if "," in title:
-            title = title.split(",", 1)[0]
+        if len(isbn) == 10:
+            return cls._normalize_isbn10(isbn)
 
-        return BookMatcher.normalize(title)
+        return cls._normalize_isbn13(isbn)
 
-    def title_similarity(self, a: str, b: str) -> float:
-        """Calculate the similarity between two book titles using fuzzy matching."""
-        return (
-            fuzz.ratio(
-                self.canonicalize_title(a),
-                self.canonicalize_title(b),
-            )
-            / 100
+    @staticmethod
+    def _normalize_isbn10(isbn: str) -> str | None:
+        """Validate ISBN-10 and convert it to ISBN-13."""
+        if not re.fullmatch(r"[0-9]{9}[0-9X]", isbn):
+            return None
+
+        checksum = sum(
+            int(digit) * weight for digit, weight in zip(isbn[:9], range(10, 1, -1), strict=False)
+        )
+        checksum += 10 if isbn[-1] == "X" else int(isbn[-1])
+
+        if checksum % 11:
+            return None
+
+        prefix = "978" + isbn[:9]
+        checksum = sum(
+            int(digit) * (1 if index % 2 == 0 else 3) for index, digit in enumerate(prefix)
+        )
+        return prefix + str((10 - checksum % 10) % 10)
+
+    @staticmethod
+    def _normalize_isbn13(isbn: str) -> str | None:
+        """Validate ISBN-13."""
+        if len(isbn) != 13 or not isbn.isdigit():
+            return None
+
+        if not isbn.startswith(("978", "979")):
+            return None
+
+        checksum = sum(
+            int(digit) * (1 if index % 2 == 0 else 3) for index, digit in enumerate(isbn[:12])
+        )
+        expected = (10 - checksum % 10) % 10
+
+        return isbn if int(isbn[-1]) == expected else None
+
+    @classmethod
+    def normalized_isbns(cls, book: Book) -> set[str]:
+        """Return valid, canonicalized ISBNs from a book."""
+        return {
+            normalized
+            for isbn in (book.isbn or [])
+            if (normalized := cls.normalize_isbn(isbn)) is not None
+        }
+
+    @staticmethod
+    def _remove_metadata_annotations(title: str) -> str:
+        """Remove recognized metadata annotations embedded in a title."""
+        patterns = (
+            r"\s*\[\s*published\s*:\s*[^\]]*\]",
+            r"\s*\[\s*By\s*:\s*[^\]]*\]",
+            r"\s*\(\s*By\s*:\s*[^)]*\)",
         )
 
-    def author_similarity(
-        self,
-        a: list[str],
-        b: list[str],
-    ) -> float:
-        """Calculate the similarity between two lists of authors using Jaccard similarity."""
-        set_a = {self.normalize(x) for x in a}
-        set_b = {self.normalize(x) for x in b}
+        for pattern in patterns:
+            title = re.sub(pattern, " ", title, flags=re.IGNORECASE)
 
-        if not set_a or not set_b:
+        title = " ".join(title.split()).strip()
+
+        # Remove outer brackets only when they enclose the entire title.
+        if title.startswith("[") and title.endswith("]"):
+            title = title[1:-1].strip()
+
+        return title
+
+    @classmethod
+    def _title_variants(
+        cls,
+        title: str,
+        authors: frozenset[str] = frozenset(),
+    ) -> tuple[tuple[str, float], ...]:
+        """Generate conservative title variants with evidence penalties."""
+        original = cls._remove_metadata_annotations(title or "")
+        full = cls.canonicalize_title(original)
+
+        if not full:
+            return ()
+
+        variants: dict[str, float] = {full: 1.0}
+        core = cls._remove_author_suffix(full, authors)
+        core = cls._remove_volume_annotation(core)
+        core = cls._remove_article(core)
+
+        if core and core != full:
+            variants[core] = _TITLE_VARIANT_PENALTIES["volume"]
+
+        if ":" in original:
+            main_title = cls.canonicalize_title(original.split(":", 1)[0])
+            if main_title and main_title != full:
+                variants[main_title] = max(
+                    variants.get(main_title, 0.0),
+                    _TITLE_VARIANT_PENALTIES["subtitle"],
+                )
+
+        return tuple(variants.items())
+
+    @staticmethod
+    def _remove_author_suffix(
+        title: str,
+        authors: frozenset[str],
+    ) -> str:
+        """Remove a trailing author name only when metadata confirms it."""
+        for author in sorted(authors, key=len, reverse=True):
+            suffix = f" {author}"
+            if title.endswith(suffix) and title[: -len(suffix)].strip():
+                return title[: -len(suffix)].strip()
+        return title
+
+    @staticmethod
+    def _remove_volume_annotation(title: str) -> str:
+        """Remove an explicit trailing volume, book, or part number."""
+        return re.sub(
+            r"\s+(?:vol(?:ume)?\.?|book|part)\s+\d+\s*$",
+            "",
+            title,
+            flags=re.IGNORECASE,
+        ).strip()
+
+    @classmethod
+    def _prepare(cls, book: Book) -> _BookFeatures:
+        """Precompute metadata once per book."""
+        authors = frozenset(
+            normalized
+            for name in (book.authors or [])
+            if name and (normalized := cls._normalize_author(name))
+        )
+        title = cls.canonicalize_title(book.title or "")
+
+        return _BookFeatures(
+            book=book,
+            title=title,
+            title_variants=cls._title_variants(
+                book.title or "",
+                authors,
+            ),
+            authors=authors,
+            isbns=frozenset(cls.normalized_isbns(book)),
+        )
+
+    @staticmethod
+    def _author_names_match(a: str, b: str) -> bool:
+        """Recognize exact names, initials, and close spelling variants."""
+        if a == b:
+            return True
+
+        tokens_a = a.split()
+        tokens_b = b.split()
+
+        if not tokens_a or not tokens_b:
+            return False
+
+        if tokens_a[-1] == tokens_b[-1] and tokens_a[0][0] == tokens_b[0][0]:
+            return True
+
+        return fuzz.ratio(a, b) >= 90
+
+    @classmethod
+    def _author_similarity(
+        cls,
+        authors_a: frozenset[str],
+        authors_b: frozenset[str],
+    ) -> float:
+        """Compare author lists while tolerating additional contributors."""
+        if not authors_a or not authors_b:
             return 0.0
 
-        return len(set_a & set_b) / len(set_a | set_b)
+        remaining = set(authors_b)
+        matched = 0
 
-    def similarity(self, a: Book, b: Book) -> float:
-        """Calculate the overall similarity between two books based on total similarity."""
-        # Strong signal: ISBN match
-        if set(filter(None, a.isbn)) & set(filter(None, b.isbn)):
-            return 1.0
+        for author_a in sorted(authors_a):
+            match = next(
+                (
+                    author_b
+                    for author_b in sorted(remaining)
+                    if cls._author_names_match(author_a, author_b)
+                ),
+                None,
+            )
+            if match is not None:
+                remaining.remove(match)
+                matched += 1
 
-        t = self.title_similarity(a.title, b.title)
-        au = self.author_similarity(a.authors, b.authors)
+        overlap = matched / min(len(authors_a), len(authors_b))
+        jaccard = matched / (len(authors_a) + len(authors_b) - matched)
 
-        return 0.7 * t + 0.3 * au
+        return 0.7 * overlap + 0.3 * jaccard
 
-    def is_match(self, a: Book, b: Book) -> bool:
-        """Determine if two books are a match based on their similarity score and the threshold."""
-        return self.similarity(a, b) >= self.threshold
+    @staticmethod
+    def _title_similarity_features(
+        a: _BookFeatures,
+        b: _BookFeatures,
+    ) -> float:
+        """Compare full titles and penalized title variants."""
+        if not a.title or not b.title:
+            return 0.0
 
-    def best_match(self, book: Book, candidates: list[Book]) -> tuple[Book | None, float]:
-        """Find the best matching book from a list of candidates."""
-        best_match = None
         best_score = 0.0
 
-        for candidate in candidates:
-            sim = self.similarity(book, candidate)
-            if sim > best_score:
-                best_score = sim
-                best_match = candidate
+        for title_a, penalty_a in a.title_variants:
+            for title_b, penalty_b in b.title_variants:
+                if title_a == title_b:
+                    score = 1.0
+                else:
+                    score = (
+                        max(
+                            fuzz.ratio(title_a, title_b),
+                            fuzz.token_sort_ratio(title_a, title_b),
+                        )
+                        / 100
+                    )
 
-        return best_match, best_score
+                score *= min(penalty_a, penalty_b)
+                best_score = max(best_score, score)
+
+        return best_score
+
+    @classmethod
+    def _similarity(
+        cls,
+        a: _BookFeatures,
+        b: _BookFeatures,
+    ) -> float:
+        """Calculate a score from 0 to 1."""
+        if a.isbns & b.isbns:
+            return 1.0
+
+        title_score = cls._title_similarity_features(a, b)
+        author_score = cls._author_similarity(a.authors, b.authors)
+
+        if not a.authors or not b.authors:
+            return 0.94 * title_score
+
+        return 0.85 * title_score + 0.15 * author_score
+
+    @classmethod
+    def _is_match(
+        cls,
+        a: _BookFeatures,
+        b: _BookFeatures,
+        score: float,
+        threshold: float,
+    ) -> bool:
+        """Apply both the title-similarity floor and overall threshold."""
+        if a.isbns & b.isbns:
+            return True
+
+        if cls._conflicting_title_words(a.title, b.title):
+            return False
+
+        title_score = cls._title_similarity_features(a, b)
+        return title_score >= _MIN_TITLE_SIMILARITY and score >= threshold
+
+    def title_similarity(self, a: str, b: str) -> float:
+        """Return title-only similarity."""
+        features_a = _BookFeatures(
+            book=None,  # type: ignore[arg-type]
+            title=self.canonicalize_title(a),
+            title_variants=self._title_variants(a),
+            authors=frozenset(),
+            isbns=frozenset(),
+        )
+        features_b = _BookFeatures(
+            book=None,  # type: ignore[arg-type]
+            title=self.canonicalize_title(b),
+            title_variants=self._title_variants(b),
+            authors=frozenset(),
+            isbns=frozenset(),
+        )
+        return self._title_similarity_features(features_a, features_b)
+
+    def author_similarity(self, a: list[str], b: list[str]) -> float:
+        """Return author-only similarity."""
+        authors_a = frozenset(
+            normalized for name in a if name and (normalized := self._normalize_author(name))
+        )
+        authors_b = frozenset(
+            normalized for name in b if name and (normalized := self._normalize_author(name))
+        )
+        return self._author_similarity(authors_a, authors_b)
+
+    def similarity(self, a: Book, b: Book) -> float:
+        """Return the similarity score between two books."""
+        return self._similarity(self._prepare(a), self._prepare(b))
+
+    @classmethod
+    def _conflicting_title_words(cls, a: str, b: str) -> bool:
+        """Detect titles that differ by one meaningful word."""
+        words_a = cls.canonicalize_title(a).split()
+        words_b = cls.canonicalize_title(b).split()
+
+        if len(words_a) != len(words_b) or len(words_a) < 2:
+            return False
+
+        differences = sum(
+            word_a != word_b for word_a, word_b in zip(words_a, words_b, strict=False)
+        )
+        return differences == 1
+
+    def is_match(self, a: Book, b: Book) -> bool:
+        """Return whether two books satisfy the matching rules."""
+        features_a = self._prepare(a)
+        features_b = self._prepare(b)
+        score = self._similarity(features_a, features_b)
+        return self._is_match(
+            features_a,
+            features_b,
+            score,
+            self.threshold,
+        )
+
+    def best_match(
+        self,
+        book: Book,
+        candidates: Iterable[Book],
+    ) -> tuple[Book | None, float]:
+        """Return the highest-scoring candidate, even below threshold."""
+        target = self._prepare(book)
+        best_candidate = None
+        best_score = -1.0
+
+        for candidate in candidates:
+            prepared = self._prepare(candidate)
+            score = self._similarity(target, prepared)
+
+            if score > best_score:
+                best_candidate = candidate
+                best_score = score
+
+        if best_candidate is None:
+            return None, 0.0
+
+        return best_candidate, best_score
+
+    def _score_candidates(
+        self,
+        target: _BookFeatures,
+        candidates: list[_BookFeatures],
+    ) -> list[tuple[_BookFeatures, float]]:
+        """Score candidates and return them in descending score order."""
+        scored = [(candidate, self._similarity(target, candidate)) for candidate in candidates]
+        return sorted(
+            scored,
+            key=lambda item: item[1],
+            reverse=True,
+        )
+
+    def _log_ambiguity(
+        self,
+        target: _BookFeatures,
+        scored: list[tuple[_BookFeatures, float]],
+    ) -> None:
+        """Log similarly scoring candidates with different metadata."""
+        if not scored:
+            return
+
+        best, best_score = scored[0]
+
+        for other, other_score in scored[1:]:
+            if best_score - other_score > 0.02:
+                break
+
+            equivalent = best.title == other.title and best.authors == other.authors
+            if equivalent:
+                continue
+
+            logger.debug(
+                "Ambiguous match for %r: best=%r (%.3f), alternative=%r (%.3f)",
+                target.book.title,
+                best.book.title,
+                best_score,
+                other.book.title,
+                other_score,
+            )
+            break
+
+    def _assign_matches(
+        self,
+        scored_pairs: list[tuple[float, _BookFeatures, _BookFeatures]],
+    ) -> set[tuple[Book, Book, float]]:
+        """Assign strongest pairs without matching either book twice."""
+        matches: set[tuple[Book, Book, float]] = set()
+        matched_a: set[int] = set()
+        matched_b: set[int] = set()
+
+        for score, candidate, target in sorted(
+            scored_pairs,
+            key=lambda item: item[0],
+            reverse=True,
+        ):
+            candidate_id = id(candidate.book)
+            target_id = id(target.book)
+
+            if candidate_id in matched_a or target_id in matched_b:
+                continue
+
+            matches.add((candidate.book, target.book, score))
+            matched_a.add(candidate_id)
+            matched_b.add(target_id)
+
+            logger.debug(
+                "Matched Calibre book %r to Hardcover book %r (%.3f)",
+                candidate.book.title,
+                target.book.title,
+                score,
+            )
+
+        return matches
 
     def match_books(
         self,
         books_a: Iterable[Book],
         books_b: Iterable[Book],
     ) -> set[tuple[Book, Book, float]]:
-        """Match books from two lists and return a list of matched pairs and their similarity."""
+        """Match books one-to-one using the strongest qualifying pairs."""
+        candidates = [self._prepare(book) for book in books_a]
+        targets = [self._prepare(book) for book in books_b]
+        scored_pairs: list[tuple[float, _BookFeatures, _BookFeatures]] = []
 
-        matches = set()
+        for target in targets:
+            scored = self._score_candidates(target, candidates)
 
-        for book_b in books_b:
-            match, score = self.best_match(book_b, books_a)
-            if match and score >= self.threshold:
-                matches.add((match, book_b, score))
-            else:
-                logger.debug("No match for %s in calibre db. Best similarity: %.2f", book_b, score)
+            if not scored:
+                logger.debug(
+                    "No candidates available for %r",
+                    target.book.title,
+                )
+                continue
 
-        return matches
+            best, score = scored[0]
+
+            if not self._is_match(
+                target,
+                best,
+                score,
+                self.threshold,
+            ):
+                logger.debug(
+                    "No match for %r. Best candidate: %r (%.3f)",
+                    target.book.title,
+                    best.book.title,
+                    score,
+                )
+                continue
+
+            self._log_ambiguity(target, scored)
+
+            scored_pairs.extend(
+                (candidate_score, candidate, target)
+                for candidate, candidate_score in scored
+                if self._is_match(
+                    target,
+                    candidate,
+                    candidate_score,
+                    self.threshold,
+                )
+            )
+
+        return self._assign_matches(scored_pairs)

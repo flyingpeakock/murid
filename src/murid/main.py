@@ -138,7 +138,7 @@ __,-.\_( 6 6 )__,-.___
             app.run()
     except Exception as e:
         logger.error("An error occurred: %s", e)
-        raise SystemExit(1) from e
+        raise e
 
 
 if __name__ == "__main__":

@@ -257,5 +257,5 @@ def test_main_exits_on_exception(monkeypatch):
 
     monkeypatch.setattr("murid.main.setup_logger", lambda *_: None)
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(RuntimeError, match="boom"):
         main()

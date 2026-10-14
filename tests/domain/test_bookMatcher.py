@@ -1,5 +1,9 @@
 # tests/test_bookmatcher.py
 
+import logging
+
+import pytest
+
 from murid import Book, BookMatcher
 
 
@@ -73,7 +77,7 @@ def test_author_similarity_partial_overlap():
         ["Author A"],
     )
 
-    assert score == 0.5
+    assert score == 0.85
 
 
 def test_author_similarity_no_overlap():
@@ -98,11 +102,11 @@ def test_author_similarity_empty():
 def test_similarity_isbn_match_returns_one():
     matcher = BookMatcher()
 
-    a = make_book(isbn=["123"])
+    a = make_book(isbn=["9780306406157"])
     b = make_book(
         title="Completely Different",
         authors=["Someone Else"],
-        isbn=["123"],
+        isbn=["9780306406157"],
     )
 
     assert matcher.similarity(a, b) == 1.0
@@ -284,30 +288,6 @@ def test_canonicalize_removes_article():
     assert BookMatcher.canonicalize_title("The Last Hero") == "last hero"
 
 
-def test_canonicalize_removes_subtitle():
-    assert BookMatcher.canonicalize_title("The Last Hero: A Discworld Fable") == "last hero"
-
-
-def test_canonicalize_removes_parenthetical():
-    assert BookMatcher.canonicalize_title("The Last Hero (Discworld #27)") == "last hero"
-
-
-def test_canonicalize_combines_rules():
-    assert (
-        BookMatcher.canonicalize_title("The Last Hero (Discworld #27): A Discworld Fable")
-        == "last hero"
-    )
-
-
-def test_canonicalize_torrent_title():
-    assert (
-        BookMatcher.canonicalize_title(
-            "1600 [Wintersmith] (By: Terry Pratchett) [published: October, 2007]"
-        )
-        == "wintersmith"
-    )
-
-
 def test_white_sand_volume_matches():
     matcher = BookMatcher()
 
@@ -326,3 +306,314 @@ def test_white_sand_volume_matches():
 
 def test_canonicalize_does_not_destroy_numeric_titles():
     assert BookMatcher.canonicalize_title("1984") == "1984"
+
+
+# ISBN validation and normalization
+
+
+@pytest.mark.parametrize(
+    ("isbn", "expected"),
+    [
+        ("0306406152", "9780306406157"),
+        ("0-306-40615-2", "9780306406157"),
+        ("9780306406157", "9780306406157"),
+        ("978-0-306-40615-7", "9780306406157"),
+        ("080442957X", "9780804429573"),
+        ("9791090636071", "9791090636071"),
+    ],
+)
+def test_normalize_isbn_valid(isbn, expected):
+    assert BookMatcher.normalize_isbn(isbn) == expected
+
+
+@pytest.mark.parametrize(
+    "isbn",
+    [
+        "",
+        None,
+        "123",
+        "0306406153",  # Invalid ISBN-10 checksum
+        "9780306406158",  # Invalid ISBN-13 checksum
+        "9770306406157",  # Unsupported ISBN prefix
+        "ABCDEFGHIJ",
+        "978030640615X",  # ISBN-13 must contain digits only
+    ],
+)
+def test_normalize_isbn_invalid(isbn):
+    assert BookMatcher.normalize_isbn(isbn) is None
+
+
+def test_isbn10_and_isbn13_match():
+    matcher = BookMatcher()
+
+    a = make_book(
+        title="Dune",
+        authors=["Frank Herbert"],
+        isbn=["0441172717"],
+    )
+    b = make_book(
+        title="Different title",
+        authors=["Someone Else"],
+        isbn=["9780441172719"],
+    )
+
+    assert matcher.is_match(a, b)
+
+
+def test_invalid_isbns_do_not_create_matches():
+    matcher = BookMatcher()
+
+    a = make_book(
+        title="Dune",
+        authors=["Frank Herbert"],
+        isbn=["9780306406158"],
+    )
+    b = make_book(
+        title="Foundation",
+        authors=["Isaac Asimov"],
+        isbn=["9780306406158"],
+    )
+
+    assert matcher.similarity(a, b) < 0.5
+    assert not matcher.is_match(a, b)
+
+
+# Title matching: avoid false positives
+
+
+def test_title_similarity_ignores_leading_article():
+    matcher = BookMatcher()
+
+    assert matcher.title_similarity("The Hobbit", "Hobbit") == 1.0
+
+
+def test_title_similarity_preserves_meaningful_words():
+    matcher = BookMatcher()
+
+    assert matcher.title_similarity("Little Women", "Little Men") < 1.0
+
+
+def test_little_women_does_not_match_little_men():
+    matcher = BookMatcher()
+
+    women = make_book(
+        title="Little Women",
+        authors=["Louisa May Alcott"],
+    )
+    men = make_book(
+        title="Little Men",
+        authors=["Louisa May Alcott"],
+    )
+
+    assert not matcher.is_match(women, men)
+
+
+def test_same_title_with_different_authors_does_not_match():
+    matcher = BookMatcher()
+
+    a = make_book(
+        title="Dune",
+        authors=["Frank Herbert"],
+    )
+    b = make_book(
+        title="Dune",
+        authors=["Someone Else"],
+    )
+
+    assert not matcher.is_match(a, b)
+
+
+def test_missing_author_does_not_make_fuzzy_title_match():
+    matcher = BookMatcher()
+
+    a = make_book(
+        title="Dune",
+        authors=[],
+    )
+    b = make_book(
+        title="Dune Messiah",
+        authors=[],
+    )
+
+    assert not matcher.is_match(a, b)
+
+
+def test_subtitle_variant_can_match_main_title():
+    matcher = BookMatcher()
+
+    a = make_book(
+        title="Dune",
+        authors=["Frank Herbert"],
+    )
+    b = make_book(
+        title="Dune: The Illustrated Edition",
+        authors=["Frank Herbert"],
+    )
+
+    assert matcher.is_match(a, b)
+
+
+def test_volume_annotation_does_not_remove_arbitrary_words():
+    BookMatcher()
+
+    assert BookMatcher._remove_volume_annotation("Little Men") == "Little Men"
+    assert BookMatcher._remove_volume_annotation("Little Women") == "Little Women"
+
+
+# One-to-one assignment
+
+
+def test_match_books_does_not_match_calibre_book_twice():
+    matcher = BookMatcher()
+
+    calibre_books = [
+        make_book(
+            id=1,
+            title="Dune",
+            authors=["Frank Herbert"],
+        ),
+    ]
+    hardcover_books = [
+        make_book(
+            id=101,
+            title="Dune",
+            authors=["Frank Herbert"],
+        ),
+        make_book(
+            id=102,
+            title="Dune",
+            authors=["Frank Herbert"],
+        ),
+    ]
+
+    matches = matcher.match_books(calibre_books, hardcover_books)
+
+    assert len(matches) == 1
+    assert len({a.id for a, _, _ in matches}) == len(matches)
+    assert len({b.id for _, b, _ in matches}) == len(matches)
+
+
+def test_match_books_does_not_match_hardcover_book_twice():
+    matcher = BookMatcher()
+
+    calibre_books = [
+        make_book(id=1, title="Dune", authors=["Frank Herbert"]),
+        make_book(id=2, title="Dune", authors=["Frank Herbert"]),
+    ]
+    hardcover_books = [
+        make_book(id=101, title="Dune", authors=["Frank Herbert"]),
+    ]
+
+    matches = matcher.match_books(calibre_books, hardcover_books)
+
+    assert len(matches) == 1
+    assert len({a.id for a, _, _ in matches}) == len(matches)
+    assert len({b.id for _, b, _ in matches}) == len(matches)
+
+
+def test_match_books_matches_multiple_distinct_books():
+    matcher = BookMatcher()
+
+    calibre_books = [
+        make_book(id=1, title="Dune", authors=["Frank Herbert"]),
+        make_book(id=2, title="Foundation", authors=["Isaac Asimov"]),
+    ]
+    hardcover_books = [
+        make_book(id=101, title="Foundation", authors=["Isaac Asimov"]),
+        make_book(id=102, title="Dune", authors=["Frank Herbert"]),
+    ]
+
+    matches = matcher.match_books(calibre_books, hardcover_books)
+
+    assert len(matches) == 2
+    assert {(a.id, b.id) for a, b, _ in matches} == {
+        (1, 102),
+        (2, 101),
+    }
+
+
+def test_match_books_does_not_assign_one_book_to_two_candidates():
+    matcher = BookMatcher()
+
+    calibre_books = [
+        make_book(id=1, title="Dune", authors=["Frank Herbert"]),
+        make_book(id=2, title="Foundation", authors=["Isaac Asimov"]),
+    ]
+    hardcover_books = [
+        make_book(id=101, title="Dune", authors=["Frank Herbert"]),
+        make_book(id=102, title="Dune", authors=["Frank Herbert"]),
+    ]
+
+    matches = matcher.match_books(calibre_books, hardcover_books)
+
+    assert len(matches) == 1
+    assert len({a.id for a, _, _ in matches}) == 1
+    assert len({b.id for _, b, _ in matches}) == 1
+
+
+def test_match_books_empty_inputs():
+    matcher = BookMatcher()
+
+    assert matcher.match_books([], []) == set()
+    assert matcher.match_books([make_book()], []) == set()
+    assert matcher.match_books([], [make_book()]) == set()
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        (
+            "[Wintersmith] (By: Terry Pratchett) [published: October, 2007]",
+            "Wintersmith",
+        ),
+        ("Dune [By: Frank Herbert]", "Dune"),
+        ("Dune [published: June, 1965]", "Dune"),
+        ("The [Winter] King", "The [Winter] King"),
+    ],
+)
+def test_remove_metadata_annotations(title, expected):
+    assert BookMatcher._remove_metadata_annotations(title) == expected
+
+
+# Logging and diagnostics
+
+
+def test_match_books_logs_when_no_candidates_exist(caplog):
+    matcher = BookMatcher()
+
+    with caplog.at_level(logging.DEBUG, logger="murid"):
+        matches = matcher.match_books([], [make_book(title="Dune")])
+
+    assert matches == set()
+    assert "No candidates available" in caplog.text
+
+
+def test_match_books_logs_unmatched_book(caplog):
+    matcher = BookMatcher()
+
+    calibre_books = [
+        make_book(title="Foundation", authors=["Isaac Asimov"]),
+    ]
+    hardcover_books = [
+        make_book(title="Dune", authors=["Frank Herbert"]),
+    ]
+
+    with caplog.at_level(logging.DEBUG, logger="murid"):
+        matches = matcher.match_books(calibre_books, hardcover_books)
+
+    assert matches == set()
+    assert "No match for" in caplog.text
+    assert "Foundation" in caplog.text
+
+
+def test_match_books_logs_successful_match(caplog):
+    matcher = BookMatcher()
+
+    with caplog.at_level(logging.DEBUG, logger="murid"):
+        matches = matcher.match_books(
+            [make_book(id=1, title="Dune")],
+            [make_book(id=2, title="Dune")],
+        )
+
+    assert len(matches) == 1
+    assert "Matched Calibre book" in caplog.text
