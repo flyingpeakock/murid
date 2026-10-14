@@ -262,9 +262,9 @@ class BookMatcher:
     @staticmethod
     def _add_omnibus_title_variant(variants: dict[str, float], full: str) -> None:
         """Treat a trailing omnibus label as packaging metadata."""
-        suffix = " omnibus"
-        if full.endswith(suffix):
-            core = full[: -len(suffix)].strip()
+        match = re.search(r"\s+omnibus(?: edition)?$", full)
+        if match:
+            core = full[: match.start()].strip()
             if core:
                 variants[core] = _TITLE_VARIANT_PENALTIES["omnibus"]
 
