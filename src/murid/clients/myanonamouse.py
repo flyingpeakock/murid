@@ -6,6 +6,8 @@ import re
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import requests
@@ -38,6 +40,7 @@ class MyAnonamouse:
     SEARCH_URL = f"{BASE_URL}/tor/js/loadSearchJSONbasic.php"
     DOWNLOAD_URL = f"{BASE_URL}/tor/download.php"
     _MIN_REQUEST_INTERVAL = 0.5  # seconds
+    _MAX_RATE_LIMIT_RETRIES = 3
 
     def __init__(self, mam_id: str) -> None:
         """Initialize the MyAnonamouse class with the provided mam_id for authentication."""
@@ -48,14 +51,48 @@ class MyAnonamouse:
         self._last_request_time = 0.0
 
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
-        """Make a request to the MyAnonamouse API, ensuring that we respect the minimum interval."""
+        """Make a paced request and retry rate limits using the server's cooldown."""
         with self._lock:
-            now = time.monotonic()
-            elapsed = now - self._last_request_time
-            if elapsed < self._MIN_REQUEST_INTERVAL:
-                time.sleep(self._MIN_REQUEST_INTERVAL - elapsed)
-            self._last_request_time = time.monotonic()
-            return self.session.request(method, url, **kwargs)
+            for attempt in range(self._MAX_RATE_LIMIT_RETRIES + 1):
+                elapsed = time.monotonic() - self._last_request_time
+                if elapsed < self._MIN_REQUEST_INTERVAL:
+                    time.sleep(self._MIN_REQUEST_INTERVAL - elapsed)
+                self._last_request_time = time.monotonic()
+                response = self.session.request(method, url, **kwargs)
+
+                if (
+                    getattr(response, "status_code", None) != 429
+                    or attempt == self._MAX_RATE_LIMIT_RETRIES
+                ):
+                    return response
+
+                delay = self._retry_after_seconds(response, attempt)
+                logger.warning(
+                    "MyAnonamouse rate limited a request; retrying in %.1f seconds",
+                    delay,
+                )
+                time.sleep(delay)
+
+        raise RuntimeError("MyAnonamouse request retry loop exited unexpectedly")
+
+    @staticmethod
+    def _retry_after_seconds(response: requests.Response, attempt: int) -> float:
+        """Return the server's Retry-After delay, or exponential backoff if absent."""
+        retry_after = getattr(response, "headers", {}).get("Retry-After")
+        if retry_after is not None:
+            try:
+                return max(0.0, float(retry_after))
+            except ValueError:
+                try:
+                    retry_at = parsedate_to_datetime(retry_after)
+                except (TypeError, ValueError, OverflowError):
+                    pass
+                else:
+                    if retry_at.tzinfo is None:
+                        retry_at = retry_at.replace(tzinfo=timezone.utc)
+                    return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+
+        return float(2**attempt)
 
     def search(self, query: MyAnonamouseQuery) -> set[Torrent]:
         """Search for torrents on MyAnonamouse matching the specified criteria."""
@@ -83,7 +120,8 @@ class MyAnonamouse:
 
         logger.debug("Searching MyAnonamouse for %r", query.text or query.id)
         try:
-            response = self.session.post(
+            response = self._request(
+                "POST",
                 self.SEARCH_URL,
                 json=payload,
                 timeout=120,
