@@ -120,27 +120,27 @@ def test_run_orchestrates_pipeline(factory):
     torrent_import.import_torrents.assert_called_once()
 
 
-def test_start_scheduler_runs_once(monkeypatch, factory):
+@pytest.mark.parametrize("failure", [RuntimeError("reload failed"), SystemExit(1)])
+def test_start_scheduler_recovers_from_failed_cycle(monkeypatch, factory, failure):
     service = SyncService(factory)
 
-    fake_iter = Mock()
-    fake_iter.get_next.side_effect = [
-        100,
-        200,
+    stop_scheduler = RuntimeError("stop scheduler test")
+    factory.cron_iter.side_effect = [
+        SimpleNamespace(get_next=Mock(return_value=1)),
+        SimpleNamespace(get_next=Mock(return_value=2)),
+        stop_scheduler,
     ]
-
-    factory.cron_iter.return_value = fake_iter
+    factory.reload = Mock(side_effect=[failure, None])
+    service.run = Mock()
 
     monkeypatch.setattr(
         "murid.services.sync_service.datetime",
-        SimpleNamespace(now=lambda: 0),
+        SimpleNamespace(now=lambda: 2),
     )
+    monkeypatch.setattr("murid.services.sync_service.time.sleep", Mock())
 
-    monkeypatch.setattr("murid.services.sync_service.ThreadPoolExecutor", Mock())
-
-    # just ensure it doesn't crash immediately
-    # (we don't actually want infinite loop execution)
-    try:
+    with pytest.raises(RuntimeError, match="stop scheduler test"):
         service.start_scheduler()
-    except Exception:
-        pass
+
+    assert factory.reload.call_count == 2
+    service.run.assert_called_once_with()

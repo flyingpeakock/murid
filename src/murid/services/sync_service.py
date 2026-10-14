@@ -39,9 +39,16 @@ class SyncService:
                 time.sleep(max(1, (next_run - now).total_seconds() / 2))
 
             logger.info("Starting murid cycle")
-            self.factory.reload()  # Reload configuration before each run to pick up any changes
-            self.run()
-            logger.info("Finished murid cycle")
+            try:
+                # Reload configuration before each run to pick up any changes.
+                self.factory.reload()
+                self.run()
+            except (Exception, SystemExit):
+                # Client initialization and configuration loading can raise SystemExit.
+                # In scheduled mode, keep the process alive so a later cycle can recover.
+                logger.exception("Murid cycle failed; it will retry at the next scheduled run")
+            else:
+                logger.info("Finished murid cycle")
             # Start the next interval from now so missed cron slots are skipped instead
             # of causing immediate back-to-back runs.
             cron_iter = self.factory.cron_iter(datetime.now())
