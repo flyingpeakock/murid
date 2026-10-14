@@ -42,6 +42,9 @@ class SyncService:
             self.factory.reload()  # Reload configuration before each run to pick up any changes
             self.run()
             logger.info("Finished murid cycle")
+            # Start the next interval from now so missed cron slots are skipped instead
+            # of causing immediate back-to-back runs.
+            cron_iter = self.factory.cron_iter(datetime.now())
             next_run = cron_iter.get_next(datetime)
 
     def run(self) -> None:
