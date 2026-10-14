@@ -1,6 +1,6 @@
 from concurrent.futures import Future, ThreadPoolExecutor
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -56,6 +56,30 @@ def test_find_torrents_sets_series_and_returns(mam):
     assert torrent.book.series_number == 1
 
 
+def test_find_torrents_retries_main_and_alternate_titles_without_author(mam):
+    book = SimpleNamespace(
+        title="Main title",
+        authors=["Author"],
+        series=None,
+        series_number=None,
+        alternative_titles=["Alternate title"],
+    )
+    torrent = Mock()
+    torrent.book = SimpleNamespace(series=None, series_number=None)
+    mam.search_ebook.side_effect = [[], [torrent], []]
+
+    service = TorrentDiscoveryService(mam, ["eng"], None)
+
+    _, torrents = service.find_torrents(book)
+
+    assert torrents == {torrent}
+    assert mam.search_ebook.call_args_list == [
+        call("Main title", "Author"),
+        call("Main title", None),
+        call("Alternate title", None),
+    ]
+
+
 def test_collect_downloads_filters_none():
     service = TorrentDiscoveryService(Mock(), [], None)
 
@@ -102,6 +126,39 @@ def test_submit_downloads_happy_path(mam, matcher):
     assert result[future] == torrent_book
 
 
+def test_submit_downloads_retries_title_only_when_matcher_rejects(mam, matcher):
+    service = TorrentDiscoveryService(mam, ["eng"], None)
+    original_torrent = Mock()
+    selected_torrent = Mock()
+    selected_torrent.book = SimpleNamespace()
+    service.torrent_selector = SimpleNamespace(
+        select=Mock(side_effect=[None, selected_torrent])
+    )
+    mam.search_ebook.side_effect = [[selected_torrent], []]
+    mam.download_torrent.return_value = b"torrent-file"
+
+    book = SimpleNamespace(
+        title="Main title",
+        authors=["Author"],
+        alternative_titles=["Alternate title"],
+    )
+    search_future = Future()
+    search_future.set_result((book, [original_torrent]))
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        result = service.submit_downloads(executor, {search_future: book}, matcher)
+        assert len(result) == 1
+        future, selected_book = next(iter(result.items()))
+        assert selected_book == selected_torrent.book
+        assert future.result() == b"torrent-file"
+
+    assert service.torrent_selector.select.call_count == 2
+    assert mam.search_ebook.call_args_list == [
+        call("Main title", None),
+        call("Alternate title", None),
+    ]
+
+
 def test_submit_downloads_skips_empty():
     service = TorrentDiscoveryService(Mock(), [], None)
 
@@ -120,6 +177,7 @@ def test_submit_downloads_skips_empty():
 def test_submit_downloads_rejected_by_selector(mam):
     service = TorrentDiscoveryService(mam, ["eng"], None)
     service.torrent_selector = SimpleNamespace(select=lambda *a, **k: None)
+    mam.search_ebook.return_value = []
 
     book = FakeBook(title="Dune")
     torrent = SimpleNamespace(book=SimpleNamespace())
