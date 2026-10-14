@@ -55,7 +55,6 @@ class Qbittorrent(TorrentClient):
             )
 
             logger.info("Added %s to qBittorrent", book)
-            logger.debug("Response: %s", tinfo)
 
             return tinfo.added_torrent_ids[0]
 

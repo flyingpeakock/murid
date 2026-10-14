@@ -83,11 +83,6 @@ class TorrentDiscoveryService:
 
             if not tor_list:
                 continue
-            logger.debug(
-                "Potential torrents found for %s:\n%s",
-                book,
-                [str(torrent) for torrent in tor_list],
-            )
 
             torrent = self.torrent_selector.select(book, tor_list, matcher)
 

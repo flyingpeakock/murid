@@ -27,7 +27,7 @@ def init_apprise(
     logger: logging.Logger, config: dict
 ) -> Callable[[str, str, apprise.NotifyType], None]:
     """Initialize Apprise with the provided configuration and return a notify function."""
-    logger.debug("Initializing Apprise with config: %s", config)
+    logger.debug("Initializing Apprise notifications")
     asset = apprise.AppriseAsset(
         app_id="murid",
         app_desc=(
@@ -45,7 +45,6 @@ def init_apprise(
 
     for handler in list(logger.handlers):
         if isinstance(handler, AppriseHandler):
-            logger.debug("Removing existing AppriseHandler from logger.")
             logger.removeHandler(handler)
     logger.addHandler(AppriseHandler(apprise_obj))
 

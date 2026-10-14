@@ -44,7 +44,13 @@ def setup_logger(log_level: str) -> None:
     logger.setLevel(log_level)
 
     if sys.stderr.isatty():
-        logger.addHandler(RichHandler(rich_tracebacks=True, tracebacks_show_locals=True))
+        logger.addHandler(
+            RichHandler(
+                rich_tracebacks=True,
+                tracebacks_show_locals=True,
+                show_path=False,
+            )
+        )
     else:
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))

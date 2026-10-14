@@ -85,16 +85,8 @@ class Config:
             raise ConfigError(f"Error parsing config file: {e}") from e
         self._config = self._sanitize(deep_merge(_defaults, config if config is not None else {}))
 
-        for key in _defaults:
-            if config is None or key not in config:
-                logger.debug(
-                    "Using default value for config item '%s. Value: %s'",
-                    key,
-                    self._config[key],
-                )
-
         self.validate()
-        logger.debug("Config loaded:\n%s", self)
+        logger.debug("Configuration loaded")
 
     def get(self, key: str, default: Any = _MISSING) -> Any:
         """Get a config value by key, with an optional default if the key is not found."""

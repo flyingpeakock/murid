@@ -40,7 +40,6 @@ class RetryService:
         """Fetch torrents that previously timed out during import."""
         previous_torrents = self.torrent_client.get_torrents_with_tag("murid_timeout")
         if not previous_torrents:
-            logger.debug("No previously timed out torrents found with tag 'murid_timeout'")
             return
         logger.debug(
             "Found %d previously timed out torrents with tag 'murid_timeout'",

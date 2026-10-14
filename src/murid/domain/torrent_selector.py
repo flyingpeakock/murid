@@ -40,30 +40,21 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
         rejected_by_blacklist = 0
 
         for torrent in torrents:
-            reasons = []
+            rejected = False
             if torrent.language is not None and torrent.language not in self.lang_codes:
                 rejected_by_language += 1
-                reasons.append(f"language {torrent.language!r} not in {sorted(self.lang_codes)!r}")
+                rejected = True
 
             matching_filetypes = self.wanted_filetypes.intersection(torrent.file_types or [])
             if not matching_filetypes:
                 rejected_by_filetype += 1
-                reasons.append(
-                    f"file types {torrent.file_types!r} do not include "
-                    f"{sorted(self.wanted_filetypes)!r}"
-                )
+                rejected = True
 
             if torrent.book.id in self.blacklist:
                 rejected_by_blacklist += 1
-                reasons.append(f"torrent id {torrent.book.id} is blacklisted")
+                rejected = True
 
-            if reasons:
-                logger.debug(
-                    "Filtered MyAnonamouse torrent id=%s title=%r: %s",
-                    torrent.book.id,
-                    torrent.book.title,
-                    "; ".join(reasons),
-                )
+            if rejected:
                 continue
 
             torrent_books.add(torrent.book)

@@ -142,8 +142,7 @@ class Calibre:
 
         args.append(path)
         try:
-            stdout = self._calibredb(*args)
-            logger.debug("Calibre output: %s", stdout)
+            self._calibredb(*args)
         except subprocess.CalledProcessError as e:
             logger.error("Error adding book to Calibre: %s", e.stderr)
             raise CalibreError(f"Error adding book to Calibre: {e.stderr}") from e

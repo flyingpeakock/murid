@@ -61,7 +61,6 @@ class Hardcover:
                 logger.error("GraphQL errors: %s", data["errors"])
                 raise HardcoverError(f"GraphQL errors: {data['errors']}")
 
-            logger.debug("Hardcover data fetched successfully for query: %s", query)
             return data
         except requests.RequestException as e:
             logger.error("Error making query to Hardcover API: %s", e)
@@ -79,7 +78,6 @@ class Hardcover:
         """
         data = self.make_query(query)
         user = HardcoverUser(**data["data"]["me"][0])
-        logger.debug("Fetched Hardcover user info: %s", user)
         return user
 
     def fetch_data(self) -> dict:

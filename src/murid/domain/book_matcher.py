@@ -392,7 +392,6 @@ class BookMatcher:
                 getattr(book, "series_number", None)
             ),
         )
-        cls._log_prepared_features(book, features)
         return features
 
     @classmethod
@@ -424,23 +423,6 @@ class BookMatcher:
             canonical
             for value in [book.title or "", *alternative_titles]
             if (canonical := cls.canonicalize_title(value))
-        )
-
-    @staticmethod
-    def _log_prepared_features(book: Book, features: _BookFeatures) -> None:
-        """Log the normalized metadata used in matching."""
-        logger.debug(
-            "Matcher metadata source=%s title=%r normalized=%r aliases=%r authors=%r "
-            "ISBNs=%r catalog_ids=%r series=%r position=%r",
-            book.source,
-            book.title,
-            features.title,
-            sorted(features.titles - {features.title}),
-            sorted(features.authors),
-            sorted(features.isbns),
-            sorted(features.identifiers),
-            features.series,
-            features.series_number,
         )
 
     @staticmethod
@@ -589,23 +571,11 @@ class BookMatcher:
         shared_identifier = bool(shared_isbns or shared_catalog_ids)
         conflicting_identifiers = shared_identifier and cls._conflicting_identifier_metadata(a, b)
         if shared_identifier and not conflicting_identifiers:
-            logger.debug(
-                "Identifier match %s[%r] <-> %s[%r]: ISBNs=%r catalog_ids=%r",
-                a.book.source,
-                a.book.title,
-                b.book.source,
-                b.book.title,
-                sorted(shared_isbns),
-                sorted(shared_catalog_ids),
-            )
             return 1.0
         if conflicting_identifiers:
             logger.debug(
-                "Shared identifier contradicted by title/author metadata for %s[%r] "
-                "and %s[%r]; falling back to title/author scoring",
-                a.book.source,
+                "Shared identifier conflicts with metadata for %r and %r; scoring by title/authors",
                 a.book.title,
-                b.book.source,
                 b.book.title,
             )
 
@@ -627,20 +597,6 @@ class BookMatcher:
         if same_series_position and title_score >= _MIN_TITLE_SIMILARITY:
             score = min(1.0, score + _SERIES_POSITION_BONUS)
 
-        logger.debug(
-            "Similarity %s[%r] <-> %s[%r]: title=%.3f authors=%.3f "
-            "shared_title=%s same_series_position=%s identifier_conflict=%s score=%.3f",
-            a.book.source,
-            a.book.title,
-            b.book.source,
-            b.book.title,
-            title_score,
-            author_score,
-            bool(a.titles & b.titles),
-            bool(same_series_position),
-            bool(conflicting_identifiers),
-            score,
-        )
         return score
 
     @classmethod
@@ -669,77 +625,20 @@ class BookMatcher:
         """Apply both the title-similarity floor and overall threshold."""
         if a.isbns & b.isbns or a.identifiers & b.identifiers:
             conflict = cls._conflicting_identifier_metadata(a, b)
-            logger.debug(
-                "%s identifier-based match %s[%r] <-> %s[%r]",
-                "Rejecting" if conflict else "Accepting",
-                a.book.source,
-                a.book.title,
-                b.book.source,
-                b.book.title,
-            )
             return not conflict
 
         if cls._conflicting_title_words(a.title, b.title) and not a.titles & b.titles:
-            logger.debug(
-                "Rejecting %s[%r] <-> %s[%r]: titles differ by one meaningful word "
-                "without a shared recorded title",
-                a.book.source,
-                a.book.title,
-                b.book.source,
-                b.book.title,
-            )
             return False
 
         if a.authors and b.authors and cls._author_similarity(a.authors, b.authors) == 0.0:
-            logger.debug(
-                "Rejecting %s[%r] <-> %s[%r]: no author overlap (%r vs %r)",
-                a.book.source,
-                a.book.title,
-                b.book.source,
-                b.book.title,
-                sorted(a.authors),
-                sorted(b.authors),
-            )
             return False
 
         title_score = cls._title_similarity_features(a, b)
         if title_score < _MIN_TITLE_SIMILARITY:
-            logger.debug(
-                "Rejecting %s[%r] <-> %s[%r]: title similarity %.3f is below floor %.3f "
-                "(overall %.3f)",
-                a.book.source,
-                a.book.title,
-                b.book.source,
-                b.book.title,
-                title_score,
-                _MIN_TITLE_SIMILARITY,
-                score,
-            )
             return False
         if score < threshold:
-            logger.debug(
-                "Rejecting %s[%r] <-> %s[%r]: score %.3f is below threshold %.3f "
-                "(title %.3f)",
-                a.book.source,
-                a.book.title,
-                b.book.source,
-                b.book.title,
-                score,
-                threshold,
-                title_score,
-            )
             return False
 
-        logger.debug(
-            "Accepting %s[%r] <-> %s[%r]: title %.3f score %.3f threshold %.3f",
-            a.book.source,
-            a.book.title,
-            b.book.source,
-            b.book.title,
-            title_score,
-            score,
-            threshold,
-        )
         return True
 
     def title_similarity(self, a: str, b: str) -> float:

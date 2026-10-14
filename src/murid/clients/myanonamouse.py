@@ -81,15 +81,7 @@ class MyAnonamouse:
             "isbn": "true",
         }
 
-        logger.debug(
-            "Searching MyAnonamouse for text=%r id=%r main_categories=%r categories=%r "
-            "search_fields=%r",
-            query.text,
-            query.id,
-            query.main_categories,
-            query.categories,
-            query.search_fields,
-        )
+        logger.debug("Searching MyAnonamouse for %r", query.text or query.id)
         try:
             response = self.session.post(
                 self.SEARCH_URL,
@@ -122,27 +114,11 @@ class MyAnonamouse:
 
         torrents = {self._parse_torrent(row) for row in rows[:100]}
         logger.debug(
-            "MyAnonamouse response for %r: parsed=%d server_total=%r total_found=%r; "
-            "candidates=%r",
-            query.text or query.id,
+            "MyAnonamouse returned %d parsed results for %r (server total=%r, found=%r)",
             len(torrents),
+            query.text or query.id,
             data.get("total"),
             data.get("total_found"),
-            sorted(
-                [
-                    (
-                        torrent.book.title,
-                        torrent.book.authors,
-                        torrent.book.isbn,
-                        torrent.book.series,
-                        torrent.book.series_number,
-                        torrent.language,
-                        torrent.file_types,
-                    )
-                    for torrent in torrents
-                ],
-                key=lambda candidate: candidate[0],
-            ),
         )
         return torrents
 
