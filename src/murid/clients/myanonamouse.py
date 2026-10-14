@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import threading
 import time
 from dataclasses import dataclass
@@ -80,7 +81,15 @@ class MyAnonamouse:
             "isbn": "true",
         }
 
-        logger.debug("Searching MyAnonamouse for %s", query.text if query.text else str(query.id))
+        logger.debug(
+            "Searching MyAnonamouse for text=%r id=%r main_categories=%r categories=%r "
+            "search_fields=%r",
+            query.text,
+            query.id,
+            query.main_categories,
+            query.categories,
+            query.search_fields,
+        )
         try:
             response = self.session.post(
                 self.SEARCH_URL,
@@ -101,7 +110,41 @@ class MyAnonamouse:
         if "data" not in data:
             raise MAMError(f"Unexpected response: {data}")
 
-        return {self._parse_torrent(row) for row in data["data"][:100]}
+        rows = data["data"]
+        if len(rows) > 100:
+            logger.debug(
+                "MyAnonamouse returned %d rows; parsing only the first 100 (total=%r, "
+                "total_found=%r)",
+                len(rows),
+                data.get("total"),
+                data.get("total_found"),
+            )
+
+        torrents = {self._parse_torrent(row) for row in rows[:100]}
+        logger.debug(
+            "MyAnonamouse response for %r: parsed=%d server_total=%r total_found=%r; "
+            "candidates=%r",
+            query.text or query.id,
+            len(torrents),
+            data.get("total"),
+            data.get("total_found"),
+            sorted(
+                [
+                    (
+                        torrent.book.title,
+                        torrent.book.authors,
+                        torrent.book.isbn,
+                        torrent.book.series,
+                        torrent.book.series_number,
+                        torrent.language,
+                        torrent.file_types,
+                    )
+                    for torrent in torrents
+                ],
+                key=lambda candidate: candidate[0],
+            ),
+        )
+        return torrents
 
     @staticmethod
     def _parse_torrent(data: dict[str, Any]) -> Torrent:
@@ -111,6 +154,16 @@ class MyAnonamouse:
         series_number = None
         if series_info:
             _, (series_name, _, series_number) = next(iter(series_info.items()))
+
+        raw_filetypes = data.get("filetypes") or data.get("filetype") or ""
+        if isinstance(raw_filetypes, list):
+            file_types = [str(value).strip().lower().lstrip(".") for value in raw_filetypes]
+        else:
+            file_types = [
+                value.strip().lower().lstrip(".")
+                for value in re.split(r"[\s,;/|]+", str(raw_filetypes))
+                if value.strip()
+            ]
 
         return Torrent(
             book=Book(
@@ -133,7 +186,7 @@ class MyAnonamouse:
             download_hash=data.get("dl"),
             series_info=json.loads(data.get("series_info", "{}")),
             language=data.get("lang_code", None),
-            file_types=data.get("filetype", "").split() if data.get("filetype") else [],
+            file_types=file_types,
             raw=data,
         )
 

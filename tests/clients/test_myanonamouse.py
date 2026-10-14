@@ -62,6 +62,7 @@ def test_parse_torrent():
             "narrator_info": "{}",
             "series_info": "{}",
             "lang_code": "en",
+            "filetypes": "EPUB, PDF",
         }
     )
 
@@ -69,6 +70,7 @@ def test_parse_torrent():
     assert torrent.book.authors == ["Frank Herbert"]
     assert torrent.book.id == 123
     assert torrent.language == "en"
+    assert torrent.file_types == ["epub", "pdf"]
 
     assert torrent.metadata.category == 60
     assert torrent.metadata.seeders == 5
