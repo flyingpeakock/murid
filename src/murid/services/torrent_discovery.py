@@ -29,7 +29,36 @@ class TorrentDiscoveryService:
 
     def find_torrents(self, book: Book) -> tuple[Book, set[Torrent]]:
         """Find torrents for a given book."""
-        mam_books = self.mam.search_ebook(book.title, book.authors[0] if book.authors else None)
+        author = book.authors[0] if book.authors else None
+        mam_books = self.mam.search_ebook(book.title, author)
+
+        if not mam_books:
+            alternative_titles = getattr(book, "alternative_titles", None) or []
+            seen_titles = {BookMatcher.canonicalize_title(book.title)}
+            alternate_results: set[Torrent] = set()
+
+            for title in alternative_titles:
+                normalized_title = BookMatcher.canonicalize_title(title)
+                if not normalized_title or normalized_title in seen_titles:
+                    continue
+                seen_titles.add(normalized_title)
+
+                logger.debug(
+                    "No MyAnonamouse results for %r; retrying with alternate title %r",
+                    book.title,
+                    title,
+                )
+                alternate_results.update(self.mam.search_ebook(title, author))
+
+            if alternate_results:
+                logger.info(
+                    "Found %d potential MyAnonamouse torrent%s using alternate title%s for %s",
+                    len(alternate_results),
+                    "" if len(alternate_results) == 1 else "s",
+                    "" if len(alternative_titles) == 1 else "s",
+                    book,
+                )
+                mam_books = alternate_results
 
         for torrent in mam_books:
             # Prefer series info from Hardcover if available,
