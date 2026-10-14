@@ -41,7 +41,7 @@ class ServiceFactory:
         try:
             return apprise(logger, self.config["apprise"])
         except Exception as e:
-            logger.error("Error initializing Apprise: %s", e)
+            logger.error("Error initializing Apprise: %r", e)
             raise SystemExit(1) from e
 
     def reload(self):
@@ -55,13 +55,13 @@ class ServiceFactory:
             with open(self.args.config_file, "r", encoding="utf-8") as f:
                 return Config(f)
         except ConfigError as e:
-            logger.error("Error loading config: %s", e)
+            logger.error("Error loading config: %r", e)
             raise SystemExit(1) from e
         except FileNotFoundError as e:
-            logger.error("Config file not found: %s", self.args.config_file)
+            logger.error("Config file not found: %r", self.args.config_file)
             raise SystemExit(1) from e
         except Exception as e:
-            logger.error("Unexpected error loading config: %s", e)
+            logger.error("Unexpected error loading config: %r", e)
             raise SystemExit(1) from e
 
     def matcher(self) -> BookMatcher:
@@ -81,7 +81,7 @@ class ServiceFactory:
                 )
             )
         except CalibreError as e:
-            logger.error("Error initializing Calibre: %s", e)
+            logger.error("Error initializing Calibre: %r", e)
             raise SystemExit(1) from e
 
     def hardcover(self) -> set[Hardcover]:

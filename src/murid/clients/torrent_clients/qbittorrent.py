@@ -41,7 +41,7 @@ class Qbittorrent(TorrentClient):
             logger.debug("Successfully authenticated with qBittorrent")
             self.client.auth_log_out()
         except qbittorrentapi.LoginFailed as e:
-            logger.error("Failed to authenticate with qBittorrent: %s", e)
+            logger.error("Failed to authenticate with qBittorrent: %r", e)
             raise SystemExit(1) from e
         logger.debug("qBittorrent: %s", self.client.app.version)
         logger.debug("qBittorrent api: %s", self.client.app.web_api_version)

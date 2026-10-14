@@ -33,13 +33,13 @@ class BookFileSelector:  # pylint: disable=too-few-public-methods
         # report the underlying path problem, while an accessible directory is always
         # inspected before it can be passed to Calibre.
         if not root.exists():
-            logger.warning("Completed torrent path is not accessible: %s", completed_path)
+            logger.warning("Completed torrent path is not accessible: %r", completed_path)
             return root
 
         if root.is_file():
             if self._supported(root):
                 return root
-            logger.warning("Completed torrent file has an unsupported format: %s", root)
+            logger.warning("Completed torrent file has an unsupported format: %r", root)
             return None
 
         return self._select_from_directory(book, root, matcher)
@@ -57,14 +57,14 @@ class BookFileSelector:  # pylint: disable=too-few-public-methods
                 key=lambda path: str(path).casefold(),
             )
         except OSError as error:
-            logger.error("Could not inspect completed torrent directory %s: %s", root, error)
+            logger.error("Could not inspect completed torrent directory %r: %r", root, error)
             return None
         if not candidates:
-            logger.warning("No supported ebook files found under %s for %s", root, book)
+            logger.warning("No supported ebook files found under %r for %s", root, book)
             return None
 
         if len(candidates) == 1:
-            logger.info("Selected the only ebook file for %s: %s", book, candidates[0])
+            logger.info("Selected the only ebook file for %s: %r", book, candidates[0])
             return candidates[0]
 
         return self._select_best_candidate(book, root, candidates, matcher)
@@ -83,7 +83,7 @@ class BookFileSelector:  # pylint: disable=too-few-public-methods
 
         if not scored or scored[0][0][0] < _MIN_TITLE_SIMILARITY:
             logger.warning(
-                "Could not match an ebook filename to %s in %s; candidates: %s",
+                "Could not match an ebook filename to %s in %r; candidates: %r",
                 book,
                 root,
                 ", ".join(str(path.relative_to(root)) for path in candidates),
@@ -99,7 +99,7 @@ class BookFileSelector:  # pylint: disable=too-few-public-methods
         distinct_titles = {key for _, _, key in close_matches}
         if len(distinct_titles) > 1:
             logger.warning(
-                "Ambiguous ebook files for %s in %s; refusing to import: %s",
+                "Ambiguous ebook files for %s in %r; refusing to import: %r",
                 book,
                 root,
                 ", ".join(str(path.relative_to(root)) for _, path, _ in close_matches),
@@ -111,7 +111,7 @@ class BookFileSelector:  # pylint: disable=too-few-public-methods
             key=self._preference,
         )
         logger.info(
-            "Selected %s for %s (title similarity %.2f)",
+            "Selected %r for %s (title similarity %.2f)",
             selected,
             book,
             best_score,

@@ -265,7 +265,7 @@ class Config:
         expected_keys = set(_defaults.keys())
         for key in config.keys():
             if key not in expected_keys:
-                logger.warning("Unexpected config item '%s' found in config file", key)
+                logger.warning("Unexpected config item %r found in config file", key)
 
     @staticmethod
     def _ensure_cron(expr: str) -> None:

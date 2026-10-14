@@ -154,12 +154,12 @@ class Hardcover:
             data = response.json()
 
             if "errors" in data:
-                logger.error("GraphQL errors: %s", data["errors"])
+                logger.error("GraphQL errors: %r", data["errors"])
                 raise HardcoverError(f"GraphQL errors: {data['errors']}")
 
             return data
         except requests.RequestException as e:
-            logger.error("Error making query to Hardcover API: %s", e)
+            logger.error("Error making query to Hardcover API: %r", e)
             raise HardcoverError(f"Error making query to Hardcover API: {e}") from e
 
     def get_user(self) -> HardcoverUser:

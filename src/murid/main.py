@@ -143,7 +143,7 @@ __,-.\_( 6 6 )__,-.___
         else:
             app.run()
     except Exception as e:
-        logger.error("An error occurred: %s", e)
+        logger.error("An error occurred: %r", e)
         raise e
 
 

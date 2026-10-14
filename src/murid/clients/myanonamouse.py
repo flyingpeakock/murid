@@ -129,7 +129,7 @@ class MyAnonamouse:
 
             response.raise_for_status()
         except requests.RequestException as e:
-            logger.error("Error searching MyAnonamouse: %s", e)
+            logger.error("Error searching MyAnonamouse: %r", e)
             return set()
 
         data = response.json()
@@ -216,7 +216,7 @@ class MyAnonamouse:
             )
         )
         if not result:
-            logger.info("No potential torrents found for %s", query)
+            logger.info("No torrents found for %r", query)
         else:
             count = len(result)
             logger.info(
@@ -234,7 +234,7 @@ class MyAnonamouse:
             logger.debug("Torrent for %s downloaded successfully", torrent.book)
             return response.content
         except requests.RequestException as e:
-            logger.error("Error downloading torrent for %s: %s", torrent.book, e)
+            logger.error("Error downloading torrent for %s: %r", torrent.book, e)
             return None
 
 

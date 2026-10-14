@@ -58,7 +58,7 @@ class SyncService:
         try:
             hardcover = self.factory.hardcover()
         except HardcoverError as e:
-            logger.error("Failed to initialize Hardcover client: %s", e)
+            logger.error("Failed to initialize Hardcover client: %r", e)
             return
 
         hardcover_books = self.fetch_hardcover_books(hardcover)

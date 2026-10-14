@@ -47,10 +47,10 @@ class Calibre:
                 check=True,
             )
         except FileNotFoundError as e:
-            logger.error("Calibre executable not found: %s", self.config.executable)
+            logger.error("Calibre executable not found: %r", self.config.executable)
             raise CalibreError(f"Calibre executable not found: {self.config.executable}") from e
         except subprocess.CalledProcessError as e:
-            logger.error("Error running Calibre executable: %s", e)
+            logger.error("Error running Calibre executable: %r", e)
             raise CalibreError(f"Error running Calibre executable: {e}") from e
 
     def get_books(self) -> set[Book]:
@@ -63,13 +63,13 @@ class Calibre:
                 "id,title,authors,isbn,identifiers,series,series_index",
             )
         except subprocess.CalledProcessError as e:
-            logger.error("Error retrieving books from Calibre server: %s", e.stderr)
+            logger.error("Error retrieving books from Calibre server: %r", e.stderr)
             raise CalibreError(f"Error retrieving books from Calibre server: {e.stderr}") from e
 
         try:
             data, idx = json.JSONDecoder().raw_decode(stdout)
         except json.JSONDecodeError as e:
-            logger.error("JSON error: %s", e)
+            logger.error("JSON error: %r", e)
             logger.error("stdout length: %d", len(stdout))
             logger.error("stdout tail: %r", stdout[-500:])
             logger.error("at error position: %r", stdout[e.pos : e.pos + 500])
@@ -146,10 +146,10 @@ class Calibre:
         try:
             self._calibredb(*args)
         except subprocess.CalledProcessError as e:
-            logger.error("Error adding book to Calibre: %s", e.stderr)
+            logger.error("Error adding book to Calibre: %r", e.stderr)
             raise CalibreError(f"Error adding book to Calibre: {e.stderr}") from e
         except Exception as e:
-            logger.error("Error adding book to Calibre: %s", e)
+            logger.error("Error adding book to Calibre: %r", e)
             raise CalibreError(f"Error adding book to Calibre: {e}") from e
 
     def contains_book(self, book: Book, matcher) -> bool:

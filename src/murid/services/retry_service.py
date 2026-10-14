@@ -69,5 +69,5 @@ class RetryService:
             return torrent.book
 
         except MAMError as e:
-            logger.error("Error searching MyAnonamouse for ID %d: %s", mam_id, e)
+            logger.error("Error searching MyAnonamouse for ID %d: %r", mam_id, e)
             return None
