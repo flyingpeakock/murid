@@ -157,7 +157,7 @@ class Calibre:
         if any(matcher.is_match(book, candidate) for candidate in existing_books):
             return True
 
-        best_match, score = matcher.best_match(book, existing_books)
+        _, score = matcher.best_match(book, existing_books)
         logger.debug("Book %s does not exist in Calibre. Best similarity: %.2f", book, score)
         return False
 

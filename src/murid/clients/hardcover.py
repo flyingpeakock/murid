@@ -228,7 +228,7 @@ class Hardcover:
             for mapping in edition.get("book_mappings") or []:
                 add((mapping.get("platform") or {}).get("name"), mapping.get("external_id"))
 
-        return {name: values for name, values in identifiers.items()}
+        return dict(identifiers)
 
     def get_books(self) -> set[Book]:
         """Fetch the user's "Want to Read" books from the Hardcover API.

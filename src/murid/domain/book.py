@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 
 @dataclass
-class Book:
+class Book:  # pylint: disable=too-many-instance-attributes
     """Represents a book with its metadata."""
 
     title: str

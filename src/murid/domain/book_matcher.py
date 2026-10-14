@@ -23,7 +23,7 @@ _TITLE_VARIANT_PENALTIES = {
 
 
 @dataclass(frozen=True)
-class _BookFeatures:
+class _BookFeatures:  # pylint: disable=too-many-instance-attributes
     """Preprocessed metadata used during book comparisons."""
 
     book: Book
@@ -249,24 +249,45 @@ class BookMatcher:
             return ()
 
         variants: dict[str, float] = {full: 1.0}
+        cls._add_connector_title_variant(variants, full)
+        cls._add_core_title_variant(variants, full, authors)
+        cls._add_subtitle_variant(variants, original, full)
+        cls._add_series_title_variant(variants, full, series)
+        cls._add_alternative_title_variants(variants, alternative_titles, authors, series)
+
+        return tuple(variants.items())
+
+    @classmethod
+    def _add_connector_title_variant(cls, variants: dict[str, float], full: str) -> None:
+        """Add a short title variant when a series name precedes it."""
 
         # Some sources include a series name before a short book title, such as
         # "Harry Potter and the Prisoner of Azkaban" or "Alcatraz versus the
         # Knights of Crystallia", while others list only the short title.
         suffix_match = re.search(r"^(.*?)\b(versus|and)\s+(the|a|an)\s+(.+)$", full)
-        if suffix_match:
-            short_title = cls._remove_article(
-                f"{suffix_match.group(3)} {suffix_match.group(4)}"
-            )
-            prefix_words = suffix_match.group(1).split()
-            suffix_words = short_title.split()
-            connector = suffix_match.group(2)
-            is_series_prefix = len(suffix_words) >= 2 and (
-                connector == "versus" or len(prefix_words) >= 2
-            )
-            if short_title != full and is_series_prefix:
-                variants[short_title] = _TITLE_VARIANT_PENALTIES["subtitle"]
+        if not suffix_match:
+            return
 
+        short_title = cls._remove_article(
+            f"{suffix_match.group(3)} {suffix_match.group(4)}"
+        )
+        prefix_words = suffix_match.group(1).split()
+        suffix_words = short_title.split()
+        connector = suffix_match.group(2)
+        is_series_prefix = len(suffix_words) >= 2 and (
+            connector == "versus" or len(prefix_words) >= 2
+        )
+        if short_title != full and is_series_prefix:
+            variants[short_title] = _TITLE_VARIANT_PENALTIES["subtitle"]
+
+    @classmethod
+    def _add_core_title_variant(
+        cls,
+        variants: dict[str, float],
+        full: str,
+        authors: frozenset[str],
+    ) -> None:
+        """Add a variant without a confirmed author suffix or volume marker."""
         core = cls._remove_author_suffix(full, authors)
         core = cls._remove_volume_annotation(core)
         core = cls._remove_article(core)
@@ -274,6 +295,14 @@ class BookMatcher:
         if core and core != full:
             variants[core] = _TITLE_VARIANT_PENALTIES["volume"]
 
+    @classmethod
+    def _add_subtitle_variant(
+        cls,
+        variants: dict[str, float],
+        original: str,
+        full: str,
+    ) -> None:
+        """Add the part before a colon as a penalized subtitle variant."""
         if ":" in original:
             main_title = cls.canonicalize_title(original.split(":", 1)[0])
             if main_title and main_title != full:
@@ -282,6 +311,14 @@ class BookMatcher:
                     _TITLE_VARIANT_PENALTIES["subtitle"],
                 )
 
+    @classmethod
+    def _add_series_title_variant(
+        cls,
+        variants: dict[str, float],
+        full: str,
+        series: str | None,
+    ) -> None:
+        """Add a title with its leading series name removed."""
         normalized_series = cls.canonicalize_title(series or "")
         if normalized_series and full.startswith(f"{normalized_series} "):
             series_suffix = full[len(normalized_series) :].strip()
@@ -294,11 +331,18 @@ class BookMatcher:
                     _TITLE_VARIANT_PENALTIES["volume"],
                 )
 
+    @classmethod
+    def _add_alternative_title_variants(
+        cls,
+        variants: dict[str, float],
+        alternative_titles: Iterable[str],
+        authors: frozenset[str],
+        series: str | None,
+    ) -> None:
+        """Add variants derived from alternate titles at a reduced confidence."""
         for alternative_title in alternative_titles:
             for variant, penalty in cls._title_variants(alternative_title, authors, series=series):
                 variants[variant] = max(variants.get(variant, 0.0), 0.98 * penalty)
-
-        return tuple(variants.items())
 
     @staticmethod
     def _remove_author_suffix(
@@ -325,22 +369,10 @@ class BookMatcher:
     @classmethod
     def _prepare(cls, book: Book) -> _BookFeatures:
         """Precompute metadata once per book."""
-        authors = frozenset(
-            normalized
-            for name in (book.authors or [])
-            if name and (normalized := cls._normalize_author(name))
-        )
+        authors = cls._prepared_authors(book)
         title = cls.canonicalize_title(book.title or "")
-        alternative_titles = [
-            str(value)
-            for value in (getattr(book, "alternative_titles", None) or [])
-            if value
-        ]
-        title_names = frozenset(
-            canonical
-            for value in [book.title or "", *alternative_titles]
-            if (canonical := cls.canonicalize_title(value))
-        )
+        alternative_titles = cls._alternative_titles(book)
+        title_names = cls._prepared_title_names(book, alternative_titles)
 
         features = _BookFeatures(
             book=book,
@@ -360,6 +392,43 @@ class BookMatcher:
                 getattr(book, "series_number", None)
             ),
         )
+        cls._log_prepared_features(book, features)
+        return features
+
+    @classmethod
+    def _prepared_authors(cls, book: Book) -> frozenset[str]:
+        """Normalize the authors present on a book."""
+        return frozenset(
+            normalized
+            for name in (book.authors or [])
+            if name and (normalized := cls._normalize_author(name))
+        )
+
+    @staticmethod
+    def _alternative_titles(book: Book) -> list[str]:
+        """Return nonempty alternate titles as strings."""
+        return [
+            str(value)
+            for value in (getattr(book, "alternative_titles", None) or [])
+            if value
+        ]
+
+    @classmethod
+    def _prepared_title_names(
+        cls,
+        book: Book,
+        alternative_titles: list[str],
+    ) -> frozenset[str]:
+        """Normalize the main and alternate titles present on a book."""
+        return frozenset(
+            canonical
+            for value in [book.title or "", *alternative_titles]
+            if (canonical := cls.canonicalize_title(value))
+        )
+
+    @staticmethod
+    def _log_prepared_features(book: Book, features: _BookFeatures) -> None:
+        """Log the normalized metadata used in matching."""
         logger.debug(
             "Matcher metadata source=%s title=%r normalized=%r aliases=%r authors=%r "
             "ISBNs=%r catalog_ids=%r series=%r position=%r",
@@ -373,7 +442,6 @@ class BookMatcher:
             features.series,
             features.series_number,
         )
-        return features
 
     @staticmethod
     def _normalize_series_number(value) -> float | None:
@@ -384,7 +452,52 @@ class BookMatcher:
             return None
 
     @staticmethod
-    def _author_names_match(a: str, b: str) -> bool:
+    def _contains_author_tokens(tokens_a: list[str], tokens_b: list[str]) -> bool:
+        """Check whether one multiword author value occurs inside the other."""
+        a_in_b = (
+            len(tokens_a) >= 2
+            and len(tokens_a) <= len(tokens_b)
+            and any(
+                tokens_b[index : index + len(tokens_a)] == tokens_a
+                for index in range(len(tokens_b) - len(tokens_a) + 1)
+            )
+        )
+        b_in_a = (
+            len(tokens_b) >= 2
+            and len(tokens_b) <= len(tokens_a)
+            and any(
+                tokens_a[index : index + len(tokens_b)] == tokens_b
+                for index in range(len(tokens_a) - len(tokens_b) + 1)
+            )
+        )
+        return a_in_b or b_in_a
+
+    @staticmethod
+    def _author_initials_match(given_a: list[str], given_b: list[str]) -> bool:
+        """Compare fully abbreviated or singly abbreviated given names."""
+        all_initials_match = (
+            given_a
+            and given_b
+            and all(len(token) == 1 for token in given_a)
+            and all(len(token) == 1 for token in given_b)
+            and "".join(given_a) == "".join(given_b)
+        )
+        first_initial_matches = (
+            len(given_a) == 1
+            and len(given_a[0]) == 1
+            and given_b
+            and given_a[0] == given_b[0][0]
+        )
+        second_initial_matches = (
+            len(given_b) == 1
+            and len(given_b[0]) == 1
+            and given_a
+            and given_b[0] == given_a[0][0]
+        )
+        return bool(all_initials_match or first_initial_matches or second_initial_matches)
+
+    @classmethod
+    def _author_names_match(cls, a: str, b: str) -> bool:
         """Recognize exact names, joined author values, initials, and spelling variants."""
         if a == b:
             return True
@@ -395,41 +508,12 @@ class BookMatcher:
         if not tokens_a or not tokens_b:
             return False
 
-        if len(tokens_a) >= 2 and len(tokens_a) <= len(tokens_b):
-            width = len(tokens_a)
-            if any(
-                tokens_b[index : index + width] == tokens_a
-                for index in range(len(tokens_b) - width + 1)
-            ):
-                return True
-        if len(tokens_b) >= 2 and len(tokens_b) <= len(tokens_a):
-            width = len(tokens_b)
-            if any(
-                tokens_a[index : index + width] == tokens_b
-                for index in range(len(tokens_a) - width + 1)
-            ):
-                return True
+        if cls._contains_author_tokens(tokens_a, tokens_b):
+            return True
 
         if tokens_a[-1] == tokens_b[-1]:
-            given_a = tokens_a[:-1]
-            given_b = tokens_b[:-1]
-            initials_a = "".join(token[0] for token in given_a)
-            initials_b = "".join(token[0] for token in given_b)
-
-            if (
-                given_a
-                and given_b
-                and all(len(token) == 1 for token in given_a)
-                and all(len(token) == 1 for token in given_b)
-                and initials_a == initials_b
-            ):
+            if cls._author_initials_match(tokens_a[:-1], tokens_b[:-1]):
                 return True
-
-            if len(given_a) == 1 and len(given_a[0]) == 1 and given_b:
-                return given_a[0] == given_b[0][0]
-
-            if len(given_b) == 1 and len(given_b[0]) == 1 and given_a:
-                return given_b[0] == given_a[0][0]
 
         return fuzz.ratio(a, b) >= 90
 
@@ -595,7 +679,7 @@ class BookMatcher:
             )
             return not conflict
 
-        if cls._conflicting_title_words(a.title, b.title) and not (a.titles & b.titles):
+        if cls._conflicting_title_words(a.title, b.title) and not a.titles & b.titles:
             logger.debug(
                 "Rejecting %s[%r] <-> %s[%r]: titles differ by one meaningful word "
                 "without a shared recorded title",
