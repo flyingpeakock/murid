@@ -125,10 +125,12 @@ class Calibre:
 
     def add_book(self, book: Book, path: str) -> None:
         """Add a book to the Calibre library using the calibredb command-line tool."""
-        args = ["add", "--title", book.title, "--authors", ", ".join(book.authors)]
-
         if os.path.isdir(path):
-            args.extend(["--recurse", "--one-book-per-directory"])
+            raise CalibreError(
+                f"Refusing to add directory '{path}'; select an individual ebook file instead."
+            )
+
+        args = ["add", "--title", book.title, "--authors", ", ".join(book.authors)]
 
         if book.series and book.series_number:
             args.extend(

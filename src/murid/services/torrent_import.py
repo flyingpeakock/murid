@@ -10,6 +10,7 @@ import apprise
 from ..clients.calibre import Calibre, CalibreError
 from ..clients.torrent_clients.torrent_client import TorrentClient
 from ..domain.book import Book
+from ..domain.book_file_selector import BookFileSelector
 from ..domain.book_matcher import BookMatcher
 
 logger = logging.getLogger("murid")
@@ -25,6 +26,7 @@ class TorrentImportConfig:
     notify: Callable[[str, str, apprise.NotifyType], None]
     dry_run: bool = False
     timeout: int = 1800  # 30 minutes
+    filetypes: list[str] | None = None
 
 
 class TorrentImportService:
@@ -38,6 +40,7 @@ class TorrentImportService:
         self.dry_run = config.dry_run
         self.matcher = config.matcher
         self.timeout = config.timeout
+        self.book_file_selector = BookFileSelector(config.filetypes)
 
     def import_torrents(self, torrent_files: Iterable[tuple[bytes, Book]]) -> None:
         """Import the given torrent files into the torrent client and track their completion."""
@@ -96,7 +99,19 @@ class TorrentImportService:
         try:
             time.sleep(0.5)  # Give the torrent client a moment to move the files
             path = self.torrent_client.get_completed_path(torrent_id)
-            self.calibre.add_book(book, path)
+            if not path:
+                return False
+
+            book_file = self.book_file_selector.select(book, path, self.matcher)
+            if book_file is None:
+                logger.error(
+                    "Could not select a unique ebook file for %s; manual intervention is needed",
+                    book,
+                )
+                self.torrent_client.add_tag(torrent_id, "murid_import_failed")
+                return True
+
+            self.calibre.add_book(book, str(book_file))
             if self.calibre.contains_book(book, self.matcher):
                 message = f"Successfully imported {book} into Calibre"
                 logger.info(message)

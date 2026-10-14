@@ -202,6 +202,33 @@ def test_add_book(tmp_path):
     ]
 
 
+def test_add_book_refuses_directory_import(tmp_path):
+    calls = []
+    directory = tmp_path / "book-pack"
+    directory.mkdir()
+
+    def fake_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        return Result()
+
+    calibre = Calibre(
+        CalibreConfig(executable="calibredb", library_path=str(tmp_path)),
+        run=fake_run,
+    )
+    book = Book(
+        id=1,
+        title="Dune",
+        authors=["Frank Herbert"],
+        isbn=[],
+        source="test",
+    )
+
+    with pytest.raises(CalibreError, match="Refusing to add directory"):
+        calibre.add_book(book, str(directory))
+
+    assert len(calls) == 1  # Only the validation command ran.
+
+
 def test_add_book_multiple_authors(tmp_path):
     db = tmp_path
 

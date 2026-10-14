@@ -135,6 +135,7 @@ class ServiceFactory:
                 notify=self.notifier(),
                 dry_run=self.args.dry_run,
                 timeout=self.config["torrent_timeout_seconds"],
+                filetypes=self.config["filetypes"],
             )
         )
 

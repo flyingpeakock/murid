@@ -1,9 +1,11 @@
+import logging
 import time
 from unittest.mock import MagicMock
 
 import pytest
 
 from murid import (
+    AppriseHandler,
     Book,
     BookMatcher,
     CalibreError,
@@ -85,6 +87,70 @@ def test_successful_import(service, torrent_client, calibre, matcher, book):
 
     torrent_client.add_torrent.assert_called_once()
     calibre.add_book.assert_called_once_with(book, "/downloads/dune")
+
+
+def test_import_selects_requested_file_from_completed_pack(
+    service,
+    torrent_client,
+    calibre,
+    book,
+    monkeypatch,
+    tmp_path,
+):
+    pack = tmp_path / "book-pack"
+    pack.mkdir()
+    selected_file = pack / "Frank Herbert - Dune.epub"
+    selected_file.touch()
+    (pack / "Frank Herbert - Dune Messiah.epub").touch()
+    torrent_client.get_completed_path.return_value = str(pack)
+    service.matcher = BookMatcher()
+    monkeypatch.setattr("murid.services.torrent_import.time.sleep", lambda _: None)
+
+    service.process_torrent("abc123", book)
+
+    calibre.add_book.assert_called_once_with(book, str(selected_file))
+
+
+def test_no_suitable_file_tags_torrent_and_notifies_apprise(
+    service,
+    torrent_client,
+    calibre,
+    notify,
+    book,
+    monkeypatch,
+    tmp_path,
+):
+    class DummyApprise:
+        def __init__(self):
+            self.calls = []
+
+        def notify(self, **kwargs):
+            self.calls.append(kwargs)
+
+    pack = tmp_path / "book-pack"
+    pack.mkdir()
+    (pack / "Foundation.epub").touch()
+    (pack / "Hyperion.epub").touch()
+    torrent_client.get_completed_path.return_value = str(pack)
+    service.matcher = BookMatcher()
+    monkeypatch.setattr("murid.services.torrent_import.time.sleep", lambda _: None)
+
+    apprise_client = DummyApprise()
+    handler = AppriseHandler(apprise_client)
+    murid_logger = logging.getLogger("murid")
+    murid_logger.addHandler(handler)
+    try:
+        result = service.process_torrent("abc123", book)
+    finally:
+        murid_logger.removeHandler(handler)
+
+    assert result is True
+    calibre.add_book.assert_not_called()
+    torrent_client.add_tag.assert_called_once_with("abc123", "murid_import_failed")
+    notify.assert_not_called()
+    assert len(apprise_client.calls) == 1
+    assert apprise_client.calls[0]["title"] == "murid - ERROR"
+    assert "Could not select a unique ebook file" in apprise_client.calls[0]["body"]
 
 
 def test_failed_torrent_add(service, torrent_client, calibre, book):
