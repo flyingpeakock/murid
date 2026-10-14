@@ -1,6 +1,6 @@
 import pytest
 
-from murid import Book, Calibre, CalibreConfig, CalibreError
+from murid import Book, BookMatcher, Calibre, CalibreConfig, CalibreError
 
 
 class Result:
@@ -29,7 +29,25 @@ def test_missing_executable(tmp_path):
         raise FileNotFoundError("calibredb not found")
 
     with pytest.raises(CalibreError, match="Calibre executable not found"):
-        Calibre(CalibreConfig(executable="calibredb", library_path=str(db)))
+        Calibre(CalibreConfig(executable="calibredb", library_path=str(db)), run=fake_run)
+
+
+def test_contains_book_uses_match_rules_not_score_alone(tmp_path):
+    calibre = Calibre(
+        CalibreConfig(executable="calibredb", library_path=str(tmp_path)),
+        run=lambda *args, **kwargs: Result(
+            '[{"id": 1, "title": "Dune", "authors": "Someone Else", "isbn": ""}]'
+        ),
+    )
+    requested = Book(
+        id=2,
+        title="Dune",
+        authors=["Frank Herbert"],
+        isbn=[],
+        source="hardcover",
+    )
+
+    assert not calibre.contains_book(requested, BookMatcher(threshold=0.7))
 
 
 def test_get_books_empty(tmp_path):
@@ -68,6 +86,63 @@ def test_get_books_single(tmp_path):
     assert book.title == "Dune"
     assert book.authors == ["Frank Herbert"]
     assert book.isbn == ["1234567890"]
+
+
+def test_get_books_includes_series_and_external_identifiers(tmp_path):
+    calls = []
+
+    def fake_run(*args, **kwargs):
+        calls.append(args)
+        return Result(
+            '[{"id": 2, "title": "Dune", "authors": "Frank Herbert", "isbn": "", '
+            '"identifiers": {"goodreads": "12345", "amazon": "B012345678"}, '
+            '"series": "Dune", "series_index": "1.5"}]'
+        )
+
+    calibre = Calibre(
+        CalibreConfig(executable="calibredb", library_path=str(tmp_path)),
+        run=fake_run,
+    )
+
+    book = next(iter(calibre.get_books()))
+
+    assert book.series == "Dune"
+    assert book.series_number == 1.5
+    assert book.identifiers == {"goodreads": "12345", "amazon": "B012345678"}
+    assert calls[-1][0][-1] == "id,title,authors,isbn,identifiers,series,series_index"
+
+
+@pytest.mark.parametrize(
+    "calibre_authors",
+    [
+        "Robert Jordan & Brandon Sanderson",
+        "Robert Jordan and Brandon Sanderson",
+        "Robert Jordan with Brandon Sanderson",
+    ],
+)
+def test_contains_book_matches_joined_calibre_authors(tmp_path, calibre_authors):
+    calibre = Calibre(
+        CalibreConfig(executable="calibredb", library_path=str(tmp_path)),
+        run=lambda *args, **kwargs: Result(
+            '[{"id": 14, "title": "A Memory of Light", '
+            f'"authors": "{calibre_authors}", "isbn": "", '
+            '"series": "The Wheel of Time", "series_index": 14}]'
+        ),
+    )
+    hardcover_book = Book(
+        id=101,
+        title="A Memory of Light",
+        authors=["Brandon Sanderson", "Robert Jordan"],
+        isbn=[],
+        source="hardcover",
+        series="Wheel of Time",
+        series_number=14,
+    )
+
+    calibre_book = next(iter(calibre.get_books()))
+
+    assert calibre_book.authors == ["Robert Jordan", "Brandon Sanderson"]
+    assert calibre.contains_book(hardcover_book, BookMatcher(threshold=0.7))
 
 
 def test_run_failure(tmp_path):

@@ -154,9 +154,10 @@ class Calibre:
     def contains_book(self, book: Book, matcher) -> bool:
         """Check if a book already exists in the Calibre library using the provided matcher."""
         existing_books = self.get_books()
-        best_match, score = matcher.best_match(book, existing_books)
-        if best_match and score >= matcher.threshold:
+        if any(matcher.is_match(book, candidate) for candidate in existing_books):
             return True
+
+        best_match, score = matcher.best_match(book, existing_books)
         logger.debug("Book %s does not exist in Calibre. Best similarity: %.2f", book, score)
         return False
 

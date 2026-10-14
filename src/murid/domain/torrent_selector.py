@@ -33,13 +33,54 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
         self, book: Book, torrents: Iterable[Torrent], matcher: BookMatcher
     ) -> Torrent | None:
         """Select the best matching torrent for the given book from the list of torrents"""
-        torrent_books = {
-            t.book
-            for t in torrents
-            if (t.language is None or t.language in self.lang_codes)
-            and self.wanted_filetypes.intersection(t.file_types or [])
-            and t.book.id not in self.blacklist
-        }
+        torrents = list(torrents)
+        torrent_books = set()
+        rejected_by_language = 0
+        rejected_by_filetype = 0
+        rejected_by_blacklist = 0
+
+        for torrent in torrents:
+            reasons = []
+            if torrent.language is not None and torrent.language not in self.lang_codes:
+                rejected_by_language += 1
+                reasons.append(f"language {torrent.language!r} not in {sorted(self.lang_codes)!r}")
+
+            matching_filetypes = self.wanted_filetypes.intersection(torrent.file_types or [])
+            if not matching_filetypes:
+                rejected_by_filetype += 1
+                reasons.append(
+                    f"file types {torrent.file_types!r} do not include "
+                    f"{sorted(self.wanted_filetypes)!r}"
+                )
+
+            if torrent.book.id in self.blacklist:
+                rejected_by_blacklist += 1
+                reasons.append(f"torrent id {torrent.book.id} is blacklisted")
+
+            if reasons:
+                logger.debug(
+                    "Filtered MyAnonamouse torrent id=%s title=%r: %s",
+                    torrent.book.id,
+                    torrent.book.title,
+                    "; ".join(reasons),
+                )
+                continue
+
+            torrent_books.add(torrent.book)
+
+        logger.debug(
+            "Torrent filters for %r: input=%d eligible_books=%d rejected_language=%d "
+            "rejected_filetype=%d rejected_blacklist=%d allowed_languages=%r "
+            "wanted_filetypes=%r",
+            book.title,
+            len(torrents),
+            len(torrent_books),
+            rejected_by_language,
+            rejected_by_filetype,
+            rejected_by_blacklist,
+            sorted(self.lang_codes),
+            sorted(self.wanted_filetypes),
+        )
 
         if not torrent_books:
             logger.info("No torrents for %s passed language and file type filters", book)
@@ -47,7 +88,7 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
 
         best_match, score = matcher.best_match(book, torrent_books)
 
-        if best_match and score >= matcher.threshold:
+        if best_match and score >= matcher.threshold and matcher.is_match(book, best_match):
             ret = next(t for t in torrents if t.book == best_match)
             logger.debug("Best torrent for %s is %s with similarity %.2f", book, ret, score)
             return ret

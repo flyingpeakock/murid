@@ -2,12 +2,16 @@ from murid import Book, Torrent, TorrentMetadata, TorrentSelector
 
 
 class DummyMatcher:
-    def __init__(self, result, threshold=0.9):
+    def __init__(self, result, threshold=0.9, match=True):
         self.result = result
         self.threshold = threshold
+        self.match = match
 
     def best_match(self, book, candidates):
         return self.result
+
+    def is_match(self, book, candidate):
+        return self.match
 
 
 def make_book(
@@ -71,7 +75,6 @@ def test_select_returns_none_when_score_too_low():
         result=(torrent.book, 0.5),
         threshold=0.9,
     )
-
     selector = TorrentSelector({"en"})
 
     assert (
@@ -82,6 +85,14 @@ def test_select_returns_none_when_score_too_low():
         )
         is None
     )
+
+
+def test_select_rejects_candidate_failing_match_rules():
+    torrent = make_torrent(title="Little Men")
+    matcher = DummyMatcher((torrent.book, 1.0), match=False)
+    selector = TorrentSelector({"en"})
+
+    assert selector.select(make_book(title="Little Women"), [torrent], matcher) is None
 
 
 def test_language_filtering():
