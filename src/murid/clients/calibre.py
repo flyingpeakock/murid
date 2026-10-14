@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 
@@ -59,7 +60,7 @@ class Calibre:
                 "list",
                 "--for-machine",
                 "--fields",
-                "id,title,authors,isbn",
+                "id,title,authors,isbn,identifiers,series,series_index",
             )
         except subprocess.CalledProcessError as e:
             logger.error("Error retrieving books from Calibre server: %s", e.stderr)
@@ -78,16 +79,48 @@ class Calibre:
         if extra_data:
             logger.debug("Extra data after JSON response: %r", extra_data)
 
-        books = {
-            Book(
-                id=book["id"],
-                title=book["title"],
-                authors=[a.strip() for a in book["authors"].split(",")] if book["authors"] else [],
-                isbn=[book.get("isbn")] if book.get("isbn") else [],
-                source="calibre",
+        books = set()
+        for book in data:
+            identifiers = book.get("identifiers") or {}
+            if not isinstance(identifiers, dict):
+                identifiers = {}
+
+            series_number = book.get("series_index")
+            try:
+                series_number = float(series_number) if series_number is not None else None
+            except (TypeError, ValueError):
+                series_number = None
+
+            books.add(
+                Book(
+                    id=book["id"],
+                    title=book["title"],
+                    authors=[
+                        author.strip()
+                        for author in re.split(
+                            r"\s*(?:,|&)\s*|\s+(?:and|with)\s+",
+                            book.get("authors") or "",
+                            flags=re.IGNORECASE,
+                        )
+                        if author.strip()
+                    ],
+                    isbn=[book.get("isbn")] if book.get("isbn") else [],
+                    source="calibre",
+                    series=book.get("series") or None,
+                    series_number=series_number,
+                    identifiers={
+                        str(name): str(value)
+                        for name, value in identifiers.items()
+                        if name and value
+                    },
+                )
             )
-            for book in data
-        }
+        logger.debug(
+            "Loaded %d Calibre books (%d with identifiers, %d with series metadata)",
+            len(books),
+            sum(bool(book.identifiers) for book in books),
+            sum(bool(book.series) for book in books),
+        )
         return books
 
     def add_book(self, book: Book, path: str) -> None:

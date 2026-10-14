@@ -1,6 +1,6 @@
 """Defines the Book class, which represents a book with its metadata."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -14,6 +14,8 @@ class Book:
     source: str
     series: str | None = None
     series_number: float | None = None
+    alternative_titles: list[str] = field(default_factory=list)
+    identifiers: dict[str, str | list[str]] = field(default_factory=dict)
 
     def __str__(self):
         return f"{self.title} by {', '.join(self.authors)}"
@@ -28,6 +30,16 @@ class Book:
                 self.series,
                 self.series_number,
                 tuple(self.isbn),
+                tuple(self.alternative_titles),
+                tuple(
+                    sorted(
+                        (name, value)
+                        for name, values in self.identifiers.items()
+                        for value in (
+                            values if isinstance(values, (list, tuple, set)) else [values]
+                        )
+                    )
+                ),
             )
         )
 
@@ -43,4 +55,6 @@ class Book:
             and self.source == other.source
             and self.series == other.series
             and self.series_number == other.series_number
+            and self.alternative_titles == other.alternative_titles
+            and self.identifiers == other.identifiers
         )

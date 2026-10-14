@@ -120,6 +120,57 @@ def test_get_books_single_book(hardcover):
     assert book.isbn == ["9780441172719"]
 
 
+def test_extract_alternative_titles_and_identifiers():
+    book_data = {
+        "title": "Harry Potter and the Philosopher's Stone",
+        "subtitle": "A Novel",
+        "alternative_titles": {"en-US": "Harry Potter and the Sorcerer's Stone"},
+        "book_mappings": [
+            {"external_id": "goodreads-book-id", "platform": {"name": "Goodreads"}}
+        ],
+    }
+    editions = [
+        {
+            "title": "Harry Potter and the Sorcerer's Stone",
+            "subtitle": None,
+            "alternative_titles": ["Harry Potter: The US Edition"],
+            "isbn_13": "9780439064866",
+            "isbn_10": None,
+            "asin": "B000FC1SCC",
+            "book_mappings": [
+                {"external_id": "open-library-id", "platform": {"name": "Open Library"}}
+            ],
+        }
+    ]
+
+    alternatives = Hardcover._extract_alternative_titles(book_data, editions)
+    identifiers = Hardcover._extract_identifiers(book_data, editions)
+
+    assert "Harry Potter and the Sorcerer's Stone" in alternatives
+    assert "Harry Potter and the Philosopher's Stone: A Novel" in alternatives
+    assert "Harry Potter: The US Edition" in alternatives
+    assert identifiers == {
+        "Goodreads": ["goodreads-book-id"],
+        "Amazon": ["B000FC1SCC"],
+        "Open Library": ["open-library-id"],
+    }
+
+
+def test_fetch_data_requests_match_metadata(hardcover):
+    response = Mock()
+    response.json.return_value = {"data": {}}
+    response.raise_for_status.return_value = None
+    hardcover._session.post = Mock(return_value=response)
+
+    hardcover.fetch_data()
+
+    query = hardcover._session.post.call_args.kwargs["json"]["query"]
+    assert "alternative_titles" in query
+    assert "book_mappings" in query
+    assert "platform {" in query
+    assert "asin" in query
+
+
 def test_get_books_multiple_authors(hardcover):
     hardcover.fetch_data = Mock(
         return_value={
