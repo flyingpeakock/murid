@@ -14,7 +14,7 @@ matcher_threshold: 0.7
 # MyAnonamouse cookie
 mam_id: !ENV MAM_ID
 
-# Preferred language codes when searching
+# Preferred language codes for torrent filtering and language-tagged Hardcover titles
 lang_codes:
   - "ENG"
 

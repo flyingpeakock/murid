@@ -25,9 +25,105 @@ class HardcoverError(Exception):
 class Hardcover:
     """Class for interacting with the Hardcover API to fetch user book data."""
 
-    def __init__(self, api: str, user: HardcoverUser | None = None) -> None:
+    _LANGUAGE_TAG_ALIASES = {
+        "ar": {"ARA"},
+        "bg": {"BUL"},
+        "ca": {"CAT"},
+        "cs": {"CES", "CZE"},
+        "cy": {"CYM", "WEL"},
+        "da": {"DAN"},
+        "de": {"DEU", "GER"},
+        "el": {"ELL", "GRE"},
+        "en": {"ENG"},
+        "es": {"SPA"},
+        "et": {"EST"},
+        "fa": {"FAS", "PER"},
+        "fi": {"FIN"},
+        "fr": {"FRA", "FRE"},
+        "ga": {"GLE"},
+        "he": {"HEB"},
+        "hi": {"HIN"},
+        "hr": {"HRV"},
+        "hu": {"HUN"},
+        "id": {"IND"},
+        "is": {"ISL", "ICE"},
+        "it": {"ITA"},
+        "ja": {"JPN"},
+        "ko": {"KOR"},
+        "lt": {"LIT"},
+        "lv": {"LAV"},
+        "ms": {"MSA", "MAY"},
+        "nl": {"NLD", "DUT"},
+        "no": {"NOR"},
+        "pl": {"POL"},
+        "pt": {"POR"},
+        "ro": {"RON", "RUM"},
+        "ru": {"RUS"},
+        "sk": {"SLK", "SLO"},
+        "sl": {"SLV"},
+        "sr": {"SRP"},
+        "sv": {"SWE"},
+        "th": {"THA"},
+        "tr": {"TUR"},
+        "uk": {"UKR"},
+        "ur": {"URD"},
+        "vi": {"VIE"},
+        "zh": {"ZHO", "CHI"},
+    }
+    _LANGUAGE_NAME_TAGS = {
+        "arabic": "ar",
+        "bulgarian": "bg",
+        "catalan": "ca",
+        "chinese": "zh",
+        "croatian": "hr",
+        "czech": "cs",
+        "danish": "da",
+        "dutch": "nl",
+        "english": "en",
+        "estonian": "et",
+        "finnish": "fi",
+        "french": "fr",
+        "german": "de",
+        "greek": "el",
+        "hebrew": "he",
+        "hindi": "hi",
+        "hungarian": "hu",
+        "icelandic": "is",
+        "indonesian": "id",
+        "irish": "ga",
+        "italian": "it",
+        "japanese": "ja",
+        "korean": "ko",
+        "latvian": "lv",
+        "lithuanian": "lt",
+        "malay": "ms",
+        "norwegian": "no",
+        "polish": "pl",
+        "portuguese": "pt",
+        "romanian": "ro",
+        "russian": "ru",
+        "serbian": "sr",
+        "slovak": "sk",
+        "slovenian": "sl",
+        "spanish": "es",
+        "swedish": "sv",
+        "thai": "th",
+        "turkish": "tr",
+        "ukrainian": "uk",
+        "urdu": "ur",
+        "vietnamese": "vi",
+        "welsh": "cy",
+    }
+
+    def __init__(
+        self,
+        api: str,
+        user: HardcoverUser | None = None,
+        lang_codes: list[str] | None = None,
+    ) -> None:
         """Initialize the Hardcover class with the API token and user ID."""
         self.url = "https://api.hardcover.app/v1/graphql"
+        self.lang_codes = lang_codes
         self._headers = {
             "Content-Type": "application/json",
             "Authorization": api,
@@ -113,6 +209,9 @@ class Hardcover:
                 title
                 subtitle
                 alternative_titles
+                language {
+                  language
+                }
                 isbn_10
                 isbn_13
                 asin
@@ -168,40 +267,111 @@ class Hardcover:
 
         return isbns
 
-    @staticmethod
-    def _extract_text_values(value) -> list[str]:
+    @classmethod
+    def _extract_text_values(cls, value, lang_codes: list[str] | None = None) -> list[str]:
         """Extract title strings from Hardcover's JSON alternative-title fields."""
         if isinstance(value, str):
             return [value] if value.strip() else []
         if isinstance(value, list):
-            return [text for item in value for text in Hardcover._extract_text_values(item)]
+            return [
+                text
+                for item in value
+                for text in cls._extract_text_values(item, lang_codes=lang_codes)
+            ]
         if isinstance(value, dict):
+            if lang_codes is not None and "language" in value:
+                language_matches = cls._language_value_matches(value["language"], lang_codes)
+                if language_matches is False:
+                    return []
+            language_keys = [key for key in value if cls._is_language_tag(key)]
+            if language_keys:
+                return [
+                    text
+                    for key, item in value.items()
+                    if key in language_keys
+                    and (
+                        lang_codes is None
+                        or cls._language_tag_matches(key, lang_codes) is not False
+                    )
+                    for text in cls._extract_text_values(item, lang_codes=lang_codes)
+                ]
             preferred = [
                 value[key] for key in ("title", "name", "alternative_title") if key in value
             ]
             values = preferred if preferred else list(value.values())
-            return [text for item in values for text in Hardcover._extract_text_values(item)]
+            return [
+                text
+                for item in values
+                for text in cls._extract_text_values(item, lang_codes=lang_codes)
+            ]
         return []
 
     @classmethod
-    def _extract_alternative_titles(cls, book: dict, editions: list[dict]) -> list[str]:
+    def _extract_alternative_titles(
+        cls,
+        book: dict,
+        editions: list[dict],
+        lang_codes: list[str] | None = None,
+    ) -> list[str]:
         """Collect book and edition titles that can name the same work."""
         titles = []
         if book.get("subtitle"):
             titles.append(f"{book.get('title', '')}: {book['subtitle']}")
-        titles.extend(cls._extract_text_values(book.get("alternative_titles")))
+        titles.extend(cls._extract_text_values(book.get("alternative_titles"), lang_codes))
 
         for edition in editions:
+            if (
+                lang_codes is not None
+                and edition.get("language")
+                and cls._language_value_matches(edition["language"], lang_codes) is False
+            ):
+                continue
+
             title = edition.get("title")
             subtitle = edition.get("subtitle")
             if title and subtitle:
                 titles.append(f"{title}: {subtitle}")
             elif title:
                 titles.append(title)
-            titles.extend(cls._extract_text_values(edition.get("alternative_titles")))
+            titles.extend(cls._extract_text_values(edition.get("alternative_titles"), lang_codes))
 
         primary_title = book.get("title")
         return list(dict.fromkeys(title for title in titles if title and title != primary_title))
+
+    @staticmethod
+    def _is_language_tag(value) -> bool:
+        """Return whether a key looks like a BCP 47 locale or ISO language code."""
+        if not isinstance(value, str):
+            return False
+        parts = value.replace("_", "-").split("-")
+        return (
+            len(parts[0]) in (2, 3)
+            and parts[0].isalpha()
+            and all(part.isalnum() and 2 <= len(part) <= 8 for part in parts[1:])
+        )
+
+    @classmethod
+    def _language_tag_matches(cls, language_tag: str, lang_codes: list[str]) -> bool | None:
+        """Match locale tags such as en-US against configured ISO 639 language codes."""
+        language = language_tag.replace("_", "-").split("-", maxsplit=1)[0].lower()
+        configured = {code.strip().upper() for code in lang_codes}
+        if language.upper() in configured:
+            return True
+        aliases = cls._LANGUAGE_TAG_ALIASES.get(language)
+        if aliases is None:
+            return None
+        return bool(aliases & configured)
+
+    @classmethod
+    def _language_value_matches(cls, value, lang_codes: list[str]) -> bool | None:
+        """Match a Hardcover edition language name or code to configured language codes."""
+        if isinstance(value, dict):
+            value = value.get("language")
+        if not isinstance(value, str):
+            return None
+        language_name = value.strip().lower()
+        language_tag = cls._LANGUAGE_NAME_TAGS.get(language_name, language_name)
+        return cls._language_tag_matches(language_tag, lang_codes)
 
     @staticmethod
     def _extract_identifiers(book: dict, editions: list[dict]) -> dict[str, str | list[str]]:
@@ -261,6 +431,11 @@ class Hardcover:
                     series=series,
                     series_number=series_number,
                     alternative_titles=self._extract_alternative_titles(book, editions),
+                    search_alternative_titles=(
+                        self._extract_alternative_titles(book, editions, self.lang_codes)
+                        if self.lang_codes is not None
+                        else None
+                    ),
                     identifiers=self._extract_identifiers(book, editions),
                 )
             )

@@ -23,9 +23,7 @@ class BookFileSelector:  # pylint: disable=too-few-public-methods
         self.filetypes = tuple(
             dict.fromkeys(str(filetype).strip().lower().lstrip(".") for filetype in normalized)
         )
-        self._filetype_priority = {
-            filetype: index for index, filetype in enumerate(self.filetypes)
-        }
+        self._filetype_priority = {filetype: index for index, filetype in enumerate(self.filetypes)}
 
     def select(self, book: Book, completed_path: str, matcher: BookMatcher) -> Path | None:
         """Return the matching ebook path, or None when a multi-book pack is ambiguous."""

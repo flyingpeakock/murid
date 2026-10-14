@@ -33,7 +33,10 @@ class TorrentDiscoveryService:
         mam_books = self.mam.search_ebook(book.title, author)
 
         if not mam_books:
-            alternative_titles = getattr(book, "alternative_titles", None) or []
+            alternative_titles = getattr(book, "search_alternative_titles", None)
+            if alternative_titles is None:
+                alternative_titles = getattr(book, "alternative_titles", None)
+            alternative_titles = alternative_titles or []
             seen_titles = {BookMatcher.canonicalize_title(book.title)}
             alternate_results: set[Torrent] = set()
 

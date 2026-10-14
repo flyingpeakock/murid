@@ -16,6 +16,7 @@ class Book:  # pylint: disable=too-many-instance-attributes
     series_number: float | None = None
     alternative_titles: list[str] = field(default_factory=list)
     identifiers: dict[str, str | list[str]] = field(default_factory=dict)
+    search_alternative_titles: list[str] | None = None
 
     def __str__(self):
         return f"{self.title} by {', '.join(self.authors)}"
@@ -31,6 +32,11 @@ class Book:  # pylint: disable=too-many-instance-attributes
                 self.series_number,
                 tuple(self.isbn),
                 tuple(self.alternative_titles),
+                (
+                    tuple(self.search_alternative_titles)
+                    if self.search_alternative_titles is not None
+                    else None
+                ),
                 tuple(
                     sorted(
                         (name, value)
@@ -56,5 +62,6 @@ class Book:  # pylint: disable=too-many-instance-attributes
             and self.series == other.series
             and self.series_number == other.series_number
             and self.alternative_titles == other.alternative_titles
+            and self.search_alternative_titles == other.search_alternative_titles
             and self.identifiers == other.identifiers
         )

@@ -87,8 +87,16 @@ class ServiceFactory:
     def hardcover(self) -> set[Hardcover]:
         """Create a list of Hardcover instances for each user specified in the configuration."""
         keys = self.config["hardcover_api_keys"]
+        lang_codes = self.config["lang_codes"]
+
+        def create_client(key):
+            client = Hardcover(key)
+            if hasattr(client, "lang_codes"):
+                client.lang_codes = lang_codes
+            return client
+
         with ThreadPoolExecutor(max_workers=min(10, len(keys))) as executor:
-            hardcover_clients = set(executor.map(Hardcover, keys))
+            hardcover_clients = set(executor.map(create_client, keys))
         return hardcover_clients
 
     def myanonamouse(self):
