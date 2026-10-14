@@ -43,7 +43,7 @@ class SyncService:
                 # Reload configuration before each run to pick up any changes.
                 self.factory.reload()
                 self.run()
-            except (Exception, SystemExit):
+            except (Exception, SystemExit):  # pylint: disable=broad-exception-caught
                 # Client initialization and configuration loading can raise SystemExit.
                 # In scheduled mode, keep the process alive so a later cycle can recover.
                 logger.exception("Murid cycle failed; it will retry at the next scheduled run")
