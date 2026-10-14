@@ -3,7 +3,7 @@
 # One or more Hardcover API tokens.
 # Must start with "Bearer "
 hardcover_api_keys:
-  - "Bearer YOUR_HARDCOVER_TOKEN"
+  - !ENV HARDCOVER_API_KEY
 
 # Redact secrets from logs and config dumps
 redact_sensitive_data: true
@@ -23,14 +23,14 @@ calibre:
   calibredb_executable: "calibredb"
   server_url: "http://localhost:8080/#books"
   server_username: "user"
-  server_password: "password"
+  server_password: !ENV CALIBRE_PASSWORD
 
 # qBittorrent connection settings
 qbittorrent:
   host: "localhost"
   port: 8080
   username: "admin"
-  password: "changeme"
+  password: !ENV QBITTORRENT_PASSWORD
 
   # Verify TLS certificates
   verify_cert: true

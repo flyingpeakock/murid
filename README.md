@@ -11,7 +11,7 @@ It is designed to automate the full pipeline from “want to read” → “avai
 
 ## Overview
 
-Murid periodically:
+On each run, Murid:
 
 1. Fetches books from one or more Hardcover accounts
 2. Compares them against your local Calibre library
@@ -47,7 +47,7 @@ qBittorrent → Download torrents
     ↓  
 Calibre → Import completed books
 
-## Requirments
+## Requirements
 
 - Python 3.12+
 - Calibre
@@ -95,96 +95,67 @@ pip install -e ".[dev]"
 
 ### NixOS Flake
 
-```
-{
-  inputs.murid.url = "github:flyingpeakock/murid";
-}
+Add Murid as a flake input, then include its module in your NixOS module list. For example:
+
+```nix
+inputs.murid.url = "github:flyingpeakock/murid";
+
+# In nixosSystem.modules:
+[
+  murid.nixosModules.default
+  ({ ... }: {
+    services.murid = {
+      enable = true;
+      environmentFile = "/etc/murid.env";
+      config = {
+        hardcover_api_keys = [ "!ENV HARDCOVER_API_KEY" ];
+        mam_id = "!ENV MAM_ID";
+        calibre.server_url = "http://localhost:8080/#books";
+        qbittorrent = {
+          username = "admin";
+          password = "!ENV QBITTORRENT_PASSWORD";
+        };
+      };
+    };
+  })
+]
 ```
 
-Module options are defined in [nixosModule.nix](nixosModule.nix)
+Put `HARDCOVER_API_KEY` (including the `Bearer ` prefix), `MAM_ID`, and `QBITTORRENT_PASSWORD` in `/etc/murid.env`. See [nixosModule.nix](nixosModule.nix) for all module options.
 
 ## Usage
 
-1. Mark books as "Want to Read" on hardcover.
-2. Run this script.
-3. Start reading
+Copy the example config, fill in your connection details, and provide the secrets described below:
 
+```bash
+cp config.example.yaml config.yaml
+murid --config ./config.yaml --dry-run
 ```
-Usage: murid [-h] [--version] [--log-level {DEBUG,INFO,WARNING,ERROR,CRITICAL}] [--dry-run] [--schedule] [--test-notification] [--config CONFIG_FILE]
 
-Murid automatically keeps your Calibre library in sync with your reading list on Hardcover, with help from myAnonamouse.
+A dry run searches for matches and fetches the selected `.torrent` files, but does not add them to qBittorrent or download the ebooks. Omit `--dry-run` for a one-time sync. To keep Murid running on the cron schedule in your config, use:
 
-Options:
-  -h, --help            show this help message and exit
-  --version, -v         show program's version number and exit
-  --log-level, -l {DEBUG,INFO,WARNING,ERROR,CRITICAL}
-                        logging level (default: INFO)
-  --dry-run, -d         see what will be downloaded without actually downloading (default: False)
-  --schedule, -s        run murid on a schedule (default: False)
-  --test-notification   send a test notification and then exit (default: False)
-  --config, -c CONFIG_FILE
-                        path to config file (default: $XDG_CONFIG_HOME/murid/config.yaml)
-
+```bash
+murid --config ./config.yaml --schedule
 ```
 
 ## Configuration
 
-Create a yaml configuration file:
-
-```yaml
-hardcover_api_keys:
-  - Bearer your-hardcover-api-key
-
-mam_id: your-mam-session-cookie
-
-matcher_threshold: 0.85
-
-lang_codes:
-  - ENG
-
-schedule: "0 * * * *"
-
-# Exactly one of `library_path` or `server_url` must be specified
-calibre:
-  calibredb_executable: "calibredb"
-  server_url: "http://localhost:8080/#books"
-  server_username: !ENV CALIBRE_USERNAME
-  server_password: !ENV CALIBRE_PASSWORD
-
-qbittorrent:
-  host: "http://localhost"
-  port: 8080
-  username: "admin"
-  password: "password"
-  verify_cert: true
-  category: murid
-  mapping:
-    qbit_path: /downloads/completed
-    murid_path: /data/downloads/completed
-
-filetypes:
-  - epub
-  - mobi
-  - azw3
-```
+Use [config.example.yaml](config.example.yaml) as the complete configuration reference. Exactly one of `calibre.library_path` or `calibre.server_url` must be set.
 
 ### Environment Variables
 
-Sensitive information can be injected via environment variables:
-
-```yaml
-hardcover_api_keys:
-  - !ENV HARDCOVER_API_KEY1
-  - !ENV HARDCOVER_API_KEY2
-
-mam_id: !ENV MAM_ID
-```
+The example config reads secrets from environment variables. The Hardcover token must include the `Bearer ` prefix.
 
 ```bash
-export HARDCOVER_API_KEY1="..."
-export HARDCOVER_API_KEY2="..."
+export HARDCOVER_API_KEY="Bearer ..."
 export MAM_ID="..."
+export CALIBRE_PASSWORD="..."
+export QBITTORRENT_PASSWORD="..."
 ```
+
+In PowerShell, set them with `$env:HARDCOVER_API_KEY = "Bearer ..."` and the equivalent `$env:NAME = "..."` for the others.
+
+Set these variables in the environment that runs Murid. The default config location depends on your operating system; `--config` can point to a config file anywhere.
 
 ## Configuration Reference
 
@@ -223,7 +194,7 @@ export MAM_ID="..."
 | `password`    | Login password               | required |
 | `verify_cert` | SSL verification             | `True`   |
 | `category`    | Torrent category             | `murid`  |
-| `mapping`     | Path mapping between systems | `None`   |
+| `mapping`     | Path mapping between systems; both paths are unset by default | both paths unset |
 
 #### Path Mapping
 
