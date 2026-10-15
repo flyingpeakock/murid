@@ -39,7 +39,8 @@ def test_find_torrents_sets_series_and_returns(mam):
     )
 
     torrent_book = SimpleNamespace(series=None, series_number=None)
-    torrent = SimpleNamespace(book=torrent_book)
+    torrent = Mock()
+    torrent.book = torrent_book
 
     mam.search_ebook.return_value = [torrent]
 
@@ -48,15 +49,15 @@ def test_find_torrents_sets_series_and_returns(mam):
     result_book, torrents = service.find_torrents(book)
 
     assert result_book == book
-    assert torrents == [torrent]
+    assert torrents == {torrent}
 
-    mam.search_ebook.assert_called_once_with("Dune", "Frank Herbert")
+    mam.search_ebook.assert_called_once_with("Dune")
 
     assert torrent.book.series == "Dune Saga"
     assert torrent.book.series_number == 1
 
 
-def test_find_torrents_retries_main_and_alternate_titles_without_author(mam):
+def test_find_torrents_searches_main_and_alternate_titles_without_author(mam):
     book = SimpleNamespace(
         title="Main title",
         authors=["Author"],
@@ -66,7 +67,7 @@ def test_find_torrents_retries_main_and_alternate_titles_without_author(mam):
     )
     torrent = Mock()
     torrent.book = SimpleNamespace(series=None, series_number=None)
-    mam.search_ebook.side_effect = [[], [torrent], []]
+    mam.search_ebook.side_effect = [[torrent], []]
 
     service = TorrentDiscoveryService(mam, ["eng"], None)
 
@@ -74,9 +75,8 @@ def test_find_torrents_retries_main_and_alternate_titles_without_author(mam):
 
     assert torrents == {torrent}
     assert mam.search_ebook.call_args_list == [
-        call("Main title", "Author"),
-        call("Main title", None),
-        call("Alternate title", None),
+        call("Main title"),
+        call("Alternate title"),
     ]
 
 
@@ -134,9 +134,7 @@ def test_submit_downloads_skips_torrent_tagged_import_failed(mam, matcher):
 
     torrent_client = Mock()
     torrent_client.get_torrents_with_tag.side_effect = lambda tag: (
-        [SimpleNamespace(comment="MyAnonamouse MID=123")]
-        if tag == "murid_import_failed"
-        else []
+        [SimpleNamespace(comment="MyAnonamouse MID=123")] if tag == "murid_import_failed" else []
     )
     service = TorrentDiscoveryService(mam, ["eng"], None, torrent_client)
     service.torrent_selector = SimpleNamespace(select=Mock(return_value=available_torrent))
@@ -150,9 +148,7 @@ def test_submit_downloads_skips_torrent_tagged_import_failed(mam, matcher):
         result = service.submit_downloads(executor, {search_future: book}, matcher)
 
     torrent_client.get_torrents_with_tag.assert_called_once_with("murid_import_failed")
-    service.torrent_selector.select.assert_called_once_with(
-        book, {available_torrent}, matcher
-    )
+    service.torrent_selector.select.assert_called_once_with(book, {available_torrent}, matcher)
     assert len(result) == 1
     mam.download_torrent.assert_called_once_with(available_torrent)
 
@@ -175,22 +171,12 @@ def test_download_torrents_skips_books_with_incomplete_timed_out_torrent(mam, ma
     mam.download_torrent.assert_not_called()
 
 
-def test_submit_downloads_filters_failed_torrent_from_title_only_fallback(mam, matcher):
+def test_submit_downloads_does_not_retry_after_selector_rejects(mam, matcher):
     original_torrent = Mock()
     original_torrent.book.id = 111
-    failed_torrent = Mock()
-    failed_torrent.book.id = 222
 
-    torrent_client = Mock()
-    torrent_client.get_torrents_with_tag.side_effect = lambda tag: (
-        [SimpleNamespace(comment="MyAnonamouse MID=222")]
-        if tag == "murid_import_failed"
-        else []
-    )
-    service = TorrentDiscoveryService(mam, ["eng"], None, torrent_client)
+    service = TorrentDiscoveryService(mam, ["eng"], None)
     service.torrent_selector = SimpleNamespace(select=Mock(return_value=None))
-    mam.search_ebook.return_value = {failed_torrent}
-
     book = SimpleNamespace(title="Dune", authors=["Frank"])
     search_future = Future()
     search_future.set_result((book, {original_torrent}))
@@ -199,22 +185,15 @@ def test_submit_downloads_filters_failed_torrent_from_title_only_fallback(mam, m
         result = service.submit_downloads(executor, {search_future: book}, matcher)
 
     assert result == {}
-    service.torrent_selector.select.assert_called_once_with(
-        book, {original_torrent}, matcher
-    )
+    service.torrent_selector.select.assert_called_once_with(book, {original_torrent}, matcher)
+    mam.search_ebook.assert_not_called()
     mam.download_torrent.assert_not_called()
 
 
-def test_submit_downloads_retries_title_only_when_matcher_rejects(mam, matcher):
+def test_submit_downloads_does_not_repeat_title_searches_when_matcher_rejects(mam, matcher):
     service = TorrentDiscoveryService(mam, ["eng"], None)
     original_torrent = Mock()
-    selected_torrent = Mock()
-    selected_torrent.book = SimpleNamespace()
-    service.torrent_selector = SimpleNamespace(
-        select=Mock(side_effect=[None, selected_torrent])
-    )
-    mam.search_ebook.side_effect = [[selected_torrent], []]
-    mam.download_torrent.return_value = b"torrent-file"
+    service.torrent_selector = SimpleNamespace(select=Mock(return_value=None))
 
     book = SimpleNamespace(
         title="Main title",
@@ -226,16 +205,10 @@ def test_submit_downloads_retries_title_only_when_matcher_rejects(mam, matcher):
 
     with ThreadPoolExecutor(max_workers=1) as executor:
         result = service.submit_downloads(executor, {search_future: book}, matcher)
-        assert len(result) == 1
-        future, selected_book = next(iter(result.items()))
-        assert selected_book == selected_torrent.book
-        assert future.result() == b"torrent-file"
+        assert result == {}
 
-    assert service.torrent_selector.select.call_count == 2
-    assert mam.search_ebook.call_args_list == [
-        call("Main title", None),
-        call("Alternate title", None),
-    ]
+    service.torrent_selector.select.assert_called_once_with(book, [original_torrent], matcher)
+    mam.search_ebook.assert_not_called()
 
 
 def test_submit_downloads_skips_empty():

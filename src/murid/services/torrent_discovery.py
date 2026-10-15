@@ -48,11 +48,7 @@ class TorrentDiscoveryService:
 
     def find_torrents(self, book: Book) -> tuple[Book, set[Torrent]]:
         """Find torrents for a given book."""
-        author = book.authors[0] if book.authors else None
-        mam_books = self.mam.search_ebook(book.title, author)
-
-        if not mam_books:
-            mam_books = self._search_without_author(book, author)
+        mam_books = self._search_titles(book)
 
         for torrent in mam_books:
             # Prefer series info from Hardcover if available,
@@ -62,7 +58,7 @@ class TorrentDiscoveryService:
         return book, mam_books
 
     @staticmethod
-    def _search_titles(book: Book) -> list[str]:
+    def _titles_to_search(book: Book) -> list[str]:
         alternative_titles = getattr(book, "search_alternative_titles", None)
         if alternative_titles is None:
             alternative_titles = getattr(book, "alternative_titles", None)
@@ -76,17 +72,15 @@ class TorrentDiscoveryService:
                 titles.append(title)
         return titles
 
-    def _search_without_author(self, book: Book, author: str | None) -> set[Torrent]:
-        """Search the main and alternate titles without an author filter."""
+    def _search_titles(self, book: Book) -> set[Torrent]:
+        """Search each distinct main or alternate title without an author filter."""
         results: set[Torrent] = set()
-        for title in self._search_titles(book):
+        for title in self._titles_to_search(book):
             logger.debug(
-                "No MyAnonamouse results for %r by %r; retrying with title-only search %r",
-                book.title,
-                author,
+                "Searching MyAnonamouse by title only: %r",
                 title,
             )
-            results.update(self.mam.search_ebook(title, None))
+            results.update(self.mam.search_ebook(title))
         return results
 
     def submit_downloads(
@@ -115,23 +109,6 @@ class TorrentDiscoveryService:
                 continue
 
             torrent = self.torrent_selector.select(book, tor_list, matcher)
-
-            if not torrent:
-                logger.info(
-                    "No suitable torrent found for %s; retrying title-only searches",
-                    book,
-                )
-                title_only_torrents = self._search_without_author(
-                    book, book.authors[0] if book.authors else None
-                )
-                if failed_import_mam_ids:
-                    title_only_torrents = {
-                        torrent
-                        for torrent in title_only_torrents
-                        if str(torrent.book.id) not in failed_import_mam_ids
-                    }
-                if title_only_torrents:
-                    torrent = self.torrent_selector.select(book, title_only_torrents, matcher)
 
             if not torrent:
                 continue

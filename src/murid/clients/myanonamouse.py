@@ -204,23 +204,19 @@ class MyAnonamouse:
             raw=data,
         )
 
-    def search_ebook(self, title: str, author: str | None = None) -> set[Torrent]:
-        """Search for ebooks on MyAnonamouse matching the specified title and optional author."""
-        query = title
-        if author:
-            query += f" {author}"
-
+    def search_ebook(self, title: str) -> set[Torrent]:
+        """Search for ebooks on MyAnonamouse matching the specified title."""
         result = self.search(
             MyAnonamouseQuery(
-                text=query, main_categories=[14], search_fields=["title", "author", "series"]
+                text=title, main_categories=[14], search_fields=["title", "author", "series"]
             )
         )
         if not result:
-            logger.info("No torrents found for %r", query)
+            logger.info("No torrents found for %r", title)
         else:
             count = len(result)
             logger.info(
-                "Found %d potential torrent%s for %s", count, "" if count == 1 else "s", query
+                "Found %d potential torrent%s for %s", count, "" if count == 1 else "s", title
             )
         return result
 

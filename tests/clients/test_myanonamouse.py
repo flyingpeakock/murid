@@ -141,23 +141,6 @@ def test_search_ebook_title_only(mam):
     assert captured["query"].text == "Dune"
 
 
-def test_search_ebook_title_and_author(mam):
-    captured = {}
-
-    def fake_search(query):
-        captured["query"] = query
-        return []
-
-    mam.search = fake_search
-
-    mam.search_ebook(
-        "Dune",
-        "Frank Herbert",
-    )
-
-    assert captured["query"].text == "Dune Frank Herbert"
-
-
 def test_search_ebook_logs_found(mam, caplog):
     mam.search = lambda *a, **k: [object(), object()]
 
