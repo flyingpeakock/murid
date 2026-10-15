@@ -25,7 +25,7 @@ _MISSING = _Missing()
 _defaults = {
     "hardcover_api_keys": _MISSING,
     "redact_sensitive_data": True,
-    "matcher_threshold": 0.7,
+    "matcher_threshold": 0.92,
     "mam_id": _MISSING,
     "lang_codes": ["ENG"],
     "calibre": {

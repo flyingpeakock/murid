@@ -165,7 +165,7 @@ Set these variables in the environment that runs Murid. The default config locat
 | `qbittorrent`             | qBittorrent connection                | required    |
 | `calibre`                 | Calibre configuration                 | required    |
 | `mam_id`                  | MyAnonamouse session cookie           | required    |
-| `matcher_threshold`       | Fuzzy match sensitivity               | `0.7`       |
+| `matcher_threshold`       | Fuzzy match sensitivity               | `0.92`      |
 | `lang_codes`              | Torrent languages and tagged Hardcover alternate titles | `["ENG"]`   |
 | `schedule`                | Cron expression                       | `0 * * * *` |
 | `redact_sensitive_data`   | Hide secrets in logs                  | `true`      |

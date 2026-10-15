@@ -215,9 +215,9 @@ def test_calibre_cannot_have_library_path_and_server_url(build_config):
         build_config(calibre={"library_path": "metadata.db", "server_url": "http://localhost:8080"})
 
 
-def test_matcher_threshold_defaults_to_0_7(build_config):
+def test_matcher_threshold_defaults_to_0_92(build_config):
     config = build_config()
-    assert config.get("matcher_threshold") == 0.7
+    assert config.get("matcher_threshold") == 0.92
 
 
 def test_matcher_threshold_must_be_float(build_config):

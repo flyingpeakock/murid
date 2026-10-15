@@ -9,7 +9,7 @@ hardcover_api_keys:
 redact_sensitive_data: true
 
 # Match confidence threshold (0.0 - 1.0)
-matcher_threshold: 0.7
+matcher_threshold: 0.92
 
 # MyAnonamouse cookie
 mam_id: !ENV MAM_ID
