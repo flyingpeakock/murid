@@ -104,3 +104,74 @@ def test_single_file_path_must_use_supported_format(tmp_path):
     selector = BookFileSelector(["epub"])
 
     assert selector.select(make_book(), str(path), BookMatcher()) is None
+
+
+def test_matches_release_names_with_parenthetical_series_and_catalog_id(tmp_path):
+    """Ignore trailing series metadata and Amazon IDs in release filenames."""
+    root = tmp_path / "pack"
+    root.mkdir()
+    target = root / "Caliban's War (The Expanse Book 2) - B005SCRR1A.azw3"
+    target.touch()
+    (root / "Leviathan Wakes (The Expanse Book 1) - B004G8Q1FT.azw3").touch()
+
+    book = Book(
+        title="Caliban's War",
+        authors=["James S. A. Corey"],
+        series="The Expanse",
+        series_number=2,
+        id=2,
+        isbn=[],
+        source="test",
+    )
+
+    selected = BookFileSelector().select(book, str(root), BookMatcher())
+
+    assert selected == target
+
+
+def test_matches_title_with_author_suffix_and_malformed_extension_text(tmp_path):
+    """Recognize a title when the author follows it in the filename."""
+    root = tmp_path / "pack"
+    root.mkdir()
+    target = root / "Abaddon's Gate - S.A. Corey.epub"
+    target.touch()
+    (root / "Cibola Burn - James S.A. Corey.azw3").touch()
+
+    book = Book(
+        title="Abaddon's Gate",
+        authors=["James S. A. Corey"],
+        id=3,
+        isbn=[],
+        source="test",
+    )
+
+    selected = BookFileSelector().select(book, str(root), BookMatcher())
+
+    assert selected == target
+
+
+def test_preserves_parenthetical_title_text(tmp_path):
+    """Keep edition wording that is part of a book title."""
+    root = tmp_path / "pack"
+    root.mkdir()
+    target = root / "The Hobbit (Illustrated Edition).epub"
+    target.touch()
+    (root / "The Hobbit.epub").touch()
+
+    book = make_book("The Hobbit (Illustrated Edition)")
+    selected = BookFileSelector().select(book, str(root), BookMatcher())
+
+    assert selected == target
+
+
+def test_equivalent_author_suffix_variants_do_not_look_ambiguous(tmp_path):
+    """Treat author suffixes as metadata when identifying candidate titles."""
+    root = tmp_path / "pack"
+    root.mkdir()
+    target = root / "Dune - Frank Herbert.epub"
+    target.touch()
+    (root / "Dune.epub").touch()
+
+    selected = BookFileSelector().select(make_book(), str(root), BookMatcher())
+
+    assert selected == target

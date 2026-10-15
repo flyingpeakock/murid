@@ -11,7 +11,7 @@ from .book_matcher import BookMatcher
 logger = logging.getLogger("murid")
 
 _DEFAULT_FILETYPES = ("epub", "mobi", "azw3", "azw")
-_MIN_TITLE_SIMILARITY = 0.85
+_MIN_TITLE_SIMILARITY = 0.75
 _AMBIGUITY_MARGIN = 0.04
 
 
@@ -154,11 +154,22 @@ class BookFileSelector:  # pylint: disable=too-few-public-methods
     @classmethod
     def _filename_title_variants(cls, book: Book, stem: str) -> set[str]:
         """Remove known author and series labels around a filename's title."""
-        title = BookMatcher.normalize(stem)
+        # Release filenames commonly append series/volume labels and catalog IDs
+        # after the actual title. Remove those before fuzzy matching so they do
+        # not dilute otherwise exact title matches.
+        cleaned_stem = re.sub(r"\s+-\s+[A-Z0-9]{8,}(?=\s|$)", "", stem)
+        cleaned_stem = re.sub(
+            r"\s*\((?=[^)]*(?:\bbook\s*#?\d+|\bvol(?:ume)?\s*#?\d+|"
+            r"\bpart\s*#?\d+|\bthe\s+expanse\b))[^)]*\)",
+            "",
+            cleaned_stem,
+            flags=re.IGNORECASE,
+        )
+        title = BookMatcher.normalize(cleaned_stem)
         if not title:
             return set()
 
-        variants = cls._strip_author_names(book, cls._with_numbered_variant(title, stem))
+        variants = cls._strip_author_names(book, cls._with_numbered_variant(title, cleaned_stem))
         return cls._strip_series_prefix(book, variants)
 
     @staticmethod
@@ -194,6 +205,18 @@ class BookFileSelector:  # pylint: disable=too-few-public-methods
                 by_author = f" by {author}"
                 if value.endswith(by_author):
                     variants.add(value[: -len(by_author)].strip())
+
+                # Some release names abbreviate middle names or omit periods,
+                # so also remove a suffix when its word sequence matches the
+                # trailing portion of the known author name.
+                author_words = author.split()
+                value_words = value.split()
+                for count in range(2, len(author_words) + 1):
+                    suffix = author_words[-count:]
+                    if value_words[-count:] == suffix and len(value_words) > count:
+                        stripped = " ".join(value_words[:-count])
+                        variants.discard(value)
+                        variants.add(stripped)
 
         return variants
 
