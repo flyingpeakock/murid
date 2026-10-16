@@ -57,6 +57,63 @@ def test_redirected_output_preserves_long_literal_values(format):
         assert result == message + "\n"
 
 
+@pytest.mark.parametrize("output_format", ["auto", "plain", "json"])
+@pytest.mark.parametrize(
+    ("kind", "data", "priority"),
+    [
+        ("error", {}, 3),
+        ("sync_summary", {"ok": False, "aborted": True}, 3),
+        ("sync_summary", {"ok": False, "pending": 1}, 4),
+        ("sync_summary", {"ok": True, "dry_run": True, "pending": 1}, 6),
+        ("connection", {"ok": False}, 3),
+        ("connection_summary", {"failed": 1}, 4),
+        ("message", {}, 6),
+    ],
+)
+def test_ui_output_retains_journal_severity(monkeypatch, output_format, kind, data, priority):
+    monkeypatch.setattr(ui, "is_journal_stream", lambda _: True)
+    ui.setup_output(color=False, output_format=output_format)
+    stream = io.StringIO()
+    ui.output(Text("first\nsecond"), file=stream, kind=kind, data=data)
+    serialized = stream.getvalue()
+    if output_format == "json":
+        assert len(serialized.splitlines()) == 1
+        assert serialized.startswith(f"<{priority}>")
+        record = json.loads(serialized[3:])
+        assert record["message"] == "first\nsecond"
+        assert record["type"] == kind
+    else:
+        assert serialized == f"<{priority}>first\n<{priority}>second\n"
+
+
+@pytest.mark.parametrize("output_format", ["auto", "plain", "json"])
+def test_output_flushes_redirected_results(monkeypatch, output_format):
+    class Stream(io.StringIO):
+        flushed = False
+
+        def flush(self):
+            self.flushed = True
+            super().flush()
+
+    ui.setup_output(color=False, output_format=output_format)
+    stream = Stream()
+    monkeypatch.setattr("sys.stdout", stream)
+    ui.output(Text("summary"), kind="sync_summary", data={"ok": True})
+    assert stream.flushed
+
+
+def test_redirected_file_does_not_inherit_stderr_journal_prefix(monkeypatch, tmp_path):
+    import os
+    import sys
+
+    stat = os.fstat(sys.stderr.fileno())
+    monkeypatch.setenv("JOURNAL_STREAM", f"{stat.st_dev}:{stat.st_ino}")
+    with (tmp_path / "output.txt").open("w+", encoding="utf-8") as stream:
+        ui.output(Text("failed"), file=stream, kind="error")
+        stream.seek(0)
+        assert stream.read() == "failed\n"
+
+
 @pytest.mark.parametrize("option", [["--no-color"], ["--format", "plain"], ["--format=json"]])
 def test_help_respects_color_preference(monkeypatch, capsys, option):
     monkeypatch.setenv("FORCE_COLOR", "1")

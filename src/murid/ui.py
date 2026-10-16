@@ -1,13 +1,36 @@
 """Terminal output helpers that respect Murid's color preference."""
 
 import json
+import logging
 import sys
 
 from rich.console import Console
 from rich.text import Text
 
+from .logging_config import is_journal_stream, journal_message
+
 console = Console()
 OUTPUT_FORMAT = "auto"
+
+
+def _output_level(kind: str, data: dict) -> int:
+    """Give diagnostics and unresolved summaries an appropriate journal priority."""
+    if kind == "error" or data.get("aborted") or (kind == "connection" and data.get("ok") is False):
+        return logging.ERROR
+    if data.get("ok") is True:
+        return logging.INFO
+    if data.get("ok") is False or any(
+        data.get(key, 0) for key in ("failed", "pending", "skipped", "attention")
+    ):
+        return logging.WARNING
+    return logging.INFO
+
+
+def _write(message: str, stream, level: int) -> None:
+    """Flush complete lines promptly, adding priority prefixes only on journal streams."""
+    if is_journal_stream(stream):
+        message = journal_message(message, level)
+    print(message, file=stream, flush=True)
 
 
 def setup_output(*, color: bool, output_format: str = "auto") -> None:
@@ -22,6 +45,8 @@ def output(*renderables, **kwargs) -> None:
     file = kwargs.pop("file", None)
     kind = kwargs.pop("kind", "message")
     data = kwargs.pop("data", {})
+    level = kwargs.pop("level", _output_level(kind, data))
+    stream = sys.stdout if file is None else file
     target = console if file is None else Console(file=file, no_color=console.no_color)
     if is_json():
         message = " ".join(
@@ -29,20 +54,22 @@ def output(*renderables, **kwargs) -> None:
             for item in renderables
         )
         if message or data:
-            print(
+            _write(
                 json.dumps({"type": kind, "message": message, **data}, ensure_ascii=False),
-                file=file or sys.stdout,
+                stream,
+                level,
             )
         return
     if OUTPUT_FORMAT == "plain" or not target.is_terminal:
         # Preserve complete lines and URLs in pipes, files, and automation.
         for item in renderables:
-            print(
+            _write(
                 item.plain if isinstance(item, Text) else Text.from_markup(str(item)).plain,
-                file=file or sys.stdout,
+                stream,
+                level,
             )
         if not renderables:
-            print(file=file or sys.stdout)
+            _write("", stream, level)
         return
     target.print(*renderables, **kwargs)
 

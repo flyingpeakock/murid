@@ -11,6 +11,21 @@ from rich.text import Text
 
 logger = logging.getLogger("murid")
 
+_JOURNAL_PRIORITIES = {
+    logging.DEBUG: 7,
+    logging.INFO: 6,
+    logging.WARNING: 4,
+    logging.ERROR: 3,
+    logging.CRITICAL: 2,
+}
+
+
+def journal_message(message: str, level: int) -> str:
+    """Prefix every journal stream line, including exception continuation lines."""
+    priority = _JOURNAL_PRIORITIES.get(level, 3)
+    # journald splits stream messages at newlines and NULs, resetting priority each time.
+    return "\n".join(f"<{priority}>{line}" for line in message.replace("\0", "\n").split("\n"))
+
 
 class BookRichHandler(RichHandler):
     """Style known book arguments without guessing where titles or authors end."""
@@ -51,18 +66,18 @@ class JsonLogFormatter(logging.Formatter):
 class JournalFormatter(logging.Formatter):
     """Format records for systemd's journal stream parser."""
 
-    _priority_by_level = {
-        logging.DEBUG: 7,
-        logging.INFO: 6,
-        logging.WARNING: 4,
-        logging.ERROR: 3,
-        logging.CRITICAL: 2,
-    }
+    def __init__(self, fmt: str = "%(message)s", *, formatter: logging.Formatter | None = None):
+        super().__init__(fmt)
+        self.message_formatter = formatter
 
     def format(self, record: logging.LogRecord) -> str:
-        """Prefix the message with the syslog priority understood by journald."""
-        priority = self._priority_by_level.get(record.levelno, 3)
-        return f"<{priority}>{super().format(record)}"
+        """Preserve the record's priority across plain text and JSON formatting."""
+        message = (
+            self.message_formatter.format(record)
+            if self.message_formatter
+            else super().format(record)
+        )
+        return journal_message(message, record.levelno)
 
 
 def is_journal_stream(stream) -> bool:
@@ -101,12 +116,14 @@ def setup_logger(
         )
     else:
         handler = logging.StreamHandler()
-        if output_format == "json":
-            handler.setFormatter(JsonLogFormatter())
-        elif is_journal_stream(sys.stderr):
+        if is_journal_stream(sys.stderr):
             # systemd strips this prefix and records the appropriate PRIORITY field.
             # It supplies the timestamp itself, so do not duplicate one in the message.
-            handler.setFormatter(JournalFormatter("%(message)s"))
+            handler.setFormatter(
+                JournalFormatter(formatter=JsonLogFormatter() if output_format == "json" else None)
+            )
+        elif output_format == "json":
+            handler.setFormatter(JsonLogFormatter())
         else:
             handler.setFormatter(
                 logging.Formatter(

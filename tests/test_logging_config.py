@@ -1,11 +1,16 @@
+import io
+import json
 import logging
+import sys
 from types import SimpleNamespace
 
+import pytest
 from rich.logging import RichHandler
 
 from murid.logging_config import (
     BookRichHandler,
     JournalFormatter,
+    JsonLogFormatter,
     is_journal_stream,
     logger,
     setup_logger,
@@ -117,3 +122,69 @@ def test_journal_formatter_uses_syslog_priority_prefix():
     for level, message, expected in records:
         record = logging.LogRecord("murid", level, "", 0, message, (), None)
         assert formatter.format(record) == expected
+
+
+@pytest.mark.parametrize(
+    ("level", "priority"),
+    [
+        (logging.DEBUG, 7),
+        (logging.INFO, 6),
+        (logging.WARNING, 4),
+        (logging.ERROR, 3),
+        (logging.CRITICAL, 2),
+    ],
+)
+def test_journal_formatter_preserves_priority_on_every_line(level, priority):
+    record = logging.LogRecord("murid", level, "", 0, "first\nsecond\0<0>third", (), None)
+    assert JournalFormatter().format(record) == (
+        f"<{priority}>first\n<{priority}>second\n<{priority}><0>third"
+    )
+
+
+def test_journal_exception_lines_keep_error_priority():
+    try:
+        raise ValueError("first\nsecond")
+    except ValueError:
+        record = logging.LogRecord("murid", logging.ERROR, "", 0, "failed", (), sys.exc_info())
+    lines = JournalFormatter().format(record).splitlines()
+    assert len(lines) > 3
+    assert all(line.startswith("<3>") for line in lines)
+    assert lines[-1] == "<3>second"
+
+
+@pytest.mark.parametrize(
+    ("level", "priority"),
+    [
+        (logging.DEBUG, 7),
+        (logging.INFO, 6),
+        (logging.WARNING, 4),
+        (logging.ERROR, 3),
+        (logging.CRITICAL, 2),
+    ],
+)
+def test_json_logs_keep_journal_priority(monkeypatch, level, priority):
+    stream = io.StringIO()
+    monkeypatch.setattr(sys, "stderr", stream)
+    monkeypatch.setattr(logger, "handlers", [])
+    monkeypatch.setattr(logger, "level", logging.WARNING)
+    monkeypatch.setattr("murid.logging_config.is_journal_stream", lambda _: True)
+    setup_logger("DEBUG", output_format="json")
+    logger.log(level, "first\nsecond")
+    serialized = stream.getvalue()
+    assert serialized.startswith(f"<{priority}>")
+    assert len(serialized.splitlines()) == 1
+    record = json.loads(serialized[3:])
+    assert record["level"] == logging.getLevelName(level).lower()
+    assert record["message"] == "first\nsecond"
+
+
+def test_redirected_json_logs_have_no_journal_prefix(monkeypatch):
+    stream = io.StringIO()
+    monkeypatch.setattr(sys, "stderr", stream)
+    monkeypatch.setattr(logger, "handlers", [])
+    monkeypatch.setattr(logger, "level", logging.WARNING)
+    monkeypatch.setattr("murid.logging_config.is_journal_stream", lambda _: False)
+    setup_logger("INFO", output_format="json")
+    logger.error("failed")
+    assert json.loads(stream.getvalue())["level"] == "error"
+    assert isinstance(logger.handlers[0].formatter, JsonLogFormatter)
