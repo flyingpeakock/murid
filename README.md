@@ -5,36 +5,9 @@
 
 ---
 
-Murid automatically syncs your reading list from Hardcover with your Calibre library and fetches missing ebooks using MyAnonamouse.
-
-It is designed to automate the full pipeline from “want to read” → “available in Calibre”.
-
-## Overview
-
-On each run, Murid:
-
-1. Fetches books from one or more Hardcover accounts
-2. Compares them against your local Calibre library
-3. Searches MyAnonamouse for missing books
-4. Sends matching torrents to qBittorrent
-5. Imports completed downloads into Calibre
-
-The goal is a mostly hands-off workflow for turning your “Want to Read” list into an actual, local library.
-
-
-## Features
-
-- Multiple Hardcover accounts
-- ISBN + title/author matching
-- Fuzzy matching with configurable threshold
-- Scheduled sync via cron expressions
-- MyAnonamouse integration
-- qBittorrent integration
-- Automatic Calibre imports
-- Dry-run mode
-- Environment variable secret injection
-
-## Architecture
+Murid syncs your Hardcover “Want to Read” lists with Calibre, searches
+MyAnonamouse for missing ebooks, downloads them through qBittorrent, and imports
+completed books into your library.
 
 Hardcover → Fetch reading lists  
     ↓  
@@ -46,246 +19,47 @@ qBittorrent → Download torrents
     ↓  
 Calibre → Import completed books
 
+It supports multiple Hardcover accounts, configurable book matching and format
+preferences, scheduled syncs, notifications, and dry runs.
+
 ## Requirements
 
 - Python 3.12+
-- Calibre
-- qBittorrent (Web UI enabled)
-- Hardcover API key
-- MyAnonamouse account
+- Calibre, with `calibredb` available
+- qBittorrent with its Web UI enabled
+- A Hardcover API key
+- A MyAnonamouse account
 
-## Installation
+## Quick start
 
-### Linux / macOS
+### 1. Install
+
+On Linux or macOS:
 
 ```bash
 git clone https://github.com/flyingpeakock/murid.git
 cd murid
-
 python -m venv .venv
 source .venv/bin/activate
-
 pip install .
 ```
 
-To enable shell completion after a Python installation, add the line for your shell to its startup file:
+See the [installation guide](docs/installation.md) for Windows, NixOS, shell
+completion, and development setup.
 
-```sh
-# bash
-eval "$(register-python-argcomplete murid)"
-
-# zsh
-eval "$(register-python-argcomplete --shell zsh murid)"
-
-# fish
-register-python-argcomplete --shell fish murid | source
-```
-
-The Nix package installs completion files for bash, zsh, and fish automatically.
-The development shell also includes `murid`. Run `nix develop -c zsh` and complete `murid` by name.
-For a direct path such as `./result/bin/murid`, register that path in your current zsh session:
-
-```zsh
-source ./result/share/zsh/site-functions/_murid
-compdef -p _python_argcomplete '*/murid'
-```
-
-### Windows
-
-```powershell
-git clone https://github.com/flyingpeakock/murid.git
-cd murid
-
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-
-pip install .
-```
-
-### Development
-
-```bash
-git clone https://github.com/flyingpeakock/murid.git
-cd murid
-
-python -m venv .venv
-source .venv/bin/activate
-
-pip install -e ".[dev]"
-```
-
-### NixOS Flake
-
-Add Murid as a flake input, then include its module in your NixOS module list. For example:
-
-```nix
-inputs.murid.url = "github:flyingpeakock/murid";
-
-# In nixosSystem.modules:
-[
-  murid.nixosModules.default
-  ({ ... }: {
-    services.murid = {
-      enable = true;
-      environmentFile = "/etc/murid.env";
-      config = {
-        hardcover_api_keys = [ "!ENV HARDCOVER_API_KEY" ];
-        mam_id = "!ENV MAM_ID";
-        calibre.library = "http://localhost:8080/#books";
-        qbittorrent = {
-          username = "admin";
-          password = "!ENV QBITTORRENT_PASSWORD";
-        };
-      };
-    };
-  })
-]
-```
-
-Put `HARDCOVER_API_KEY` (including the `Bearer ` prefix), `MAM_ID`, and `QBITTORRENT_PASSWORD` in `/etc/murid.env`. See [nixosModule.nix](nixosModule.nix) for all module options.
-The module starts `murid schedule` and accepts either an inline `services.murid.config`
-or a path in `services.murid.configFile`. Set `environmentFile` when the selected
-configuration uses `!ENV` secrets.
-
-## Usage
-
-Murid uses a command followed by its options. Run `murid --help` to list commands,
-or `murid <command> --help` for command-specific options. Put `--config` after the
-command, as in the examples below.
-
-| Command | Purpose |
-| --- | --- |
-| `run` | Sync once and exit |
-| `schedule` | Sync repeatedly using the configured cron schedule |
-| `list-missing` | List Hardcover books missing from Calibre |
-| `review-matches` | Inspect Hardcover to Calibre matches and scores; use `--matched` or `--unmatched` to filter |
-| `search-book NAME` | Preview torrent candidates for a Hardcover book; use `--add` to download and import the selected torrent |
-| `add-book NAME PATH` | Import an ebook file with metadata from Hardcover |
-| `status` | Show Murid torrents and their download and import status |
-| `retry-import` | Retry imports for tagged downloads |
-| `test-connection` | Check access to each configured service |
-| `test-notification` | Send a test notification through Apprise |
-| `validate-config` | Validate a configuration file |
-| `print-config` | Print the parsed configuration, with secrets redacted by default |
-
-Every command accepts `--no-color`, `--log-level`, and `--format auto|plain|json`.
-`auto` uses terminal layouts when connected to a terminal and unwrapped text when
-redirected. `plain` always emits unwrapped text without terminal styling. `json`
-emits JSON Lines: one object per result or summary on stdout, with diagnostics on
-stderr (also JSON Lines). Each object has a `type` and readable `message`; result
-objects also carry fields such as book metadata, scores, progress, and outcome
-counts. Consumers should select records by `type` and ignore unfamiliar fields.
-`print-config --format json` emits a `config` record containing the parsed,
-redacted configuration. `NO_COLOR` and `--no-color` also apply to terminal help.
-
-```bash
-murid status --format json
-murid list-missing --format plain > missing-books.txt
-murid search-book "Dune" --no-color
-```
-
-`run` reports a final sync summary and returns a nonzero exit code if imports
-failed, downloads remain pending, a required lookup was skipped, or no acceptable
-torrent was available for a missing book. Dry runs report planned imports and do
-not count a pending download as a failure. `retry-import` also returns nonzero for
-pending, failed, or skipped imports. Scheduled runs report unresolved outcomes and
-continue to the next scheduled cycle. `test-notification` reports delivery success
-or failure; no configured Apprise destinations is a failure. Detailed tracebacks
-are available with `--log-level debug`.
-
-Murid replaces punctuation and search operators in generated queries with spaces,
-preserving Unicode letters, numbers, and combining marks. Queries without
-searchable words are skipped. Rejected title queries are reported
-as warnings; alternate titles and other books can still be processed. Books whose
-title queries all fail are counted as search failures, rather than empty results.
-Authentication and connection failures still stop the sync.
-
-For example, inspect book matches or validate a configuration before syncing:
-
-```bash
-murid review-matches --unmatched --config ./config.yaml
-murid validate-config --config ./config.yaml
-```
-
-To import a file that Murid could not select automatically, give the book name from your
-Hardcover Want to Read list and the path to the ebook file:
-
-```bash
-murid add-book "Children of Dune" /path/to/children-of-dune.epub --config ./config.yaml
-```
-
-Murid matches the name against your Hardcover books, including close spellings and alternate
-titles, then uses the matched title, authors, and series when adding the file to Calibre.
-It stops if the name is ambiguous or the book already exists in Calibre.
-
-To inspect downloads in Murid's configured qBittorrent category, including torrents
-tagged for a timeout or failed Calibre import, run:
-
-```bash
-murid status --config ./config.yaml
-```
-
-To retry importing completed Murid downloads tagged for a timeout or failed import,
-without searching for or adding new torrents, run:
-
-```bash
-murid retry-import --config ./config.yaml
-```
-
-It checks tagged torrents once, reports downloads still in progress, and leaves failed
-imports tagged for further investigation. It exits with a nonzero status if any
-tagged torrent still needs attention.
-
-To check access to Hardcover, Calibre, MyAnonamouse, and qBittorrent, run:
-
-```bash
-murid test-connection --config ./config.yaml
-```
-
-Each service is checked independently. The command exits with a nonzero status if
-any check fails.
-
-To preview MyAnonamouse results for a book on your Hardcover reading list and see
-which torrent Murid would select, run:
-
-```bash
-murid search-book "Children of Dune" --config ./config.yaml
-```
-
-This shows candidate scores and rejection reasons without downloading a torrent or
-adding anything to qBittorrent or Calibre.
-
-To add the selected torrent to qBittorrent and wait for its completed ebook to be
-imported into Calibre, use `--add`:
-
-```bash
-murid search-book "Children of Dune" --add --config ./config.yaml
-```
-
-Murid refuses to add the book if it is already in Calibre. If the torrent does not
-finish within the configured timeout, Murid tags it for a later import attempt.
-
-Copy the example config, fill in your connection details, and provide the secrets described below:
+### 2. Configure
 
 ```bash
 cp config.example.yaml config.yaml
-murid run --config ./config.yaml --dry-run
 ```
 
-A dry run searches for matches and fetches the selected `.torrent` files, but does not add them to qBittorrent or download the ebooks. Omit `--dry-run` for a one-time sync. To keep Murid running on the cron schedule in your config, use:
+Edit `config.yaml` with your Calibre library and qBittorrent connection details.
+`calibre.library` accepts a local library path or a Calibre content server URL.
+The [example configuration](config.example.yaml) lists all settings, including
+language, format preferences, and optional notifications.
 
-```bash
-murid schedule --config ./config.yaml
-```
-
-## Configuration
-
-Use [config.example.yaml](config.example.yaml) as the complete configuration reference. Set `calibre.library` to either a local Calibre library path or a Calibre content server URL.
-If upgrading an existing config, rename `calibre.library_path` or `calibre.server_url` to `calibre.library`.
-
-### Environment Variables
-
-The example config reads secrets from environment variables. The Hardcover token must include the `Bearer ` prefix.
+The example reads secrets from environment variables. Set these in the shell or
+service environment that runs Murid:
 
 ```bash
 export HARDCOVER_API_KEY="Bearer ..."
@@ -294,166 +68,88 @@ export CALIBRE_PASSWORD="..."
 export QBITTORRENT_PASSWORD="..."
 ```
 
-In PowerShell, set them with `$env:HARDCOVER_API_KEY = "Bearer ..."` and the equivalent `$env:NAME = "..."` for the others.
+Get your Hardcover token from [account settings](https://hardcover.app/account/api)
+(include the `Bearer ` prefix), and your `mam_id` cookie from
+[MyAnonamouse security settings](https://www.myanonamouse.net/preferences/index.php?view=security).
+`CALIBRE_PASSWORD` is needed when using the example's authenticated Calibre server
+configuration; adjust the Calibre settings for your library.
 
-Set these variables in the environment that runs Murid. The default config location depends on your operating system. To use a config file elsewhere without passing `--config` on every command, set `MURID_CONFIG_FILE`:
+In PowerShell, use `$env:NAME = "..."` instead of `export NAME="..."`.
+See the [configuration guide](docs/configuration.md) for config file selection,
+container path mapping, credentials, and import behavior.
+
+### 3. Check and preview
 
 ```bash
-export MURID_CONFIG_FILE=/path/to/config.yaml
+murid validate-config --config ./config.yaml
+murid test-connection --config ./config.yaml
+murid run --config ./config.yaml --dry-run
 ```
 
-`--config` can point to a config file anywhere and takes precedence over `MURID_CONFIG_FILE`.
+A dry run searches for matches and fetches selected `.torrent` files. It does not
+add torrents to qBittorrent or download ebooks. Review the results before running
+your first sync.
 
-## Configuration Reference
+## Everyday usage
 
-| Option                    | Description                           | Default     |
-| ------------------------- | ------------------------------------- | ----------- |
-| `hardcover_api_keys`      | List of hardcover api keys            | required    |
-| `qbittorrent`             | qBittorrent connection                | required    |
-| `calibre`                 | Calibre configuration                 | required    |
-| `mam_id`                  | MyAnonamouse session cookie           | required    |
-| `matcher_threshold`       | Fuzzy match sensitivity               | `0.92`      |
-| `lang_codes`              | Torrent languages and tagged Hardcover alternate titles | `["ENG"]`   |
-| `schedule`                | Cron expression                       | `0 * * * *` |
-| `redact_sensitive_data`   | Hide secrets in logs                  | `true`      |
-| `apprise`                 | Notifications via [Apprise](https://appriseit.com/getting-started/configuration/)   | `None`      |
-| `filetypes`               | Accepted formats in preference order          | `["epub", "mobi", "azw3", "azw"]` |
-| `blacklisted_torrent_ids` | List of MaM torrent id's to blacklist | `[]` |
-| `torrent_timeout_seconds` | Seconds before a torrent is considered to have timed out | `1800` |
+Sync once:
 
-### Calibre
-
-| Option                 | Description                     | Default     |
-| ---------------------- | ------------------------------- | ----------- |
-| `calibredb_executable` | Path to calibredb executable    | `calibredb` |
-| `library`              | Local library path or content server URL | required |
-| `server_username`      | Calibre content server username | `None`      |
-| `server_password`      | Calibre content server password | `None`      |
-
-### qBittorrent
-
-| Option        | Description                  | Default  |
-| ------------- | ---------------------------- | -------- |
-| `host`        | Web UI host                  | required |
-| `port`        | Web UI port                  | required |
-| `username`    | Login username               | required |
-| `password`    | Login password               | required |
-| `verify_cert` | SSL verification             | `True`   |
-| `category`    | Torrent category             | `murid`  |
-| `mapping`     | Path mapping between systems; both paths are unset by default | both paths unset |
-
-#### Path Mapping
-
-If qBittorrent and murid see the download directory under different paths (for example,
-when one or both are running in containers with different volume mounts), configure a path mapping. 
-
-Set: 
-
-- `qbittorrent.mapping.qbit_path` to the download path as seen by qBittorrent
-- `qbittorrent.mapping.murid_path` to the corresponding path as seen by murid
-
-For example, qBittorrent may save files to `/downloads` inside a container,
-while murid accesses the same files at `/mnt/media/downloads` on the host. In that case:
-
-```yaml
-qbittorrent:
-  mapping:
-    qbit_path: /downloads
-    murid_path: /mnt/media/downloads
+```bash
+murid run --config ./config.yaml
 ```
 
-This allows murid to correctly locate files reported by qBittorrent.
+Or keep Murid running on the configured cron schedule (every hour by default):
 
-### Torrent preferences and imported metadata
+```bash
+murid schedule --config ./config.yaml
+```
 
-The order of `filetypes` controls format preference for both torrent selection
-and ebook selection within a download. Torrents must first pass the configured
-filters and book matching rules. Murid then prefers torrents with seeders, higher
-match scores, earlier formats in `filetypes`, freeleech, and more seeders, in that
-order. Ties use the torrent ID for reproducible selection. Unseeded torrents remain
-eligible when no seeded match is available.
+Put options after the command. Run `murid --help` or `murid <command> --help` for
+available options.
 
-New downloads and `search-book --add` use the requested Hardcover book's metadata
-when importing into Calibre. Imports preserve title, authors, series (including
-position zero), the first valid ISBN, the Hardcover book ID, and the first nonempty
-identifier per catalog type. Calibre supports one value per identifier type;
-identifier values retain their original case. Existing library records are not
-updated by this change. Retries of earlier downloads still recover metadata from
-MyAnonamouse.
+| Command | Purpose |
+| --- | --- |
+| `run` | Sync once and exit |
+| `schedule` | Sync repeatedly using the configured cron schedule |
+| `list-missing` | List Hardcover books missing from Calibre |
+| `review-matches` | Inspect Hardcover to Calibre matches and scores |
+| `search-book NAME` | Preview torrent candidates; use `--add` to download and import |
+| `add-book NAME PATH` | Import an ebook file with metadata from Hardcover |
+| `status` | Show Murid torrents and their download and import status |
+| `retry-import` | Retry imports for tagged downloads |
+| `test-connection` | Check access to each configured service |
+| `test-notification` | Send a test notification through Apprise |
+| `validate-config` | Validate a configuration file |
+| `print-config` | Print the parsed configuration, with secrets redacted by default |
 
-## Credentials
+See the [usage guide](docs/usage.md) for command examples, scheduling and retries,
+JSON output, and exit codes.
 
-### Hardcover API Key
+## How matching works
 
-Generate one in your account settings:  
-<https://hardcover.app/account/api>
+Murid checks ISBNs and catalog IDs, then compares titles, authors, and series
+metadata. Matching tolerates alternate titles and common formatting differences
+while rejecting conflicting metadata. Adjust `matcher_threshold` (default `0.92`)
+to control sensitivity, and use `murid review-matches` to inspect results.
 
-### MyAnonamouse Cookie (mam_id)
+Unmatched books are searched on MyAnonamouse; downloads must pass the configured
+language, file type, and blacklist filters as well as the matching rules. See
+[matching logic](docs/matching.md) for scoring and safeguards.
 
-Found in your MyAnonamouse security settings:  
-<https://www.myanonamouse.net/preferences/index.php?view=security>
+## Documentation
 
-## Scheduling
-
-Cron-based scheduling controls how often Murid runs.
-
-Each scheduled run checks timed-out torrents again. It clears the timeout tag once
-the book is confirmed in Calibre. If a completed download fails to import, Murid
-marks it `murid_import_failed`; use `retry-import` after investigating the failure.
-
-| Expression    | Meaning        |
-| ------------- | -------------- |
-| `0 * * * *`   | Every hour     |
-| `0 */6 * * *` | Every 6 hours  |
-| `0 3 * * *`   | Daily at 03:00 |
-| `0 0 * * 0`   | Weekly         |
-
-## Matching Logic
-
-Murid compares Hardcover books with your Calibre library using identifiers first,
-then title, author, and series metadata:
-
-- **Identifiers:** A shared valid ISBN or external catalog ID gives a score of
-  `1.0`. ISBN checksums are validated, and ISBN-10 values are converted to ISBN-13.
-  Catalog names and IDs are normalized so supported URL and raw-ID forms can
-  match. A shared identifier is rejected if both books have titles and authors,
-  title similarity is below `0.35`, and no authors match.
-- **Titles:** Comparisons ignore case, punctuation, extra whitespace, and leading
-  English articles (`a`, `an`, `the`), while preserving Unicode letters and
-  numbers. Murid compares full titles and alternate titles, plus variants that
-  remove recognized subtitles, series prefixes, volume annotations, author
-  suffixes, or omnibus labels. Alternate and shortened variants receive lower
-  confidence scores.
-- **Authors:** Comparisons recognize `Surname, Given` ordering, initials, close
-  spellings, and names embedded in a combined author field. Extra contributors
-  are tolerated, with a small score reduction.
-
-Without a shared identifier, the overall score is `0.85 × title similarity +
-0.15 × author similarity`. If either book has no authors, it is `0.94 × title
-similarity` instead. Matching series names and positions add `0.04` when title
-similarity is at least `0.85`, up to a maximum score of `1.0`.
-
-Metadata matches must reach `matcher_threshold` (default `0.92`) and a title
-similarity of at least `0.85`. They are rejected when both books have authors but
-none match, when positions differ within the same series, or when normalized
-titles with the same word count differ by exactly one word (unless a main or alternate
-title matches exactly). Lowering the threshold does not bypass these safeguards.
-
-Qualifying Hardcover–Calibre pairs are assigned in descending score order, with
-each book used at most once. Unmatched Hardcover books are searched on
-MyAnonamouse. Torrent candidates use the same matching rules, together with the
-configured language, file type, and blacklist filters; see
-[torrent preferences](#torrent-preferences-and-imported-metadata) for ranking.
-
-Use `murid review-matches` to inspect Calibre match scores and supporting metadata,
-or `murid search-book "Book title"` to inspect torrent scores and rejection reasons.
+- [Installation](docs/installation.md) — Windows, NixOS, shell completion, development
+- [Configuration](docs/configuration.md) — secrets, library paths, torrent preferences, imports
+- [Usage](docs/usage.md) — commands, output formats, scheduling, troubleshooting
+- [Matching logic](docs/matching.md) — identifiers, scoring, rejection rules
+- [Example configuration](config.example.yaml) — all configuration settings
 
 ## Disclaimer
 
-This tool is intended for personal library automation and management.
-
-Users are responsible for complying with applicable laws and the terms of service of all services used, including Hardcover, MyAnonamouse, and qBittorrent.
+This tool is intended for personal library automation and management. Users are
+responsible for complying with applicable laws and the terms of service of
+Hardcover, MyAnonamouse, qBittorrent, and any other services used.
 
 ## License
 
-MIT
+[MIT](LICENSE)
