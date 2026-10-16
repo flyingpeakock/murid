@@ -88,7 +88,7 @@ tagged for a timeout or failed Calibre import, run:
 murid status --config ./config.yaml
 ```
 
-To retry importing completed Murid downloads tagged for a timeout or failed import,
+To retry importing completed Murid downloads tagged as pending, timed out, or failed,
 without searching for or adding new torrents, run:
 
 ```bash
@@ -144,9 +144,16 @@ The default is every hour. For a single sync, use `murid run`; add `--dry-run` t
 preview matches and fetch selected `.torrent` files without adding torrents or
 downloading ebooks. See the [quick start](../README.md#quick-start) for initial setup.
 
-Each scheduled run checks timed-out torrents again. It clears the timeout tag once
-the book is confirmed in Calibre. If a completed download fails to import, Murid
+Downloads receive a persistent `murid_pending` tag when added to qBittorrent.
+Each scheduled run checks pending and timed-out torrents again, including downloads
+left behind by an interrupted run. Once the book is confirmed in Calibre, Murid
+clears the pending and timeout tags. If a completed download fails to import, Murid
 marks it `murid_import_failed`; use `retry-import` after investigating the failure.
+Recovery uses the MyAnonamouse ID in the torrent comment to look up book metadata.
+
+If two requested books resolve to the same torrent hash in a batch, Murid imports
+the first book and reports the second as a failure instead of replacing the first.
+Use `add-book` to import another book from the completed download.
 
 | Expression    | Meaning        |
 | ------------- | -------------- |

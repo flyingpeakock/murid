@@ -11,7 +11,7 @@ from ..domain.book import Book
 from .torrent_import import TorrentImportService
 
 logger = logging.getLogger("murid")
-_IMPORT_TAGS = {"murid_timeout", "murid_import_failed"}
+_IMPORT_TAGS = {"murid_pending", "murid_timeout", "murid_import_failed"}
 
 
 @dataclass(frozen=True)
@@ -56,6 +56,7 @@ class RetryService:
                 already_present += 1
                 if not self.import_service.dry_run:
                     self.torrent_client.remove_tag(torrent_id, "murid_timeout")
+                    self.torrent_client.remove_tag(torrent_id, "murid_pending")
                 continue
 
             if self.import_service.dry_run:
@@ -76,6 +77,7 @@ class RetryService:
                 # process_torrent marks completed downloads with failed imports.
                 failed += 1
             self.torrent_client.remove_tag(torrent_id, "murid_timeout")
+            self.torrent_client.remove_tag(torrent_id, "murid_pending")
         self.last_result = RetryImportResult(imported, already_present, pending, failed, skipped)
         return incomplete_books
 
@@ -124,17 +126,23 @@ class RetryService:
             else:
                 if "murid_timeout" in relevant_tags:
                     self.torrent_client.remove_tag(torrent.hash, "murid_timeout")
+                if "murid_pending" in relevant_tags:
+                    self.torrent_client.remove_tag(torrent.hash, "murid_pending")
                 failed += 1
 
         return RetryImportResult(imported, already_present, pending, failed, skipped)
 
     def fetch_previous_torrents(self) -> Iterator[tuple[str, int]]:
-        """Fetch torrents that previously timed out during import."""
-        previous_torrents = self.torrent_client.get_torrents_with_tag("murid_timeout")
+        """Fetch unfinished imports, including downloads interrupted before their timeout."""
+        previous_torrents = {
+            torrent.hash: torrent
+            for tag in ("murid_timeout", "murid_pending")
+            for torrent in self.torrent_client.get_torrents_with_tag(tag)
+        }.values()
         if not previous_torrents:
             return
         logger.debug(
-            "Found %d previously timed out torrents with tag 'murid_timeout'",
+            "Found %d torrents with unfinished imports",
             len(previous_torrents),
         )
         for torrent in previous_torrents:

@@ -59,7 +59,7 @@ class Qbittorrent(TorrentClient):
             tinfo = self.client.torrents_add(
                 torrent_files=torrent_file,
                 category=self.category,
-                tags=tracking_tag,
+                tags=f"{tracking_tag},murid_pending",
             )
 
             if isinstance(tinfo, str):

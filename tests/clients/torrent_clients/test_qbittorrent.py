@@ -3,7 +3,7 @@ from unittest.mock import ANY, Mock
 import pytest
 import qbittorrentapi
 
-from murid import Qbittorrent, QbittorrentConfig
+from murid.clients.torrent_clients import Qbittorrent, QbittorrentConfig
 from murid.clients.torrent_clients.qbittorrent import QbittorrentError
 
 
@@ -154,7 +154,8 @@ def test_add_torrent_legacy_response_tracks_delayed_add(client, book):
         QbittorrentConfig(client=client, category="ebooks", dry_run=False), poll_interval=0
     )
     assert qbt.add_torrent(b"torrent-data", book) == "abc123"
-    tag = client.torrents_add.call_args.kwargs["tags"]
+    tag, pending_tag = client.torrents_add.call_args.kwargs["tags"].split(",")
+    assert pending_tag == "murid_pending"
     client.torrents_info.assert_called_with(category="ebooks", tag=tag)
     client.torrents_remove_tags.assert_called_once_with(tags=tag, torrent_hashes="abc123")
 

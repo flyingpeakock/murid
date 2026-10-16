@@ -4,14 +4,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from murid import (
-    AppriseHandler,
-    Book,
-    BookMatcher,
-    CalibreError,
-    TorrentImportConfig,
-    TorrentImportService,
-)
+from murid.clients.calibre import CalibreError
+from murid.domain.book import Book
+from murid.domain.book_matcher import BookMatcher
+from murid.notifications.apprise import AppriseHandler
+from murid.services.torrent_import import TorrentImportConfig, TorrentImportService
 
 
 def make_book():
@@ -284,3 +281,29 @@ def test_timeout_notification_contains_timeout_value(
     _, kwargs = notify.call_args
 
     assert "123 seconds" in kwargs["body"]
+
+
+def test_shared_hash_reports_collision_without_losing_first_book(
+    service, torrent_client, calibre, book, monkeypatch, caplog
+):
+    other = Book(title="Dune Messiah", authors=book.authors, id=2, isbn=[], source="test")
+    torrent_client.add_torrent.return_value = "shared"
+    torrent_client.get_completed_path.return_value = "/downloads/dune.epub"
+    monkeypatch.setattr("murid.services.torrent_import.time.sleep", lambda _: None)
+
+    result = service.import_torrents([(b"pack", book), (b"pack", other)])
+
+    calibre.add_book.assert_called_once_with(book, "/downloads/dune.epub")
+    assert (result.added, result.imported, result.failed, result.pending) == (1, 1, 1, 0)
+    assert "already assigned" in caplog.text
+    torrent_client.remove_tag.assert_called_once_with("shared", "murid_pending")
+
+
+def test_calibre_timeout_tags_import_failure(service, torrent_client, calibre, book, monkeypatch):
+    torrent_client.get_completed_path.return_value = "/downloads/dune.epub"
+    calibre.add_book.side_effect = CalibreError("Calibre command timed out after 120 seconds")
+    monkeypatch.setattr("murid.services.torrent_import.time.sleep", lambda _: None)
+
+    assert service.process_torrent("abc123", book)
+    assert service.last_outcome == "failed"
+    torrent_client.add_tag.assert_called_once_with("abc123", "murid_import_failed")

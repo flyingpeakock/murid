@@ -12,7 +12,7 @@ class TorrentClient(ABC):
 
     @abstractmethod
     def add_torrent(self, torrent_file: bytes, book: Book) -> str | None:
-        """Add a torrent to the client and return its ID."""
+        """Add a torrent with a persistent murid_pending tag and return its ID."""
 
     @abstractmethod
     def get_completed_path(self, torrent_id: str) -> str | None:

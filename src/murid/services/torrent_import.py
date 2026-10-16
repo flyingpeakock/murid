@@ -80,6 +80,16 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
         for torrent_file, book in torrent_files:
             torrent_id = self.torrent_client.add_torrent(torrent_file, book)
             if torrent_id:
+                if torrent_id in pending:
+                    logger.error(
+                        "%s: torrent %s is already assigned to %s; import this book "
+                        "separately with murid add-book",
+                        book,
+                        torrent_id,
+                        pending[torrent_id],
+                    )
+                    result.failed += 1
+                    continue
                 pending[torrent_id] = book
                 result.added += 1
             else:
@@ -99,6 +109,7 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
 
             for torrent_id, book in pending.items():
                 if self.process_torrent(torrent_id, book):
+                    self.torrent_client.remove_tag(torrent_id, "murid_pending")
                     completed.append(torrent_id)
                     if self.last_outcome == "imported":
                         result.imported += 1

@@ -54,6 +54,8 @@ def print_status(torrent_client: Qbittorrent) -> None:
             result.append("import failed")
         if "murid_timeout" in tags:
             result.append("timed out")
+        elif "murid_pending" in tags:
+            result.append("import pending")
         if torrent.state in {"error", "missingFiles"}:
             result.append(_STATES[torrent.state])
         return result
