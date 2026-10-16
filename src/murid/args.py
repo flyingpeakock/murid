@@ -8,7 +8,10 @@ from pathlib import Path
 
 from rich_argparse import ArgumentDefaultsRichHelpFormatter
 
-from . import __version__
+try:
+    from ._version import __version__
+except ImportError:
+    __version__ = "unknown"
 
 
 class MuridArgumentParser(argparse.ArgumentParser):
