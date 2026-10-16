@@ -38,6 +38,16 @@ class _BookFeatures:  # pylint: disable=too-many-instance-attributes
     series_number: float | None
 
 
+@dataclass(frozen=True)
+class MatchReview:
+    """Diagnostic comparison; accepted means the candidate was assigned to the book."""
+
+    calibre_book: Book
+    score: float
+    accepted: bool
+    evidence: tuple[str, ...]
+
+
 class BookMatcher:
     """Match books conservatively using identifiers and metadata."""
 
@@ -767,6 +777,69 @@ class BookMatcher:
             reverse=True,
         )
 
+    @classmethod
+    def _match_evidence(cls, hardcover: _BookFeatures, calibre: _BookFeatures) -> tuple[str, ...]:
+        """Describe the metadata contributing to a comparison score."""
+        evidence = []
+        shared_isbns = sorted(hardcover.isbns & calibre.isbns)
+        if shared_isbns:
+            evidence.append("ISBN " + ", ".join(shared_isbns))
+        shared_ids = sorted(hardcover.identifiers & calibre.identifiers)
+        if shared_ids:
+            evidence.append(
+                "identifier " + ", ".join(f"{platform}:{value}" for platform, value in shared_ids)
+            )
+        if hardcover.titles & calibre.titles:
+            evidence.append("exact normalized title")
+        elif cls._title_similarity_features(hardcover, calibre):
+            evidence.append(
+                f"title similarity {cls._title_similarity_features(hardcover, calibre):.3f}"
+            )
+        if cls._author_similarity(hardcover.authors, calibre.authors):
+            author_score = cls._author_similarity(hardcover.authors, calibre.authors)
+            evidence.append(f"author similarity {author_score:.3f}")
+        if (
+            hardcover.series
+            and hardcover.series == calibre.series
+            and hardcover.series_number is not None
+            and hardcover.series_number == calibre.series_number
+        ):
+            evidence.append(f"same series position ({hardcover.series_number:g})")
+        return tuple(evidence) or ("no matching metadata",)
+
+    def review_matches(
+        self,
+        calibre_books: Iterable[Book],
+        hardcover_books: Iterable[Book],
+    ) -> list[tuple[Book, list[MatchReview]]]:
+        """Return score-ordered diagnostics using the normal one-to-one assignments."""
+        calibre_books = list(calibre_books)
+        hardcover_books = list(hardcover_books)
+        assigned_pairs = {
+            (id(calibre), id(hardcover))
+            for calibre, hardcover, _ in self.match_books(calibre_books, hardcover_books)
+        }
+        candidates = [self._prepare(book) for book in calibre_books]
+        reviews = []
+        for hardcover_book in hardcover_books:
+            target = self._prepare(hardcover_book)
+            scored = self._score_candidates(target, candidates)
+            reviews.append(
+                (
+                    hardcover_book,
+                    [
+                        MatchReview(
+                            calibre_book=candidate.book,
+                            score=score,
+                            accepted=(id(candidate.book), id(hardcover_book)) in assigned_pairs,
+                            evidence=self._match_evidence(target, candidate),
+                        )
+                        for candidate, score in scored
+                    ],
+                )
+            )
+        return reviews
+
     def _log_ambiguity(
         self,
         target: _BookFeatures,
@@ -802,8 +875,8 @@ class BookMatcher:
     ) -> set[tuple[Book, Book, float]]:
         """Assign strongest pairs without matching either book twice."""
         matches: set[tuple[Book, Book, float]] = set()
-        matched_a: set[int] = set()
-        matched_b: set[int] = set()
+        assigned_candidates: set[int] = set()
+        assigned_targets: set[int] = set()
 
         for score, candidate, target in sorted(
             scored_pairs,
@@ -813,12 +886,12 @@ class BookMatcher:
             candidate_id = id(candidate.book)
             target_id = id(target.book)
 
-            if candidate_id in matched_a or target_id in matched_b:
+            if candidate_id in assigned_candidates or target_id in assigned_targets:
                 continue
 
             matches.add((candidate.book, target.book, score))
-            matched_a.add(candidate_id)
-            matched_b.add(target_id)
+            assigned_candidates.add(candidate_id)
+            assigned_targets.add(target_id)
 
             logger.debug(
                 "Matched Calibre book %r to Hardcover book %r (%.3f)",
@@ -831,12 +904,12 @@ class BookMatcher:
 
     def match_books(
         self,
-        books_a: Iterable[Book],
-        books_b: Iterable[Book],
+        calibre_books: Iterable[Book],
+        hardcover_books: Iterable[Book],
     ) -> set[tuple[Book, Book, float]]:
         """Match books one-to-one using the strongest qualifying pairs."""
-        candidates = [self._prepare(book) for book in books_a]
-        targets = [self._prepare(book) for book in books_b]
+        candidates = [self._prepare(book) for book in calibre_books]
+        targets = [self._prepare(book) for book in hardcover_books]
         scored_pairs: list[tuple[float, _BookFeatures, _BookFeatures]] = []
 
         for target in targets:

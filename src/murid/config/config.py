@@ -4,6 +4,7 @@ import logging
 import os
 from io import StringIO
 from typing import Any
+from urllib.parse import urlparse
 
 import yaml
 from croniter import croniter
@@ -30,8 +31,7 @@ _defaults = {
     "lang_codes": ["ENG"],
     "calibre": {
         "calibredb_executable": "calibredb",
-        "library_path": None,
-        "server_url": None,
+        "library": None,
         "server_username": None,
         "server_password": None,
     },
@@ -238,24 +238,25 @@ class Config:
     def _ensure_calibre(calibre: dict) -> None:
         """Ensure that the calibre config item is valid."""
         Config._ensure_type(calibre, dict, "calibre")
-        if "library_path" in calibre and calibre["library_path"] is not None:
-            Config._ensure_type(calibre["library_path"], str, "calibre.library_path")
-            if not os.path.exists(calibre["library_path"]):
+        for old_key in ("library_path", "server_url"):
+            if old_key in calibre:
                 raise ConfigError(
-                    f"Calibre database path '{calibre['library_path']}' does not exist"
+                    f"Config item 'calibre.{old_key}' has been replaced by 'calibre.library'"
                 )
+        library = calibre["library"]
+        Config._ensure_type(library, str, "calibre.library")
+        if not library:
+            raise ConfigError("Config item 'calibre.library' must not be empty")
+        parsed = urlparse(library)
+        if parsed.scheme in ("http", "https"):
+            if not parsed.netloc:
+                raise ConfigError(f"Calibre server URL '{library}' has no host")
+        elif not os.path.exists(library):
+            raise ConfigError(f"Calibre database path '{library}' does not exist")
         if "calibredb_executable" in calibre and calibre["calibredb_executable"] is not None:
             Config._ensure_type(
                 calibre["calibredb_executable"], str, "calibre.calibredb_executable"
             )
-        has_library_path = "library_path" in calibre and calibre["library_path"] is not None
-        has_server_url = "server_url" in calibre and calibre["server_url"] is not None
-        if has_library_path == has_server_url:
-            raise ConfigError(
-                "Config item 'calibre' must have exactly one of 'library_path' or 'server_url' set"
-            )
-        if "server_url" in calibre and calibre["server_url"] is not None:
-            Config._ensure_type(calibre["server_url"], str, "calibre.server_url")
         if "server_username" in calibre and calibre["server_username"] is not None:
             Config._ensure_type(calibre["server_username"], str, "calibre.server_username")
         if "server_password" in calibre and calibre["server_password"] is not None:

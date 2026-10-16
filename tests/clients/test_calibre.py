@@ -14,12 +14,26 @@ def test_init_success(tmp_path):
     calibre = Calibre(
         CalibreConfig(
             executable="calibredb",
-            library_path=str(db),
+            library=str(db),
         ),
         run=lambda *args, **kwargs: None,
     )
 
-    assert calibre.config.library_path == str(db)
+    assert calibre.config.library == str(db)
+
+
+@pytest.mark.parametrize("library", ["/books", "https://localhost:8080/#books"])
+def test_calibredb_uses_library_for_path_or_url(library):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return Result()
+
+    calibre = Calibre(CalibreConfig(executable="calibredb", library=library), run=fake_run)
+    calibre._calibredb("list")
+
+    assert calls[-1][:4] == ["calibredb", "--with-library", library, "list"]
 
 
 def test_missing_executable(tmp_path):
@@ -29,12 +43,12 @@ def test_missing_executable(tmp_path):
         raise FileNotFoundError("calibredb not found")
 
     with pytest.raises(CalibreError, match="Calibre executable not found"):
-        Calibre(CalibreConfig(executable="calibredb", library_path=str(db)), run=fake_run)
+        Calibre(CalibreConfig(executable="calibredb", library=str(db)), run=fake_run)
 
 
 def test_contains_book_uses_match_rules_not_score_alone(tmp_path):
     calibre = Calibre(
-        CalibreConfig(executable="calibredb", library_path=str(tmp_path)),
+        CalibreConfig(executable="calibredb", library=str(tmp_path)),
         run=lambda *args, **kwargs: Result(
             '[{"id": 1, "title": "Dune", "authors": "Someone Else", "isbn": ""}]'
         ),
@@ -56,7 +70,7 @@ def test_get_books_empty(tmp_path):
     calibre = Calibre(
         CalibreConfig(
             executable="calibredb",
-            library_path=str(db),
+            library=str(db),
         ),
         run=lambda *a, **k: Result("[]"),
     )
@@ -72,7 +86,7 @@ def test_get_books_single(tmp_path):
     calibre = Calibre(
         CalibreConfig(
             executable="calibredb",
-            library_path=str(db),
+            library=str(db),
         ),
         run=lambda *args, **kwargs: Result(
             '[{"id": 1, "title": "Dune", "authors": "Frank Herbert", "isbn": "1234567890"}]'
@@ -100,7 +114,7 @@ def test_get_books_includes_series_and_external_identifiers(tmp_path):
         )
 
     calibre = Calibre(
-        CalibreConfig(executable="calibredb", library_path=str(tmp_path)),
+        CalibreConfig(executable="calibredb", library=str(tmp_path)),
         run=fake_run,
     )
 
@@ -122,7 +136,7 @@ def test_get_books_includes_series_and_external_identifiers(tmp_path):
 )
 def test_contains_book_matches_joined_calibre_authors(tmp_path, calibre_authors):
     calibre = Calibre(
-        CalibreConfig(executable="calibredb", library_path=str(tmp_path)),
+        CalibreConfig(executable="calibredb", library=str(tmp_path)),
         run=lambda *args, **kwargs: Result(
             '[{"id": 14, "title": "A Memory of Light", '
             f'"authors": "{calibre_authors}", "isbn": "", '
@@ -153,7 +167,7 @@ def test_run_failure(tmp_path):
 
     with pytest.raises(CalibreError):
         Calibre(
-            CalibreConfig(executable="calibredb", library_path=str(db)),
+            CalibreConfig(executable="calibredb", library=str(db)),
             run=boom,
         )
 
@@ -170,7 +184,7 @@ def test_add_book(tmp_path):
     calibre = Calibre(
         CalibreConfig(
             executable="calibredb",
-            library_path=str(db),
+            library=str(db),
         ),
         run=fake_run,
     )
@@ -212,7 +226,7 @@ def test_add_book_refuses_directory_import(tmp_path):
         return Result()
 
     calibre = Calibre(
-        CalibreConfig(executable="calibredb", library_path=str(tmp_path)),
+        CalibreConfig(executable="calibredb", library=str(tmp_path)),
         run=fake_run,
     )
     book = Book(
@@ -239,7 +253,7 @@ def test_add_book_multiple_authors(tmp_path):
         return Result()
 
     calibre = Calibre(
-        CalibreConfig(library_path=str(db), executable="calibredb"),
+        CalibreConfig(library=str(db), executable="calibredb"),
         run=fake_run,
     )
 
@@ -279,7 +293,7 @@ def test_add_book_failure(tmp_path):
     calibre = Calibre(
         CalibreConfig(
             executable="calibredb",
-            library_path=str(db),
+            library=str(db),
         ),
         run=fake_run,
     )
@@ -311,7 +325,7 @@ def test_password_is_via_stdin(tmp_path):
     calibre = Calibre(
         CalibreConfig(
             executable="calibredb",
-            library_path=str(db),
+            library=str(db),
             server_password="secret",
         ),
         run=fake_run,
@@ -333,7 +347,7 @@ def test_get_books_extra_data(tmp_path, caplog):
     calibre = Calibre(
         CalibreConfig(
             executable="calibredb",
-            library_path=str(db),
+            library=str(db),
         ),
         run=lambda *args, **kwargs: Result(
             '[{"id": 1, "title": "Dune", "authors": "Frank Herbert", "isbn": "1234567890"}]\nextra'

@@ -38,6 +38,18 @@
             pkgs.python3Packages.pytestCheckHook
           ];
 
+          nativeBuildInputs = [
+            pkgs.installShellFiles
+            pkgs.python3Packages.argcomplete
+          ];
+
+          postInstall = ''
+            register-python-argcomplete --shell bash murid > murid.bash
+            register-python-argcomplete --shell zsh murid > _murid
+            register-python-argcomplete --shell fish murid > murid.fish
+            installShellCompletion murid.bash _murid murid.fish
+          '';
+
           meta.mainProgram = "murid";
         }
       );
@@ -62,9 +74,21 @@
       perSystem = {
         pkgs,
         config,
+        system,
         ...
       }: {
         packages.default = mkPackage pkgs;
+
+        checks =
+          if pkgs.stdenv.hostPlatform.isLinux
+          then {
+            nixos-module = import ./tests/nixos-module.nix {
+              inherit pkgs system;
+              module = inputs.self.nixosModules.default;
+              inherit (inputs) nixpkgs;
+            };
+          }
+          else {};
 
         pre-commit.settings.hooks = {
           alejandra.enable = true;
@@ -76,6 +100,7 @@
 
         devShells.default = pkgs.mkShell {
           shellHook = ''
+            export FPATH="${mkPackage pkgs}/share/zsh/site-functions''${FPATH:+:$FPATH}"
             ${config.pre-commit.installationScript}
             echo 1>&2 "Welcome to the development shell for murid!"
           '';
@@ -84,6 +109,7 @@
             arg = project.renderers.withPackages {inherit python;};
             pythonEnv = python.withPackages arg;
           in [
+            (mkPackage pkgs)
             pkgs.calibre
             pkgs.alejandra
             pkgs.hatch

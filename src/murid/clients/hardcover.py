@@ -408,7 +408,7 @@ class Hardcover:
             items = data.get("data", {}).get("user_books", [])
         except HardcoverError:
             logger.error("Failed to fetch books for user %s", self.user.name)
-            return books
+            raise
 
         for item in items:
             book = item.get("book", {})

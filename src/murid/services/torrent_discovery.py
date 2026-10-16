@@ -31,7 +31,7 @@ class TorrentDiscoveryService:
         self.torrent_selector = torrent_selector
         self.torrent_client = torrent_client
 
-    def _mam_ids_with_tag(self, tag: str) -> set[str]:
+    def mam_ids_with_tag(self, tag: str) -> set[str]:
         """Return MAM IDs for torrents carrying the specified client tag."""
         if self.torrent_client is None:
             return set()
@@ -92,7 +92,7 @@ class TorrentDiscoveryService:
         """Download the best matching torrent for each book once the search futures complete."""
 
         download_futures = {}
-        failed_import_mam_ids = self._mam_ids_with_tag("murid_import_failed")
+        failed_import_mam_ids = self.mam_ids_with_tag("murid_import_failed")
 
         for future in as_completed(search_futures):
             book = search_futures[future]

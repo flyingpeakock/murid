@@ -21,7 +21,7 @@ lang_codes:
 # Calibre settings
 calibre:
   calibredb_executable: "calibredb"
-  server_url: "http://localhost:8080/#books"
+  library: "http://localhost:8080/#books" # Or a local library path
   server_username: "user"
   server_password: !ENV CALIBRE_PASSWORD
 

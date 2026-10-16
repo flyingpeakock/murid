@@ -13,7 +13,7 @@ missing = object()
 base = _defaults.copy() | {
     "hardcover_api_keys": ["Bearer secret123"],
     "calibre": {
-        "library_path": "metadata.db",
+        "library": "metadata.db",
     },
     "mam_id": "abc123",
     "qbittorrent": {
@@ -38,10 +38,16 @@ def build_config(tmp_path):
                 data[key] = value
 
         calibre = data.get("calibre")
-        if calibre and calibre.get("library_path") and calibre["library_path"] != "not-exist.db":
-            library_path = tmp_path / calibre["library_path"]
-            library_path.write_text("")
-            calibre["library_path"] = str(library_path)
+        if calibre and isinstance(calibre.get("library"), str):
+            library = calibre["library"]
+            if (
+                library
+                and not library.startswith(("http://", "https://"))
+                and library != "not-exist.db"
+            ):
+                library_path = tmp_path / library
+                library_path.write_text("")
+                calibre["library"] = str(library_path)
 
         return Config(StringIO(yaml.dump(data)))
 
@@ -202,17 +208,26 @@ def test_calibredb_executable_path_defaults_to_calibredb(build_config):
 
 def test_calibredb_executable_path_can_be_overridden(build_config):
     config = build_config(
-        calibre={"calibredb_executable": "/custom/path/calibredb", "library_path": "fake-path"}
+        calibre={"calibredb_executable": "/custom/path/calibredb", "library": "fake-path"}
     )
     assert config.get("calibre")["calibredb_executable"] == "/custom/path/calibredb"
 
 
-def test_calibre_cannot_have_library_path_and_server_url(build_config):
-    with pytest.raises(
-        ConfigError,
-        match="Config item 'calibre' must have exactly one of 'library_path' or 'server_url' set",
-    ):
-        build_config(calibre={"library_path": "metadata.db", "server_url": "http://localhost:8080"})
+def test_calibre_library_accepts_server_url(build_config):
+    config = build_config(calibre={"library": "http://localhost:8080/#books"})
+    assert config.get("calibre")["library"] == "http://localhost:8080/#books"
+
+
+@pytest.mark.parametrize("library", ["not-exist.db", "", None, 123])
+def test_calibre_library_rejects_invalid_path_or_value(build_config, library):
+    with pytest.raises(ConfigError, match="calibre.library|Calibre database path"):
+        build_config(calibre={"library": library})
+
+
+@pytest.mark.parametrize("old_key", ["library_path", "server_url"])
+def test_calibre_rejects_old_library_options(build_config, old_key):
+    with pytest.raises(ConfigError, match="calibre.library"):
+        build_config(calibre={"library": "metadata.db", old_key: "old value"})
 
 
 def test_matcher_threshold_defaults_to_0_92(build_config):

@@ -3,6 +3,7 @@
 import logging
 import re
 from collections.abc import Iterator
+from dataclasses import dataclass
 
 from ..clients.myanonamouse import MAMError, MyAnonamouse, MyAnonamouseQuery
 from ..clients.torrent_clients import TorrentClient
@@ -10,6 +11,18 @@ from ..domain.book import Book
 from .torrent_import import TorrentImportService
 
 logger = logging.getLogger("murid")
+_IMPORT_TAGS = {"murid_timeout", "murid_import_failed"}
+
+
+@dataclass(frozen=True)
+class RetryImportResult:
+    """Counts from a one-time retry of tagged torrents."""
+
+    imported: int = 0
+    already_present: int = 0
+    pending: int = 0
+    failed: int = 0
+    skipped: int = 0
 
 
 class RetryService:
@@ -29,15 +42,86 @@ class RetryService:
     def retry_torrents(self) -> set[Book]:
         """Retry timed-out torrents and return books whose torrents remain incomplete."""
         incomplete_books = set()
+        calibre = self.import_service.calibre
+        matcher = self.import_service.matcher
         for torrent_id, mam_id in self.fetch_previous_torrents():
             book = self.get_book_by_mam_id(mam_id)
-            if book:
-                if self.import_service.process_torrent(torrent_id, book):
+            if book is None:
+                continue
+
+            if calibre.contains_book(book, matcher):
+                if not self.import_service.dry_run:
                     self.torrent_client.remove_tag(torrent_id, "murid_timeout")
-                else:
-                    logger.warning("Could not import %s, will retry later", book)
-                    incomplete_books.add(book)
+                continue
+
+            if self.import_service.dry_run:
+                logger.info("Dry run: would retry importing %s", book)
+                incomplete_books.add(book)
+                continue
+
+            if not self.import_service.process_torrent(torrent_id, book):
+                logger.warning("Could not import %s, will retry later", book)
+                incomplete_books.add(book)
+                continue
+
+            if calibre.contains_book(book, matcher):
+                logger.info("Imported timed-out torrent for %s", book)
+            else:
+                # process_torrent marks completed downloads with failed imports.
+                logger.warning("Import failed for %s; use retry-import after investigation", book)
+            self.torrent_client.remove_tag(torrent_id, "murid_timeout")
         return incomplete_books
+
+    def retry_imports(self) -> RetryImportResult:
+        """Retry tagged downloads once without searching for or adding new torrents."""
+        imported = already_present = pending = failed = skipped = 0
+        calibre = self.import_service.calibre
+        matcher = self.import_service.matcher
+
+        for torrent in self.torrent_client.get_torrents():
+            tags = {tag.strip() for tag in (torrent.tags or "").split(",")}
+            relevant_tags = tags & _IMPORT_TAGS
+            if not relevant_tags:
+                continue
+
+            match = re.search(r"MID=(\d+)", torrent.comment or "")
+            if not match:
+                logger.warning(
+                    "Skipping torrent %s: no MyAnonamouse ID in its comment", torrent.hash
+                )
+                skipped += 1
+                continue
+
+            book = self.get_book_by_mam_id(int(match.group(1)))
+            if book is None:
+                logger.warning("Skipping torrent %s: could not identify its book", torrent.hash)
+                skipped += 1
+                continue
+
+            if calibre.contains_book(book, matcher):
+                logger.info("Already in Calibre: %s", book)
+                for tag in relevant_tags:
+                    self.torrent_client.remove_tag(torrent.hash, tag)
+                already_present += 1
+                continue
+
+            if not self.import_service.process_torrent(torrent.hash, book):
+                logger.info("Still downloading: %s", book)
+                pending += 1
+                continue
+
+            if calibre.contains_book(book, matcher):
+                logger.info("Imported: %s", book)
+                for tag in relevant_tags:
+                    self.torrent_client.remove_tag(torrent.hash, tag)
+                imported += 1
+            else:
+                logger.warning("Import still failed for %s", book)
+                if "murid_timeout" in relevant_tags:
+                    self.torrent_client.remove_tag(torrent.hash, "murid_timeout")
+                failed += 1
+
+        return RetryImportResult(imported, already_present, pending, failed, skipped)
 
     def fetch_previous_torrents(self) -> Iterator[tuple[str, int]]:
         """Fetch torrents that previously timed out during import."""

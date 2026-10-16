@@ -1,261 +1,78 @@
 import logging
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from murid.main import (
-    get_arg_parser,
-    get_default_config_path,
-    logger,
-    main,
-    setup_logger,
+from murid.main import main
+
+
+@pytest.mark.parametrize(
+    "command", [["status"], ["list-missing"], ["add-book", "Book", "book.epub"]]
 )
+def test_inspection_commands_report_missing_config(monkeypatch, capsys, tmp_path, command):
+    config_file = str(tmp_path / "nonexistent.yaml")
+    monkeypatch.setattr("sys.argv", ["murid", *command, "--config", config_file])
+    logger = logging.getLogger("murid")
+    monkeypatch.setattr(logger, "handlers", [])
+    monkeypatch.setattr(logger, "level", logger.level)
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    assert exc.value.code == 1
+    captured = capsys.readouterr()
+    assert "[ERROR] Config file not found:" in captured.err
+    assert config_file in captured.err
+    assert "starting murid" not in captured.err
+    assert captured.out == ""
 
 
-def test_default_config_path_linux(monkeypatch):
-    monkeypatch.setattr("platform.system", lambda: "Linux")
-    monkeypatch.setenv("XDG_CONFIG_HOME", "/tmp/config")
-
-    assert get_default_config_path() == Path("/tmp/config/murid/config.yaml")
-
-
-def test_default_config_path_linux_fallback(monkeypatch):
-    monkeypatch.setattr("platform.system", lambda: "Linux")
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    monkeypatch.setattr(Path, "home", lambda: Path("/home/test"))
-
-    assert get_default_config_path() == Path("/home/test/.config/murid/config.yaml")
-
-
-def test_default_config_path_macos(monkeypatch):
-    monkeypatch.setattr("platform.system", lambda: "Darwin")
-    monkeypatch.setattr(Path, "home", lambda: Path("/Users/test"))
-
-    assert get_default_config_path() == Path(
-        "/Users/test/Library/Application Support/murid/config.yaml"
-    )
-
-
-def test_default_config_path_windows(monkeypatch):
-    monkeypatch.setattr("platform.system", lambda: "Windows")
-    monkeypatch.setenv("APPDATA", r"C:\Users\Test\AppData\Roaming")
-
-    path = get_default_config_path()
-
-    assert str(path).endswith("murid/config.yaml")
-    assert "Roaming" in str(path)
-
-
-def test_default_config_path_unsupported(monkeypatch):
-    monkeypatch.setattr("platform.system", lambda: "Plan9")
-
-    with pytest.raises(RuntimeError):
-        get_default_config_path()
-
-
-def test_setup_logger_tty(monkeypatch):
-    logger.handlers.clear()
-
-    monkeypatch.setattr("sys.stderr.isatty", lambda: True)
-
-    setup_logger("DEBUG")
-
-    assert logger.level == logging.DEBUG
-    assert len(logger.handlers) == 1
-
-
-def test_setup_logger_non_tty(monkeypatch):
-    logger.handlers.clear()
-
-    monkeypatch.setattr("sys.stderr.isatty", lambda: False)
-
-    setup_logger("INFO")
-
-    assert logger.level == logging.INFO
-    assert len(logger.handlers) == 1
-
-
-def test_arg_parser_defaults():
-    parser = get_arg_parser("test")
-
-    args = parser.parse_args([])
-
-    assert args.log_level == "INFO"
-    assert args.dry_run is False
-    assert args.schedule is False
-    assert args.test_notification is False
-
-
-def test_arg_parser_flags():
-    parser = get_arg_parser("test")
-
-    args = parser.parse_args(
-        [
-            "--log-level",
-            "DEBUG",
-            "--dry-run",
-            "--schedule",
-            "--test-notification",
-            "--config",
-            "/tmp/config.yaml",
-        ]
-    )
-
-    assert args.log_level == "DEBUG"
-    assert args.dry_run is True
-    assert args.schedule is True
-    assert args.test_notification is True
-    assert args.config_file == "/tmp/config.yaml"
-
-
-def test_main_runs_app(monkeypatch):
-    app = SimpleNamespace(
-        run=lambda: setattr(app, "ran", True),
-        start_scheduler=lambda: None,
-        ran=False,
-    )
-
-    factory = SimpleNamespace(
-        sync_service=lambda: app,
-    )
-
+@pytest.mark.parametrize("command", ["run", "schedule"])
+def test_main_dispatches_command(monkeypatch, command):
+    args = SimpleNamespace(command=command, log_level="INFO")
+    calls = []
     monkeypatch.setattr(
-        "murid.main.ServiceFactory",
-        lambda args: factory,
+        "murid.main.MuridArgumentParser",
+        lambda _: SimpleNamespace(parse_args=lambda: args),
     )
+    monkeypatch.setattr("murid.main.setup_logger", lambda level: calls.append(("log", level)))
+    monkeypatch.setattr("murid.main.run_command", lambda parsed: calls.append(("run", parsed)) or 0)
 
-    monkeypatch.setattr(
-        "murid.main.get_arg_parser",
-        lambda _: SimpleNamespace(
-            parse_args=lambda: SimpleNamespace(
-                log_level="INFO",
-                dry_run=False,
-                schedule=False,
-                test_notification=False,
-            )
-        ),
-    )
-
-    monkeypatch.setattr("murid.main.setup_logger", lambda *_: None)
-
-    main()
-
-    assert app.ran
-
-
-def test_main_runs_scheduler(monkeypatch):
-    app = SimpleNamespace(
-        run=lambda: None,
-        started=False,
-    )
-
-    def start_scheduler():
-        app.started = True
-
-    app.start_scheduler = start_scheduler
-
-    factory = SimpleNamespace(
-        sync_service=lambda: app,
-    )
-
-    monkeypatch.setattr(
-        "murid.main.ServiceFactory",
-        lambda args: factory,
-    )
-
-    monkeypatch.setattr(
-        "murid.main.get_arg_parser",
-        lambda _: SimpleNamespace(
-            parse_args=lambda: SimpleNamespace(
-                log_level="INFO",
-                dry_run=False,
-                schedule=True,
-                test_notification=False,
-            )
-        ),
-    )
-
-    monkeypatch.setattr("murid.main.setup_logger", lambda *_: None)
-
-    main()
-
-    assert app.started
-
-
-def test_main_send_test_notification(monkeypatch):
-    called = {}
-
-    app = SimpleNamespace(
-        run=lambda: pytest.fail("should not run"),
-        start_scheduler=lambda: pytest.fail("should not schedule"),
-    )
-
-    factory = SimpleNamespace(
-        sync_service=lambda: app,
-        notifier=lambda: "notifier",
-    )
-
-    monkeypatch.setattr(
-        "murid.main.ServiceFactory",
-        lambda args: factory,
-    )
-
-    monkeypatch.setattr(
-        "murid.main.send_test_notification",
-        lambda notifier: called.setdefault(
-            "notifier",
-            notifier,
-        ),
-    )
-
-    monkeypatch.setattr(
-        "murid.main.get_arg_parser",
-        lambda _: SimpleNamespace(
-            parse_args=lambda: SimpleNamespace(
-                log_level="INFO",
-                dry_run=False,
-                schedule=False,
-                test_notification=True,
-            )
-        ),
-    )
-
-    monkeypatch.setattr("murid.main.setup_logger", lambda *_: None)
-
-    main()
-
-    assert called["notifier"] == "notifier"
+    assert main() == 0
+    assert calls == [("log", "INFO"), ("run", args)]
 
 
 def test_main_exits_on_exception(monkeypatch):
-    app = SimpleNamespace(
-        run=lambda: (_ for _ in ()).throw(RuntimeError("boom")),
-        start_scheduler=lambda: None,
-    )
-
-    factory = SimpleNamespace(
-        sync_service=lambda: app,
-    )
-
+    args = SimpleNamespace(command="run", log_level="INFO")
     monkeypatch.setattr(
-        "murid.main.ServiceFactory",
-        lambda args: factory,
+        "murid.main.MuridArgumentParser",
+        lambda _: SimpleNamespace(parse_args=lambda: args),
     )
-
-    monkeypatch.setattr(
-        "murid.main.get_arg_parser",
-        lambda _: SimpleNamespace(
-            parse_args=lambda: SimpleNamespace(
-                log_level="INFO",
-                dry_run=False,
-                schedule=False,
-                test_notification=False,
-            )
-        ),
-    )
-
     monkeypatch.setattr("murid.main.setup_logger", lambda *_: None)
+
+    def fail(_):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("murid.main.run_command", fail)
 
     with pytest.raises(RuntimeError, match="boom"):
         main()
+
+
+@pytest.mark.parametrize("phase", ["parse", "command"])
+def test_keyboard_interrupt_exits_quietly(monkeypatch, capsys, caplog, phase):
+    def interrupt(*_):
+        raise KeyboardInterrupt
+
+    args = SimpleNamespace(command="schedule")
+    monkeypatch.setattr(
+        "murid.main.MuridArgumentParser",
+        lambda _: SimpleNamespace(parse_args=interrupt if phase == "parse" else lambda: args),
+    )
+    monkeypatch.setattr("murid.main.setup_logger", lambda _: None)
+    monkeypatch.setattr("murid.main.run_command", interrupt)
+    assert main() == 130
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert "KeyboardInterrupt" not in caplog.text
+    assert not any(record.exc_info for record in caplog.records)

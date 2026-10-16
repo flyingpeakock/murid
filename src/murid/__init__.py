@@ -1,5 +1,11 @@
 """Initialization file for the murid package."""
 
+try:
+    from ._version import __version__
+except ImportError:
+    __version__ = "unknown"
+
+from .args import MuridArgumentParser
 from .clients.calibre import Calibre, CalibreConfig, CalibreError
 from .clients.hardcover import Hardcover, HardcoverError, HardcoverUser
 from .clients.myanonamouse import MAMError, MyAnonamouse, MyAnonamouseQuery
@@ -16,11 +22,6 @@ from .services.sync_service import SyncService
 from .services.torrent_discovery import TorrentDiscoveryService
 from .services.torrent_import import TorrentImportConfig, TorrentImportService
 
-try:
-    from ._version import __version__
-except ImportError:
-    __version__ = "unknown"
-
 __all__ = [
     "AppriseHandler",
     "Book",
@@ -35,6 +36,7 @@ __all__ = [
     "HardcoverUser",
     "init_apprise",
     "MAMError",
+    "MuridArgumentParser",
     "MyAnonamouse",
     "MyAnonamouseQuery",
     "RetryService",

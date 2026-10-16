@@ -1,119 +1,41 @@
 """Main entry point for the murid application."""
 
-import argparse
 import logging
-import os
-import platform
 import sys
-from pathlib import Path
 
-from rich.logging import RichHandler
-from rich_argparse import ArgumentDefaultsRichHelpFormatter
+import argcomplete
 
 from . import __version__
-from .notifications.apprise import send_test_notification
-from .services.service_factory import ServiceFactory
+from .args import MuridArgumentParser
+from .commands import run_command
+from .logging_config import setup_logger
 
 logger = logging.getLogger("murid")
 
 
-def get_default_config_path() -> Path:
-    """Get the default config file path based on the operating system."""
-    app_name = "murid"
-    file_name = "config.yaml"
-
-    match platform.system():
-        case "Linux":
-            config_home = os.getenv("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-            return Path(config_home) / app_name / file_name
-
-        case "Darwin":
-            return Path.home() / "Library" / "Application Support" / app_name / file_name
-
-        case "Windows":
-            appdata = os.getenv("APPDATA") or str(Path.home() / "AppData" / "Roaming")
-            return Path(appdata) / app_name / file_name
-
-        case _:
-            raise RuntimeError(f"Unsupported operating system: {platform.system()}")
+def main() -> int:
+    """Run the CLI, treating Ctrl-C as a quiet cancellation."""
+    try:
+        return _main()
+    except KeyboardInterrupt:
+        return 130
 
 
-def setup_logger(log_level: str) -> None:
-    """Set up the logger with the specified log level and appropriate handler."""
-    logger.handlers.clear()
-    logger.setLevel(log_level)
-
-    if sys.stderr.isatty():
-        logger.addHandler(
-            RichHandler(
-                rich_tracebacks=True,
-                tracebacks_show_locals=True,
-                show_path=False,
-            )
-        )
-    else:
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
-        logger.addHandler(handler)
-
-
-def get_arg_parser(description: str) -> argparse.ArgumentParser:
-    """Create and return an argument parser with the specified description and default arguments."""
-    arg_parser = argparse.ArgumentParser(
-        description=description, formatter_class=ArgumentDefaultsRichHelpFormatter
-    )
-    arg_parser.add_argument("--version", "-v", action="version", version=__version__)
-    arg_parser.add_argument(
-        "--log-level",
-        "-l",
-        help="logging level",
-        default="INFO",
-        dest="log_level",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-    )
-    arg_parser.add_argument(
-        "--dry-run",
-        "-d",
-        help="see what will be downloaded without actually downloading",
-        action="store_true",
-        dest="dry_run",
-    )
-    arg_parser.add_argument(
-        "--schedule",
-        "-s",
-        help="run murid on a schedule",
-        action="store_true",
-        dest="schedule",
-    )
-    arg_parser.add_argument(
-        "--test-notification",
-        help="send a test notification and then exit",
-        action="store_true",
-        dest="test_notification",
-    )
-    arg_parser.add_argument(
-        "--config",
-        "-c",
-        help="path to config file",
-        default=get_default_config_path(),
-        dest="config_file",
-        type=str,
-    )
-
-    return arg_parser
-
-
-def main() -> None:
+def _main() -> int:
     """Main entry point for the application.
 
     Sets up logging, parses command-line arguments, and runs the main application logic.
     """
-    description = """
-Murid automatically keeps your Calibre library in sync with your
-reading list on Hardcover, with help from myAnonamouse.
-"""
-    args = get_arg_parser(description).parse_args()
-    setup_logger(args.log_level)
+    description = (
+        "Murid keeps your Calibre library in sync with your Hardcover reading list. "
+        "It finds missing books through MyAnonamouse, supports scheduled runs, "
+        "and can review book matches without downloading anything."
+    )
+    parser = MuridArgumentParser(description)
+    argcomplete.autocomplete(parser)
+    args = parser.parse_args()
+
+    setup_logger(getattr(args, "log_level", "ERROR"))
 
     logger.info(
         r"""
@@ -131,21 +53,13 @@ __,-.\_( 6 6 )__,-.___
         f"v{__version__}".center(16),
     )
 
-    factory = ServiceFactory(args)
-    app = factory.sync_service()
-    if args.test_notification:
-        send_test_notification(factory.notifier())
-        return
-
     try:
-        if args.schedule:
-            app.start_scheduler()
-        else:
-            app.run()
+        return run_command(args)
+
     except Exception as e:
         logger.error("An error occurred: %r", e)
         raise e
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

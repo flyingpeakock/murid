@@ -1,0 +1,210 @@
+"""Argument parsing for the murid application."""
+
+import argparse
+import os
+import platform
+from functools import partial
+from pathlib import Path
+
+from rich_argparse import ArgumentDefaultsRichHelpFormatter
+
+from . import __version__
+
+
+class MuridArgumentParser(argparse.ArgumentParser):
+    """Build Murid commands with detailed help available per command."""
+
+    def __init__(self, description: str | None = None, *, is_subparser: bool = False, **kwargs):
+        kwargs.setdefault("formatter_class", ArgumentDefaultsRichHelpFormatter)
+        if not is_subparser:
+            kwargs.setdefault("epilog", "For command options, run: murid <command> --help")
+        super().__init__(description=description, **kwargs)
+        if is_subparser:
+            return
+
+        self.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
+
+        command_subparsers = self.add_subparsers(
+            title="commands",
+            description="Choose one command to run",
+            dest="command",
+            required=True,
+            parser_class=partial(MuridArgumentParser, is_subparser=True),
+        )
+
+        sub_parsers = {}
+        sub_parsers["run"] = command_subparsers.add_parser(
+            "run",
+            help="Sync the Hardcover reading list with Calibre once",
+            description=(
+                "Compare Hardcover books with Calibre, search MyAnonamouse for missing books, "
+                "and import available downloads. Run once, then exit."
+            ),
+        )
+
+        sub_parsers["schedule"] = command_subparsers.add_parser(
+            "schedule",
+            help="Run the sync repeatedly on the configured schedule",
+            description=(
+                "Keep Murid running and repeat the sync according to the cron schedule "
+                "in the configuration file. Reload the configuration before each run."
+            ),
+        )
+
+        sub_parsers["test-notification"] = command_subparsers.add_parser(
+            "test-notification",
+            help="Send a test notification through Apprise",
+            description=(
+                "Send a test notification using the configured Apprise destinations, then exit."
+            ),
+        )
+
+        sub_parsers["test-connection"] = command_subparsers.add_parser(
+            "test-connection",
+            help="Check access to Hardcover, Calibre, MyAnonamouse, and qBittorrent",
+            description=(
+                "Test each configured service independently and report connection or "
+                "authentication failures."
+            ),
+        )
+
+        sub_parsers["list-missing"] = command_subparsers.add_parser(
+            "list-missing",
+            help="List Hardcover books missing from Calibre",
+            description=(
+                "Fetch the Hardcover reading list and Calibre library, then list Hardcover books "
+                "that the matcher considers missing from Calibre."
+            ),
+        )
+
+        sub_parsers["status"] = command_subparsers.add_parser(
+            "status",
+            help="Show Murid downloads and any torrents needing attention",
+            description=(
+                "List torrents in Murid's configured qBittorrent category, including their "
+                "download progress and timeout or import-failure tags."
+            ),
+        )
+
+        sub_parsers["retry-import"] = command_subparsers.add_parser(
+            "retry-import",
+            help="Retry Calibre imports for Murid downloads needing attention",
+            description=(
+                "Check timed-out and failed-import torrents in Murid's qBittorrent category, "
+                "and retry importing completed downloads into Calibre."
+            ),
+        )
+
+        sub_parsers["search-book"] = command_subparsers.add_parser(
+            "search-book",
+            help="Preview torrent choices for a Hardcover book",
+            description=(
+                "Find a book on the Hardcover reading list, search MyAnonamouse, "
+                "and explain which torrent Murid would select. Use --add to download "
+                "the selected torrent and import its completed ebook into Calibre."
+            ),
+        )
+        sub_parsers["search-book"].add_argument("name", help="Name of the book on Hardcover")
+        sub_parsers["search-book"].add_argument(
+            "--add",
+            action="store_true",
+            help="Add the selected torrent to qBittorrent and import its ebook into Calibre",
+        )
+
+        sub_parsers["add-book"] = command_subparsers.add_parser(
+            "add-book",
+            help="Add an ebook file using metadata from your Hardcover reading list",
+            description=(
+                "Match a book name against your Hardcover reading list and add the given "
+                "ebook file to Calibre with the matched book's metadata."
+            ),
+        )
+        sub_parsers["add-book"].add_argument("name", help="Name of the book on Hardcover")
+        sub_parsers["add-book"].add_argument("path", help="Path to an individual ebook file")
+
+        sub_parsers["review-matches"] = command_subparsers.add_parser(
+            "review-matches",
+            help="Show Hardcover to Calibre matches, scores, and evidence",
+            description=(
+                "Compare Hardcover books with Calibre and show match scores, supporting metadata, "
+                "and ambiguous candidates. Show all books unless a filter is selected."
+            ),
+        )
+        review_filter = sub_parsers["review-matches"].add_mutually_exclusive_group()
+        review_filter.add_argument(
+            "--matched",
+            action="store_const",
+            const=True,
+            default=None,
+            dest="matched",
+            help="Show only Hardcover books with an accepted Calibre match",
+        )
+        review_filter.add_argument(
+            "--unmatched",
+            action="store_const",
+            const=False,
+            dest="matched",
+            help="Show only Hardcover books without an accepted Calibre match",
+        )
+
+        sub_parsers["validate-config"] = command_subparsers.add_parser(
+            "validate-config",
+            help="Check the configuration file for errors",
+            description="Read and validate the Murid configuration file, then report any errors.",
+        )
+
+        sub_parsers["print-config"] = command_subparsers.add_parser(
+            "print-config",
+            help="Print the parsed configuration",
+            description="Read and print the parsed Murid configuration, then exit.",
+        )
+
+        config_path = str(self.default_config_path())
+        for command, parser in sub_parsers.items():
+            parser.add_argument(
+                "-c",
+                "--config",
+                type=str,
+                help="Path to the Murid YAML configuration file",
+                default=config_path,
+                dest="config_file",
+            )
+            if command in ("run", "schedule", "search-book", "retry-import", "test-connection"):
+                parser.add_argument(
+                    "--log-level",
+                    "-l",
+                    help="Minimum severity of messages written to the log",
+                    default="info",
+                    dest="log_level",
+                    type=str.upper,
+                    choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+                )
+            if command in ("run", "schedule"):
+                parser.add_argument(
+                    "--dry-run",
+                    "-d",
+                    help="Find books and torrents without adding them to qBittorrent or Calibre",
+                    action="store_true",
+                    dest="dry_run",
+                )
+
+    @staticmethod
+    def default_config_path() -> Path:
+        """Get the default config file path based on the operating system."""
+        app_name = "murid"
+        file_name = "config.yaml"
+
+        match platform.system():
+            case "Linux":
+                config_home = os.getenv("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+                return Path(config_home) / app_name / file_name
+
+            case "Darwin":
+                return Path.home() / "Library" / "Application Support" / app_name / file_name
+
+            case "Windows":
+                appdata = os.getenv("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+                return Path(appdata) / app_name / file_name
+
+            case _:
+                raise RuntimeError(f"Unsupported operating system: {platform.system()}")

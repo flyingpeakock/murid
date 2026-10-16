@@ -21,15 +21,9 @@ in {
           type = lib.types.str;
           default = "${pkgs.calibre}/bin/calibredb";
         };
-        library_path = lib.mkOption {
-          description = "Path to the Calibre library";
-          type = lib.types.nullOr lib.types.str;
-          default = null;
-        };
-        server_url = lib.mkOption {
-          description = "URL to the Calibre server";
-          type = lib.types.nullOr lib.types.str;
-          default = null;
+        library = lib.mkOption {
+          description = "Path to the Calibre library or URL to the Calibre content server";
+          type = lib.types.str;
         };
         server_username = lib.mkOption {
           description = "Username for the Calibre server";
@@ -112,9 +106,10 @@ in {
       configFile = lib.mkOption {
         description = ''
           Path to the murid configuration file.
-          Ignored if `config` option is used.
+          Set either this option or `config`.
         '';
-        type = lib.types.str;
+        type = lib.types.nullOr lib.types.str;
+        default = null;
       };
 
       environmentFile = lib.mkOption {
@@ -122,6 +117,7 @@ in {
           Path to an environment file containing environment variables for the murid service.
         '';
         type = lib.types.nullOr lib.types.str;
+        default = null;
       };
 
       extraArgs = lib.mkOption {
@@ -132,8 +128,8 @@ in {
 
       config = lib.mkOption {
         description = "Configuration for murid";
-        default = {};
-        type = lib.types.submodule {
+        default = null;
+        type = lib.types.nullOr (lib.types.submodule {
           options = {
             hardcover_api_keys = lib.mkOption {
               description = "List of API keys for hardcover";
@@ -215,20 +211,17 @@ in {
               default = 1800; # 30 minutes
             };
           };
-        };
+        });
       };
     };
 
     config = lib.mkIf cfg.enable {
       nixpkgs.overlays = [overlay];
 
-      assertions = let
-        library_path_not_null = cfg.config.calibre.library_path != null;
-        server_url_not_null = cfg.config.calibre.server_url != null;
-      in [
+      assertions = [
         {
-          assertion = library_path_not_null != server_url_not_null;
-          message = "Only one of calibre.library_path or calibre.server_url can be set in the murid configuration";
+          assertion = (cfg.config != null) != (cfg.configFile != null);
+          message = "Set exactly one of services.murid.config or services.murid.configFile";
         }
       ];
 
@@ -256,16 +249,11 @@ in {
           EnvironmentFile = lib.optionalString (cfg.environmentFile != null) cfg.environmentFile;
           ExecStart = let
             configFile =
-              if cfg.config != {}
+              if cfg.config != null
               then createYAMLConfig cfg.config
               else cfg.configFile;
-            args =
-              [
-                "--config ${configFile}"
-                "--schedule"
-              ]
-              ++ cfg.extraArgs;
-          in "${lib.getExe cfg.package} ${lib.concatStringsSep " " args}";
+            args = ["schedule" "--config" (toString configFile)] ++ cfg.extraArgs;
+          in "${lib.getExe cfg.package} ${lib.escapeShellArgs args}";
         };
       };
     };

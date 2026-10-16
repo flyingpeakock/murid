@@ -245,3 +245,15 @@ def test_get_books_without_isbn(hardcover):
     books = hardcover.get_books()
     book = next(iter(books))
     assert book.isbn == []
+
+
+@pytest.mark.parametrize("error", [requests.RequestException("offline"), None])
+def test_get_books_propagates_api_failure(hardcover, error):
+    if error:
+        hardcover._session.post = Mock(side_effect=error)
+    else:
+        response = Mock()
+        response.json.return_value = {"errors": ["unavailable"]}
+        hardcover._session.post = Mock(return_value=response)
+    with pytest.raises(HardcoverError):
+        hardcover.get_books()

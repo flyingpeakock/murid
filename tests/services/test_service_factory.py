@@ -20,7 +20,7 @@ def config():
     return {
         "matcher_threshold": 0.9,
         "calibre": {
-            "library_path": "/tmp/metadata.db",
+            "library": "/tmp/metadata.db",
             "calibredb_executable": "calibredb",
         },
         "hardcover_api_keys": ["Bearer secret"],
@@ -64,7 +64,7 @@ def test_calibre(args, config, monkeypatch):
     created.assert_called_once_with(
         CalibreConfig(
             executable="calibredb",
-            library_path="/tmp/metadata.db",
+            library="/tmp/metadata.db",
         )
     )
 
@@ -140,6 +140,16 @@ def test_notifier_enabled(args, config, monkeypatch):
     assert factory.notifier() is notify_mock
 
 
+def test_notifier_can_be_skipped_for_connection_check(args, config, monkeypatch):
+    init_apprise = Mock(side_effect=RuntimeError("bad notification destination"))
+    monkeypatch.setattr("murid.services.service_factory.apprise", init_apprise)
+
+    factory = ServiceFactory(args, config, initialize_notifier=False)
+
+    assert factory.notifier()("unused") is None
+    init_apprise.assert_not_called()
+
+
 def test_cron_iter(args, config, monkeypatch):
     factory = ServiceFactory(args, config)
 
@@ -170,3 +180,32 @@ def test_sync_service(args, config, monkeypatch):
     result = factory.sync_service()
 
     assert result == ("sync", factory)
+
+
+def test_qbittorrent_without_dry_run_option(config, monkeypatch):
+    args = SimpleNamespace(config_file="/tmp/config.yaml")
+    factory = ServiceFactory(args, config)
+    created = []
+    monkeypatch.setattr(
+        "murid.services.service_factory.qbittorrentapi.Client",
+        lambda **kwargs: object(),
+    )
+    monkeypatch.setattr(
+        "murid.services.service_factory.Qbittorrent",
+        lambda qbt_config: created.append(qbt_config) or "QBITTORRENT",
+    )
+
+    assert factory.qbittorrent() == "QBITTORRENT"
+    assert created[0].dry_run is False
+
+
+def test_torrent_import_without_dry_run_option(config, monkeypatch):
+    config.update(torrent_timeout_seconds=1800, filetypes=["epub"])
+    factory = ServiceFactory(SimpleNamespace(config_file="/tmp/config.yaml"), config)
+    monkeypatch.setattr(factory, "qbittorrent", lambda: "QBITTORRENT")
+    monkeypatch.setattr(factory, "calibre", lambda: "CALIBRE")
+    monkeypatch.setattr(
+        "murid.services.service_factory.TorrentImportService", lambda import_config: import_config
+    )
+
+    assert factory.torrent_import().dry_run is False

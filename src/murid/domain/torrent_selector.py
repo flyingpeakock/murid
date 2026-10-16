@@ -40,21 +40,14 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
         rejected_by_blacklist = 0
 
         for torrent in torrents:
-            rejected = False
-            if torrent.language is not None and torrent.language not in self.lang_codes:
+            reasons = self.rejection_reasons(torrent)
+            if "language" in reasons:
                 rejected_by_language += 1
-                rejected = True
-
-            matching_filetypes = self.wanted_filetypes.intersection(torrent.file_types or [])
-            if not matching_filetypes:
+            if "file type" in reasons:
                 rejected_by_filetype += 1
-                rejected = True
-
-            if torrent.book.id in self.blacklist:
+            if "blacklisted ID" in reasons:
                 rejected_by_blacklist += 1
-                rejected = True
-
-            if rejected:
+            if reasons:
                 continue
 
             torrent_books.add(torrent.book)
@@ -90,3 +83,14 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
             score,
         )
         return None
+
+    def rejection_reasons(self, torrent: Torrent) -> list[str]:
+        """Return the configured filters that reject a torrent before book matching."""
+        reasons = []
+        if torrent.language is not None and torrent.language not in self.lang_codes:
+            reasons.append("language")
+        if not self.wanted_filetypes.intersection(torrent.file_types or []):
+            reasons.append("file type")
+        if torrent.book.id in self.blacklist:
+            reasons.append("blacklisted ID")
+        return reasons

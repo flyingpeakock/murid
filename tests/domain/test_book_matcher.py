@@ -1,5 +1,3 @@
-# tests/test_bookmatcher.py
-
 import logging
 
 import pytest
@@ -725,6 +723,27 @@ def test_match_books_does_not_match_calibre_book_twice():
     assert len(matches) == 1
     assert len({a.id for a, _, _ in matches}) == len(matches)
     assert len({b.id for _, b, _ in matches}) == len(matches)
+
+
+def test_review_matches_accepts_only_assigned_pair():
+    matcher = BookMatcher()
+    calibre_book = make_book(id=1, title="Dune", authors=["Frank Herbert"])
+    hardcover_books = [
+        make_book(id=101, title="Dune", authors=["Frank Herbert"]),
+        make_book(id=102, title="Dune", authors=["Frank Herbert"]),
+    ]
+
+    reviews = matcher.review_matches(iter([calibre_book]), iter(hardcover_books))
+    assigned = matcher.match_books([calibre_book], hardcover_books)
+
+    assert len(reviews) == 2
+    assert sum(candidate.accepted for _, candidates in reviews for candidate in candidates) == 1
+    assert {
+        (candidate.calibre_book.id, hardcover.id)
+        for hardcover, candidates in reviews
+        for candidate in candidates
+        if candidate.accepted
+    } == {(calibre.id, hardcover.id) for calibre, hardcover, _ in assigned}
 
 
 def test_match_books_does_not_match_hardcover_book_twice():

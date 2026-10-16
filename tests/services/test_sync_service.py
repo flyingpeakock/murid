@@ -3,7 +3,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from murid import SyncService
+from murid import Book, BookMatcher, SyncService
+from murid.clients.hardcover import HardcoverError
 
 
 class FakeBook:
@@ -63,23 +64,6 @@ def test_match_books_calls_matcher():
     matcher.match_books.assert_called_once_with(calibre, hardcover)
 
 
-def test_process_books_returns_empty_when_all_matched():
-    torrent_discovery = Mock()
-    matcher = Mock()
-
-    present_books = [("x", SimpleNamespace(id=1), 1.0)]
-    wanted_books = [SimpleNamespace(id=1)]
-
-    result = SyncService.process_books(
-        present_books,
-        wanted_books,
-        torrent_discovery,
-        matcher,
-    )
-
-    assert result == set()
-
-
 def test_run_orchestrates_pipeline(factory):
     service = SyncService(factory)
 
@@ -121,6 +105,41 @@ def test_run_orchestrates_pipeline(factory):
     torrent_import.import_torrents.assert_called_once()
     torrent_discovery.download_torrents.assert_called_once()
     assert torrent_discovery.download_torrents.call_args.args[2] == {"incomplete-book"}
+
+
+def test_list_missing_propagates_hardcover_initialization_failure(factory, capsys):
+    factory.calibre.return_value.get_books.return_value = []
+    factory.hardcover.side_effect = HardcoverError("API unavailable")
+
+    with pytest.raises(HardcoverError, match="API unavailable"):
+        SyncService(factory).list_missing(factory.matcher.return_value)
+
+    assert capsys.readouterr().out == ""
+
+
+def test_review_filters_follow_one_to_one_assignments(factory, capsys):
+    calibre_book = Book(id=1, title="Dune", authors=["Frank Herbert"], isbn=[], source="calibre")
+    hardcover_books = [
+        Book(id=101, title="Dune", authors=["Frank Herbert"], isbn=[], source="hardcover"),
+        Book(id=102, title="Dune", authors=["Frank Herbert"], isbn=[], source="hardcover"),
+    ]
+    factory.calibre.return_value.get_books.return_value = {calibre_book}
+    factory.hardcover.return_value = [SimpleNamespace(get_books=lambda: hardcover_books)]
+    service = SyncService(factory)
+    matcher = BookMatcher()
+
+    service.review_matches(matcher, matched=True)
+    matched_output = capsys.readouterr().out
+    service.review_matches(matcher, matched=False)
+    unmatched_output = capsys.readouterr().out
+    service.list_missing(matcher)
+    missing_output = capsys.readouterr().out
+
+    assert matched_output.count("Hardcover: Dune") == 1
+    assert "MATCH: Dune" in matched_output
+    assert unmatched_output.count("Hardcover: Dune") == 1
+    assert "No Calibre match was assigned." in unmatched_output
+    assert missing_output.count("- Dune") == 1
 
 
 @pytest.mark.parametrize("failure", [RuntimeError("reload failed"), SystemExit(1)])

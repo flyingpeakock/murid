@@ -25,14 +25,14 @@ logger = logging.getLogger("murid")
 class ServiceFactory:
     """Factory for creating service instances."""
 
-    def __init__(self, args, config=None):
+    def __init__(self, args, config=None, *, initialize_notifier=True):
         """Initialize the service factory with command-line arguments."""
         self.args = args
         if not config:
             self.config = self._load_config()
         else:
             self.config = config
-        self.notify = self._init_apprise()
+        self.notify = self._init_apprise() if initialize_notifier else lambda *args, **kwargs: None
 
     def _init_apprise(self):
         """Initialize the Apprise notifier."""
@@ -74,8 +74,7 @@ class ServiceFactory:
             return Calibre(
                 CalibreConfig(
                     executable=self.config["calibre"]["calibredb_executable"],
-                    library_path=self.config["calibre"]["library_path"],
-                    server_url=self.config["calibre"].get("server_url"),
+                    library=self.config["calibre"]["library"],
                     server_username=self.config["calibre"].get("server_username"),
                     server_password=self.config["calibre"].get("server_password"),
                 )
@@ -116,7 +115,7 @@ class ServiceFactory:
         config = QbittorrentConfig(
             client=client,
             category=category,
-            dry_run=self.args.dry_run,
+            dry_run=getattr(self.args, "dry_run", False),
             mapping=mapping,
         )
         return Qbittorrent(config)
@@ -142,7 +141,7 @@ class ServiceFactory:
                 calibre=self.calibre(),
                 matcher=self.matcher(),
                 notify=self.notifier(),
-                dry_run=self.args.dry_run,
+                dry_run=getattr(self.args, "dry_run", False),
                 timeout=self.config["torrent_timeout_seconds"],
                 filetypes=self.config["filetypes"],
             )

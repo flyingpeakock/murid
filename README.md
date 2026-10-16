@@ -69,6 +69,28 @@ source .venv/bin/activate
 pip install .
 ```
 
+To enable shell completion after a Python installation, add the line for your shell to its startup file:
+
+```sh
+# bash
+eval "$(register-python-argcomplete murid)"
+
+# zsh
+eval "$(register-python-argcomplete --shell zsh murid)"
+
+# fish
+register-python-argcomplete --shell fish murid | source
+```
+
+The Nix package installs completion files for bash, zsh, and fish automatically.
+The development shell also includes `murid`. Run `nix develop -c zsh` and complete `murid` by name.
+For a direct path such as `./result/bin/murid`, register that path in your current zsh session:
+
+```zsh
+source ./result/share/zsh/site-functions/_murid
+compdef -p _python_argcomplete '*/murid'
+```
+
 ### Windows
 
 ```powershell
@@ -110,7 +132,7 @@ inputs.murid.url = "github:flyingpeakock/murid";
       config = {
         hardcover_api_keys = [ "!ENV HARDCOVER_API_KEY" ];
         mam_id = "!ENV MAM_ID";
-        calibre.server_url = "http://localhost:8080/#books";
+        calibre.library = "http://localhost:8080/#books";
         qbittorrent = {
           username = "admin";
           password = "!ENV QBITTORRENT_PASSWORD";
@@ -122,25 +144,113 @@ inputs.murid.url = "github:flyingpeakock/murid";
 ```
 
 Put `HARDCOVER_API_KEY` (including the `Bearer ` prefix), `MAM_ID`, and `QBITTORRENT_PASSWORD` in `/etc/murid.env`. See [nixosModule.nix](nixosModule.nix) for all module options.
+The module starts `murid schedule` and accepts either an inline `services.murid.config`
+or a path in `services.murid.configFile`. Set `environmentFile` when the selected
+configuration uses `!ENV` secrets.
 
 ## Usage
+
+Murid uses a command followed by its options. Run `murid --help` to list commands,
+or `murid <command> --help` for command-specific options. Put `--config` after the
+command, as in the examples below.
+
+| Command | Purpose |
+| --- | --- |
+| `run` | Sync once and exit |
+| `schedule` | Sync repeatedly using the configured cron schedule |
+| `list-missing` | List Hardcover books missing from Calibre |
+| `review-matches` | Inspect Hardcover to Calibre matches and scores; use `--matched` or `--unmatched` to filter |
+| `search-book NAME` | Preview torrent candidates for a Hardcover book; use `--add` to download and import the selected torrent |
+| `add-book NAME PATH` | Import an ebook file with metadata from Hardcover |
+| `status` | Show Murid torrents and their download and import status |
+| `retry-import` | Retry imports for tagged downloads |
+| `test-connection` | Check access to each configured service |
+| `test-notification` | Send a test notification through Apprise |
+| `validate-config` | Validate a configuration file |
+| `print-config` | Print the parsed configuration, with secrets redacted by default |
+
+For example, inspect book matches or validate a configuration before syncing:
+
+```bash
+murid review-matches --unmatched --config ./config.yaml
+murid validate-config --config ./config.yaml
+```
+
+To import a file that Murid could not select automatically, give the book name from your
+Hardcover Want to Read list and the path to the ebook file:
+
+```bash
+murid add-book "Children of Dune" /path/to/children-of-dune.epub --config ./config.yaml
+```
+
+Murid matches the name against your Hardcover books, including close spellings and alternate
+titles, then uses the matched title, authors, and series when adding the file to Calibre.
+It stops if the name is ambiguous or the book already exists in Calibre.
+
+To inspect downloads in Murid's configured qBittorrent category, including torrents
+tagged for a timeout or failed Calibre import, run:
+
+```bash
+murid status --config ./config.yaml
+```
+
+To retry importing completed Murid downloads tagged for a timeout or failed import,
+without searching for or adding new torrents, run:
+
+```bash
+murid retry-import --config ./config.yaml
+```
+
+It checks tagged torrents once, reports downloads still in progress, and leaves failed
+imports tagged for further investigation. It exits with a nonzero status if any
+tagged torrent still needs attention.
+
+To check access to Hardcover, Calibre, MyAnonamouse, and qBittorrent, run:
+
+```bash
+murid test-connection --config ./config.yaml
+```
+
+Each service is checked independently. The command exits with a nonzero status if
+any check fails.
+
+To preview MyAnonamouse results for a book on your Hardcover reading list and see
+which torrent Murid would select, run:
+
+```bash
+murid search-book "Children of Dune" --config ./config.yaml
+```
+
+This shows candidate scores and rejection reasons without downloading a torrent or
+adding anything to qBittorrent or Calibre.
+
+To add the selected torrent to qBittorrent and wait for its completed ebook to be
+imported into Calibre, use `--add`:
+
+```bash
+murid search-book "Children of Dune" --add --config ./config.yaml
+```
+
+Murid refuses to add the book if it is already in Calibre. If the torrent does not
+finish within the configured timeout, Murid tags it for a later import attempt.
 
 Copy the example config, fill in your connection details, and provide the secrets described below:
 
 ```bash
 cp config.example.yaml config.yaml
-murid --config ./config.yaml --dry-run
+murid run --config ./config.yaml --dry-run
 ```
 
 A dry run searches for matches and fetches the selected `.torrent` files, but does not add them to qBittorrent or download the ebooks. Omit `--dry-run` for a one-time sync. To keep Murid running on the cron schedule in your config, use:
 
 ```bash
-murid --config ./config.yaml --schedule
+murid schedule --config ./config.yaml
 ```
 
 ## Configuration
 
-Use [config.example.yaml](config.example.yaml) as the complete configuration reference. Exactly one of `calibre.library_path` or `calibre.server_url` must be set.
+Use [config.example.yaml](config.example.yaml) as the complete configuration reference. Set `calibre.library` to either a local Calibre library path or a Calibre content server URL.
+If upgrading an existing config, rename `calibre.library_path` or `calibre.server_url` to `calibre.library`.
 
 ### Environment Variables
 
@@ -179,8 +289,7 @@ Set these variables in the environment that runs Murid. The default config locat
 | Option                 | Description                     | Default     |
 | ---------------------- | ------------------------------- | ----------- |
 | `calibredb_executable` | Path to calibredb executable    | `calibredb` |
-| `library_path`         | Path to calibre library         | `None`      |
-| `server_url`           | URL to calibre content server   | `None`      |
+| `library`              | Local library path or content server URL | required |
 | `server_username`      | Calibre content server username | `None`      |
 | `server_password`      | Calibre content server password | `None`      |
 
@@ -233,6 +342,10 @@ Found in your MyAnonamouse security settings:
 ## Scheduling
 
 Cron-based scheduling controls how often Murid runs.
+
+Each scheduled run checks timed-out torrents again. It clears the timeout tag once
+the book is confirmed in Calibre. If a completed download fails to import, Murid
+marks it `murid_import_failed`; use `retry-import` after investigating the failure.
 
 | Expression    | Meaning        |
 | ------------- | -------------- |

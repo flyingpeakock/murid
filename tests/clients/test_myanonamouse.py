@@ -104,6 +104,46 @@ def test_search_success(mam):
     assert result.book.title == "Dune"
 
 
+def test_check_connection_accepts_zero_results(mam):
+    response = Mock()
+    response.json.return_value = {"data": False, "total": 0}
+    mam._request = Mock(return_value=response)
+
+    mam.check_connection()
+
+    response.raise_for_status.assert_called_once_with()
+    assert mam._request.call_args.args == ("POST", mam.SEARCH_URL)
+    assert mam._request.call_args.kwargs["json"]["tor"]["text"] == "murid-connection-check"
+
+
+def test_check_connection_accepts_mam_empty_search_error(mam):
+    response = Mock()
+    response.json.return_value = {"error": "Nothing returned, out of 0"}
+    mam._request = Mock(return_value=response)
+
+    mam.check_connection()
+
+    response.raise_for_status.assert_called_once_with()
+
+
+def test_check_connection_rejects_http_403(mam):
+    response = Mock()
+    response.raise_for_status.side_effect = requests.HTTPError("403 Client Error: Forbidden")
+    mam._request = Mock(return_value=response)
+
+    with pytest.raises(requests.HTTPError, match="403"):
+        mam.check_connection()
+
+
+def test_check_connection_rejects_api_error(mam):
+    response = Mock()
+    response.json.return_value = {"error": "invalid session"}
+    mam._request = Mock(return_value=response)
+
+    with pytest.raises(MAMError, match="invalid session"):
+        mam.check_connection()
+
+
 def test_search_request_error_returns_empty_set(mam):
     def boom(*args, **kwargs):
         raise requests.RequestException("boom")
@@ -111,6 +151,22 @@ def test_search_request_error_returns_empty_set(mam):
     mam.session.post = boom
 
     assert mam.search(MyAnonamouseQuery(text="Dune")) == set()
+
+
+def test_search_request_error_raises_in_strict_mode(mam):
+    mam._request = Mock(side_effect=requests.RequestException("offline"))
+
+    with pytest.raises(MAMError, match="offline"):
+        mam.search(MyAnonamouseQuery(text="Dune"), raise_on_error=True)
+
+
+def test_search_api_error_raises_in_strict_mode(mam):
+    response = Mock()
+    response.json.return_value = {"error": "invalid session"}
+    mam._request = Mock(return_value=response)
+
+    with pytest.raises(MAMError, match="invalid session"):
+        mam.search(MyAnonamouseQuery(text="Dune"), raise_on_error=True)
 
 
 def test_search_missing_data_raises(mam):

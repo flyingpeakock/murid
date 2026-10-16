@@ -21,8 +21,7 @@ class CalibreConfig:
     """Configuration for the Calibre client."""
 
     executable: str
-    library_path: str | None = None
-    server_url: str | None = None
+    library: str
     server_username: str | None = None
     server_password: str | None = None
 
@@ -164,19 +163,10 @@ class Calibre:
 
     def _calibredb(self, *args: str) -> str:
         """Run the calibredb command with the given arguments."""
-        if self.config.library_path:
-            library = self.config.library_path
-        elif self.config.server_url:
-            library = self.config.server_url
-        else:
-            raise CalibreError(
-                "Calibre requires either a library path or a server URL to be specified."
-            )
-
         command = [
             self.config.executable,
             "--with-library",
-            library,
+            self.config.library,
         ]
 
         if self.config.server_username:

@@ -3,6 +3,7 @@
 import logging
 import time
 from dataclasses import dataclass
+from uuid import uuid4
 
 import qbittorrentapi
 
@@ -48,15 +49,37 @@ class Qbittorrent(TorrentClient):
 
     def add_torrent(self, torrent_file: bytes, book: Book) -> str | None:
         """Add a torrent to qBittorrent and return its ID."""
+        tracking_tag = f"murid_add_{uuid4().hex}"
         try:
             tinfo = self.client.torrents_add(
                 torrent_files=torrent_file,
                 category=self.category,
+                tags=tracking_tag,
             )
 
-            logger.info("Added %s to qBittorrent", book)
+            if isinstance(tinfo, str):
+                if tinfo.strip() != "Ok.":
+                    logger.error("Failed to add %s to qBittorrent: %s", book, tinfo)
+                    return None
+                # Older APIs acknowledge the add without returning its hash. A unique
+                # tag identifies this request even when other downloads arrive concurrently.
+                torrent_ids = []
+                for _ in range(10):
+                    torrents = self.client.torrents_info(category=self.category, tag=tracking_tag)
+                    torrent_ids = [torrent.hash for torrent in torrents]
+                    if torrent_ids:
+                        break
+                    time.sleep(self.poll_interval)
+            else:
+                torrent_ids = tinfo.added_torrent_ids
 
-            return tinfo.added_torrent_ids[0]
+            if len(torrent_ids) != 1:
+                logger.error("Could not identify the added torrent for %s", book)
+                return None
+            torrent_id = torrent_ids[0]
+            self.remove_tag(torrent_id, tracking_tag)
+            logger.info("Added %s to qBittorrent", book)
+            return torrent_id
 
         except qbittorrentapi.UnsupportedMediaType415Error:
             logger.error("Failed to add %s to qBittorrent: Unsupported media type", book)
@@ -70,17 +93,18 @@ class Qbittorrent(TorrentClient):
 
     def get_completed_path(self, torrent_id: str) -> str | None:
         """Get the completed path of a torrent by its ID, or None if it's not yet completed."""
-        torrent = self.client.torrents_info(torrent_hashes=torrent_id)[0]
-
-        if not torrent:
+        torrents = self.client.torrents_info(torrent_hashes=torrent_id)
+        if not torrents:
+            logger.warning("Torrent %s is no longer available in qBittorrent", torrent_id)
             return None
-
-        if not torrent.completed:
+        if torrents[0].progress < 1:
             return None
 
         time.sleep(0.3)  # Give qBittorrent a moment to update the content path
-        torrent = self.client.torrents_info(torrent_hashes=torrent_id)[0]
-        path = torrent.content_path
+        torrents = self.client.torrents_info(torrent_hashes=torrent_id)
+        if not torrents or torrents[0].progress < 1:
+            return None
+        path = torrents[0].content_path
 
         if (
             self.mapping
@@ -100,9 +124,15 @@ class Qbittorrent(TorrentClient):
         """Remove a tag from a torrent by its ID."""
         self.client.torrents_remove_tags(tags=tag, torrent_hashes=torrent_id)
 
-    def get_torrents_with_tag(self, tag: str) -> dict:
+    def get_torrents_with_tag(self, tag: str) -> list:
         """Get a list of torrent IDs that have the specified tag."""
         torrents = [
-            t for t in self.client.torrents_info(tags=tag) if tag in (t.tags or "").split(", ")
+            t
+            for t in self.client.torrents_info(category=self.category, tag=tag)
+            if tag in {value.strip() for value in (t.tags or "").split(",")}
         ]
         return torrents
+
+    def get_torrents(self) -> list:
+        """Return torrents in Murid's configured qBittorrent category."""
+        return self.client.torrents_info(category=self.category)

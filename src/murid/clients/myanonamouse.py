@@ -94,10 +94,10 @@ class MyAnonamouse:
 
         return float(2**attempt)
 
-    def search(self, query: MyAnonamouseQuery) -> set[Torrent]:
-        """Search for torrents on MyAnonamouse matching the specified criteria."""
-
-        payload = {
+    @staticmethod
+    def _search_payload(query: MyAnonamouseQuery) -> dict[str, Any]:
+        """Build a request for the torrent search API."""
+        return {
             "tor": {
                 "text": query.text,
                 "cat": query.categories or [0],
@@ -118,23 +118,44 @@ class MyAnonamouse:
             "isbn": "true",
         }
 
+    def check_connection(self) -> None:
+        """Check that the search API accepts the configured session cookie."""
+        response = self._request(
+            "POST",
+            self.SEARCH_URL,
+            json=self._search_payload(MyAnonamouseQuery(text="murid-connection-check")),
+            timeout=120,
+        )
+        response.raise_for_status()
+        data = response.json()
+        # MaM reports an empty search as an API error even when the request succeeded.
+        if "error" in data and data["error"] != "Nothing returned, out of 0":
+            raise MAMError(f"MyAnonamouse rejected the search: {data['error']}")
+
+    def search(self, query: MyAnonamouseQuery, *, raise_on_error: bool = False) -> set[Torrent]:
+        """Search for torrents on MyAnonamouse matching the specified criteria."""
+
         logger.debug("Searching MyAnonamouse for %r", query.text or query.id)
         try:
             response = self._request(
                 "POST",
                 self.SEARCH_URL,
-                json=payload,
+                json=self._search_payload(query),
                 timeout=120,
             )
 
             response.raise_for_status()
         except requests.RequestException as e:
             logger.error("Error searching MyAnonamouse: %r", e)
+            if raise_on_error:
+                raise MAMError(f"Error searching MyAnonamouse: {e}") from e
             return set()
 
         data = response.json()
 
         if "error" in data:
+            if raise_on_error:
+                raise MAMError(f"MyAnonamouse rejected the search: {data['error']}")
             return set()
 
         if "data" not in data:

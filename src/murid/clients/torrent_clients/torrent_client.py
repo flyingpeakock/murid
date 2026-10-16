@@ -29,5 +29,9 @@ class TorrentClient(ABC):
         """Remove a tag from a torrent by its ID."""
 
     @abstractmethod
-    def get_torrents_with_tag(self, tag: str) -> dict:
+    def get_torrents_with_tag(self, tag: str) -> list:
         """Get a list of torrent ID's that have the specified tag"""
+
+    @abstractmethod
+    def get_torrents(self) -> list:
+        """Return torrents in Murid's configured category."""

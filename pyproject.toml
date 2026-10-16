@@ -16,6 +16,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
+  "argcomplete",
   "rich",
   "rich_argparse",
   "pyyaml",
