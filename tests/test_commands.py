@@ -95,9 +95,13 @@ def test_sends_test_notification(monkeypatch):
     calls = []
     monkeypatch.setattr(
         "murid.commands.ServiceFactory",
-        lambda parsed: SimpleNamespace(notifier=lambda: "notifier"),
+        lambda parsed: SimpleNamespace(
+            config={"apprise": {"urls": ["test"]}}, notifier=lambda: "notifier"
+        ),
     )
-    monkeypatch.setattr("murid.commands.send_test_notification", calls.append)
+    monkeypatch.setattr(
+        "murid.commands.send_test_notification", lambda notify: calls.append(notify) or True
+    )
 
     assert run_command(args) == 0
     assert calls == ["notifier"]
@@ -107,7 +111,7 @@ def test_validate_config_reports_missing_file(capsys, tmp_path):
     args = SimpleNamespace(command="validate-config", config_file=str(tmp_path / "missing.yaml"))
 
     assert run_command(args) == 1
-    assert "Configuration file not found" in capsys.readouterr().out
+    assert "Configuration file not found" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

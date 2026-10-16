@@ -5,6 +5,49 @@ from unittest.mock import Mock, call
 import pytest
 
 from murid import TorrentDiscoveryService
+from murid.clients.myanonamouse import MAMError, MAMSearchError
+
+
+def test_rejected_title_does_not_discard_alternate_title_results(mam, caplog):
+    book = SimpleNamespace(
+        title="-Rejected",
+        alternative_titles=["Alternate"],
+        authors=["Author"],
+        series=None,
+        series_number=None,
+    )
+    torrent = Mock()
+    mam.search_ebook.side_effect = [MAMSearchError("negative-only query"), {torrent}]
+    _, results = TorrentDiscoveryService(mam, [], None).find_torrents(book)
+    assert results == {torrent}
+    assert "-Rejected" in caplog.text
+    assert "Alternate" == mam.search_ebook.call_args.args[0]
+
+
+def test_rejected_search_does_not_abort_other_book_downloads(mam, matcher, caplog):
+    service = TorrentDiscoveryService(mam, [], SimpleNamespace(select=lambda *args: torrent))
+    rejected, accepted = Future(), Future()
+    book = FakeBook("Rejected", ["Author"])
+    other = FakeBook("Working", ["Author"])
+    torrent = FakeTorrent(other)
+    rejected.set_exception(MAMSearchError("all title queries rejected"))
+    accepted.set_result((other, {torrent}))
+    mam.download_torrent.return_value = b"torrent"
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        downloads = service.submit_downloads(executor, {rejected: book, accepted: other}, matcher)
+        assert service.collect_downloads(downloads) == [(b"torrent", other)]
+    assert service.last_counts["search_failed"] == 1
+    assert service.last_counts["failed"] == 1
+    assert "continuing with other books" in caplog.text
+
+
+def test_service_errors_still_abort_discovery(mam):
+    future = Future()
+    future.set_exception(MAMError("invalid session"))
+    service = TorrentDiscoveryService(mam, [], None)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with pytest.raises(MAMError, match="invalid session"):
+            service.submit_downloads(executor, {future: FakeBook("Book")}, Mock())
 
 
 class FakeBook:
@@ -99,7 +142,46 @@ def test_collect_downloads_filters_none():
 
     result = service.collect_downloads(download_futures)
 
-    assert result == {(b"file1", book1)}
+    assert result == [(b"file1", book1)]
+
+
+def test_collect_downloads_deduplicates_without_reordering():
+    service = TorrentDiscoveryService(Mock(), [], None)
+    first_book, second_book = FakeBook("First"), FakeBook("Second")
+    futures = {}
+    for data, book in [(b"first", first_book), (b"second", second_book), (b"first", first_book)]:
+        future = Future()
+        future.set_result(data)
+        futures[future] = book
+    assert service.collect_downloads(futures) == [(b"first", first_book), (b"second", second_book)]
+
+
+def test_submit_downloads_uses_submission_order_not_completion_order(mam, matcher):
+    service = TorrentDiscoveryService(mam, ["eng"], None)
+    first_book = FakeBook(title="A", authors=["Author"])
+    second_book = FakeBook(title="B", authors=["Author"])
+    first_torrent = FakeTorrent(first_book)
+    second_torrent = FakeTorrent(second_book)
+    torrents_by_book = {first_book: first_torrent, second_book: second_torrent}
+    service.torrent_selector = SimpleNamespace(
+        select=lambda book, *_: torrents_by_book[book],
+    )
+    mam.download_torrent = Mock(return_value=b"torrent-file")
+
+    first_future = Future()
+    second_future = Future()
+    # The second search completes first, but the first still must be selected first.
+    second_future.set_result((second_book, [second_torrent]))
+    first_future.set_result((first_book, [first_torrent]))
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        service.submit_downloads(
+            executor,
+            {first_future: first_book, second_future: second_book},
+            matcher,
+        )
+
+    assert mam.download_torrent.call_args_list == [call(first_torrent), call(second_torrent)]
 
 
 def test_submit_downloads_happy_path(mam, matcher):
@@ -164,7 +246,7 @@ def test_download_torrents_skips_books_with_incomplete_timed_out_torrent(mam, ma
 
     result = service.download_torrents([book], matcher, [timed_out_book])
 
-    assert result == set()
+    assert result == []
     service.find_torrents.assert_not_called()
     mam.search_ebook.assert_not_called()
     matcher.similarity.assert_called_once_with(book, timed_out_book)

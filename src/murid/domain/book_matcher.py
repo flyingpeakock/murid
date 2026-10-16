@@ -581,9 +581,9 @@ class BookMatcher:
             return 1.0
         if conflicting_identifiers:
             logger.debug(
-                "Shared identifier conflicts with metadata for %r and %r; scoring by title/authors",
-                a.book.title,
-                b.book.title,
+                "%s: shared identifier conflicts with metadata for %s; scoring by title/authors",
+                a.book,
+                b.book,
             )
 
         title_score = cls._title_similarity_features(a, b)
@@ -630,9 +630,18 @@ class BookMatcher:
         threshold: float,
     ) -> bool:
         """Apply both the title-similarity floor and overall threshold."""
+        return cls._rejection_reason(a, b, score, threshold) is None
+
+    @classmethod
+    def _rejection_reason(
+        cls, a: _BookFeatures, b: _BookFeatures, score: float, threshold: float
+    ) -> str | None:
+        """Describe the first failed matching rule, or accept the comparison."""
         if a.isbns & b.isbns or a.identifiers & b.identifiers:
             conflict = cls._conflicting_identifier_metadata(a, b)
-            return not conflict
+            return (
+                "shared identifier conflicts with title and author metadata" if conflict else None
+            )
 
         series_position_conflict = bool(
             a.series
@@ -642,21 +651,22 @@ class BookMatcher:
             and not math.isclose(a.series_number, b.series_number)
         )
 
-        if series_position_conflict or (
-            cls._conflicting_title_words(a.title, b.title) and not a.titles & b.titles
-        ):
-            return False
+        if series_position_conflict:
+            return f"different series positions ({a.series_number:g} vs {b.series_number:g})"
+        if cls._conflicting_title_words(a.title, b.title) and not a.titles & b.titles:
+            return "titles differ by a meaningful word"
 
         if a.authors and b.authors and cls._author_similarity(a.authors, b.authors) == 0.0:
-            return False
+            return "authors do not overlap"
 
         title_score = cls._title_similarity_features(a, b)
         if title_score < _MIN_TITLE_SIMILARITY:
-            return False
-        if score < threshold:
-            return False
-
-        return True
+            return f"title score {title_score:.3f} is below minimum {_MIN_TITLE_SIMILARITY:.3f}"
+        return (
+            f"match score {score:.3f} is below threshold {threshold:.3f}"
+            if score < threshold
+            else None
+        )
 
     def title_similarity(self, a: str, b: str) -> float:
         """Return title-only similarity."""
@@ -732,6 +742,14 @@ class BookMatcher:
             self.threshold,
         )
 
+    def rejection_reason(self, a: Book, b: Book) -> str | None:
+        """Explain the matching rule rejecting a candidate without changing selection."""
+        features_a = self._prepare(a)
+        features_b = self._prepare(b)
+        return self._rejection_reason(
+            features_a, features_b, self._similarity(features_a, features_b), self.threshold
+        )
+
     def best_match(
         self,
         book: Book,
@@ -751,15 +769,13 @@ class BookMatcher:
                 best_score = score
 
         if best_candidate is None:
-            logger.debug("No candidates available to compare with %s[%r]", book.source, book.title)
+            logger.debug("%s: no candidates available to compare", book)
             return None, 0.0
 
         logger.debug(
-            "Best candidate for %s[%r] is %s[%r] with score %.3f",
-            book.source,
-            book.title,
-            best_candidate.source,
-            best_candidate.title,
+            "%s: best candidate is %s with score %.3f",
+            book,
+            best_candidate,
             best_score,
         )
         return best_candidate, best_score
@@ -860,11 +876,11 @@ class BookMatcher:
                 continue
 
             logger.debug(
-                "Ambiguous match for %r: best=%r (%.3f), alternative=%r (%.3f)",
-                target.book.title,
-                best.book.title,
+                "%s: ambiguous match: best=%s (%.3f), alternative=%s (%.3f)",
+                target.book,
+                best.book,
                 best_score,
-                other.book.title,
+                other.book,
                 other_score,
             )
             break
@@ -894,9 +910,9 @@ class BookMatcher:
             assigned_targets.add(target_id)
 
             logger.debug(
-                "Matched Calibre book %r to Hardcover book %r (%.3f)",
-                candidate.book.title,
-                target.book.title,
+                "%s: matched Calibre book %s (score %.3f)",
+                target.book,
+                candidate.book,
                 score,
             )
 
@@ -917,8 +933,8 @@ class BookMatcher:
 
             if not scored:
                 logger.debug(
-                    "No candidates available for %r",
-                    target.book.title,
+                    "%s: no candidates available",
+                    target.book,
                 )
                 continue
 
@@ -931,9 +947,9 @@ class BookMatcher:
             if not qualifying:
                 best, score = scored[0]
                 logger.debug(
-                    "No match for %r. Best candidate: %r (%.3f)",
-                    target.book.title,
-                    best.book.title,
+                    "%s: no Calibre match; best candidate: %s (score %.3f)",
+                    target.book,
+                    best.book,
                     score,
                 )
                 continue

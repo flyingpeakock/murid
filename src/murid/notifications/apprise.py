@@ -51,10 +51,12 @@ def init_apprise(
     return apprise_obj.notify
 
 
-def send_test_notification(notify: Callable[[str, str, apprise.NotifyType], None]) -> None:
+def send_test_notification(notify: Callable[..., bool]) -> bool:
     """Send a test notification to verify that Apprise is working correctly."""
-    notify(
-        title="Murid - Test Notification",
-        body="Hello from Murid!",
-        notify_type=apprise.NotifyType.INFO,
+    return bool(
+        notify(
+            title="Murid - Test Notification",
+            body="Hello from Murid!",
+            notify_type=apprise.NotifyType.INFO,
+        )
     )

@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -60,12 +61,12 @@ def test_search_book_previews_selection_and_rejections(capsys):
     output = capsys.readouterr().out
     assert "Hardcover: Dune by Frank Herbert" in output
     assert "MyAnonamouse candidates: 6" in output
-    assert "SELECTED: Dune by Frank Herbert [ID 101" in output
-    assert "REJECTED: language: Dune by Frank Herbert [ID 102" in output
-    assert "REJECTED: file type: Dune by Frank Herbert [ID 103" in output
-    assert "REJECTED: blacklisted ID: Dune by Frank Herbert [ID 104" in output
-    assert "REJECTED: previously failed import: Dune by Frank Herbert [ID 105" in output
-    assert "REJECTED: match score below threshold: Foundation by Frank Herbert [ID 106" in output
+    assert "SELECTED: Dune by Frank Herbert\n  ID 101" in output
+    assert "Reason: language" in output
+    assert "Reason: file type" in output
+    assert "Reason: blacklisted ID" in output
+    assert "Reason: previously failed import" in output
+    assert "Reason: match score below threshold 0.920" in output
     assert output.index("SELECTED:") < output.index("REJECTED:")
     discovery.find_torrents.assert_called_once_with(target)
     discovery.mam_ids_with_tag.assert_called_once_with("murid_import_failed")
@@ -79,6 +80,32 @@ def test_search_book_reports_no_results(capsys):
 
     assert "No torrents found." in capsys.readouterr().out
     discovery.mam_ids_with_tag.assert_not_called()
+
+
+def test_search_json_includes_candidate_metadata(monkeypatch, capsys):
+    from murid import ui
+
+    monkeypatch.setattr(ui, "OUTPUT_FORMAT", "json")
+    factory, _ = make_factory({book(1)}, {torrent(101)})
+    search_book("Dune", factory)
+    records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    candidate = next(record for record in records if record["type"] == "candidate")
+    assert candidate["selected"]
+    assert candidate["book"]["id"] == 101
+    assert candidate["score"] == 1.0
+    assert candidate["threshold"] == 0.92
+    assert candidate["url"].endswith("/101")
+    assert candidate["reasons"] == []
+
+
+def test_search_explains_specific_matching_rule(capsys):
+    target = book(1, "Dune Messiah")
+    candidate = torrent(101, "Dune Messiah")
+    target.series = candidate.book.series = "Dune"
+    target.series_number, candidate.book.series_number = 2, 3
+    factory, _ = make_factory({target}, {candidate})
+    search_book("Dune Messiah", factory)
+    assert "different series positions (2 vs 3)" in capsys.readouterr().out
 
 
 def test_search_book_rejects_ambiguous_hardcover_name():

@@ -838,7 +838,7 @@ def test_match_books_logs_when_no_candidates_exist(caplog):
         matches = matcher.match_books([], [make_book(title="Dune")])
 
     assert matches == set()
-    assert "No candidates available" in caplog.text
+    assert "no candidates available" in caplog.text
 
 
 def test_match_books_logs_unmatched_book(caplog):
@@ -855,7 +855,7 @@ def test_match_books_logs_unmatched_book(caplog):
         matches = matcher.match_books(calibre_books, hardcover_books)
 
     assert matches == set()
-    assert "No match for" in caplog.text
+    assert "no Calibre match" in caplog.text
     assert "Foundation" in caplog.text
 
 
@@ -869,4 +869,4 @@ def test_match_books_logs_successful_match(caplog):
         )
 
     assert len(matches) == 1
-    assert "Matched Calibre book" in caplog.text
+    assert "matched Calibre book" in caplog.text

@@ -9,7 +9,12 @@ from murid import (
     MyAnonamouse,
     MyAnonamouseQuery,
 )
-from murid.clients.myanonamouse import parse_size
+from murid.clients.myanonamouse import MAMSearchError, parse_size
+
+NEGATIVE_ONLY_ERROR = (
+    "Search returned an error<br />Your search is only not. This is not supported. "
+    "For a single non-not, try adding: @dummy mamDummy"
+)
 
 
 @pytest.mark.parametrize(
@@ -49,6 +54,33 @@ def test_id_lookup_still_works_with_empty_query(mam):
     mam._request = Mock(return_value=response)
     mam.search(MyAnonamouseQuery(text="", id=123))
     assert mam._request.call_args.kwargs["json"]["tor"]["id"] == "123"
+
+
+def test_query_rejection_is_not_retried_and_is_readable(mam):
+    response = Mock()
+    response.json.return_value = {
+        "error": NEGATIVE_ONLY_ERROR.replace("supported", "supported &amp; rejected")
+    }
+    mam._request = Mock(return_value=response)
+
+    with pytest.raises(MAMSearchError) as caught:
+        mam.search_ebook("-Example")
+
+    assert mam._request.call_count == 1
+    assert "-Example" in str(caught.value)
+    assert "<br" not in str(caught.value)
+    assert "supported & rejected" in str(caught.value)
+
+
+def test_authentication_rejection_does_not_retry_workaround(mam):
+    response = Mock()
+    response.json.return_value = {"error": "invalid session<br />Please log in"}
+    mam._request = Mock(return_value=response)
+
+    with pytest.raises(MAMError, match="invalid session Please log in") as caught:
+        mam.search_ebook("Dune")
+    assert not isinstance(caught.value, MAMSearchError)
+    assert mam._request.call_count == 1
 
 
 @pytest.fixture
@@ -189,7 +221,7 @@ def test_search_request_error_returns_empty_set(mam):
 
     mam._request = boom
 
-    assert mam.search(MyAnonamouseQuery(text="Dune")) == set()
+    assert mam.search(MyAnonamouseQuery(text="Dune"), raise_on_error=False) == set()
 
 
 def test_search_request_error_raises_in_strict_mode(mam):

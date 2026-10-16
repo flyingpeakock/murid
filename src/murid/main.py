@@ -7,8 +7,14 @@ import argcomplete
 
 from . import __version__
 from .args import MuridArgumentParser
+from .clients.calibre import CalibreError
+from .clients.hardcover import HardcoverError
+from .clients.myanonamouse import MAMError, MAMSearchError
+from .clients.torrent_clients.qbittorrent import QbittorrentError
 from .commands import run_command
+from .config.config import ConfigError
 from .logging_config import setup_logger
+from .ui import colored, setup_output
 
 logger = logging.getLogger("murid")
 
@@ -36,12 +42,19 @@ def _main() -> int:
     args = parser.parse_args()
 
     setup_logger(
-        getattr(args, "log_level", "ERROR"),
+        getattr(args, "log_level", "WARNING"),
         include_date=args.command == "schedule",
+        color=not getattr(args, "no_color", False),
+        output_format=getattr(args, "output_format", "auto"),
+    )
+    setup_output(
+        color=not getattr(args, "no_color", False),
+        output_format=getattr(args, "output_format", "auto"),
     )
 
     logger.info(
-        r"""
+        colored(
+            r"""
      ) _     _
     ( (^)-~-(^)
 __,-.\_( 6 6 )__,-.___
@@ -50,18 +63,32 @@ __,-.\_( 6 6 )__,-.___
     ______/\______
    /              \
   / starting murid \
-  \%s/
+  \VERSION/
    \______________/
-""",
-        f"v{__version__}".center(16),
+""".replace("VERSION", f"v{__version__}".center(16)),
+            "cyan",
+        ),
     )
 
     try:
         return run_command(args)
 
-    except Exception as e:
-        logger.error("An error occurred: %r", e)
-        raise e
+    except MAMSearchError as error:
+        logger.error("%s", error)
+        return 1
+    except (
+        CalibreError,
+        HardcoverError,
+        MAMError,
+        QbittorrentError,
+        ConfigError,
+        OSError,
+    ) as error:
+        logger.error("%s", error, exc_info=logger.isEnabledFor(logging.DEBUG))
+        return 1
+    except Exception as error:  # pylint: disable=broad-exception-caught
+        logger.error("Unexpected error: %s", error, exc_info=logger.isEnabledFor(logging.DEBUG))
+        return 1
 
 
 if __name__ == "__main__":

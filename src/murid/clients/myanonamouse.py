@@ -35,6 +35,15 @@ class MAMError(Exception):
     """Custom exception for errors related to MyAnonamouse interactions."""
 
 
+class MAMSearchError(MAMError):
+    """MyAnonamouse rejected an individual query's search syntax."""
+
+
+def _error_text(value: Any) -> str:
+    """Convert API HTML error messages to readable terminal text."""
+    return " ".join(unescape(re.sub(r"<[^>]+>", " ", str(value))).split())
+
+
 def _sanitize_query(text: str) -> str:
     """Keep Unicode words, including their combining marks, without search operators."""
     normalized = unicodedata.normalize("NFC", text)
@@ -146,9 +155,9 @@ class MyAnonamouse:
         data = response.json()
         # MaM reports an empty search as an API error even when the request succeeded.
         if "error" in data and data["error"] != "Nothing returned, out of 0":
-            raise MAMError(f"MyAnonamouse rejected the search: {data['error']}")
+            raise MAMError(f"MyAnonamouse rejected the search: {_error_text(data['error'])}")
 
-    def search(self, query: MyAnonamouseQuery, *, raise_on_error: bool = False) -> set[Torrent]:
+    def search(self, query: MyAnonamouseQuery, *, raise_on_error: bool = True) -> set[Torrent]:
         """Search for torrents on MyAnonamouse matching the specified criteria."""
 
         payload = self._search_payload(query)
@@ -167,33 +176,53 @@ class MyAnonamouse:
 
             response.raise_for_status()
         except requests.RequestException as e:
-            logger.error("Error searching MyAnonamouse: %r", e)
             if raise_on_error:
                 raise MAMError(f"Error searching MyAnonamouse: {e}") from e
+            logger.error("MyAnonamouse search failed: %s", e)
             return set()
 
-        data = response.json()
+        try:
+            data = response.json()
+        except ValueError as error:
+            raise MAMError("MyAnonamouse returned an invalid JSON search response") from error
 
         if "error" in data:
+            if data["error"] == "Nothing returned, out of 0":
+                return set()
+            reason = _error_text(data["error"])
+            context = f"query {query.text!r}" if query.id is None else f"torrent ID {query.id}"
             if raise_on_error:
-                raise MAMError(f"MyAnonamouse rejected the search: {data['error']}")
+                error_type = MAMSearchError if "Search returned an error" in reason else MAMError
+                raise error_type(f"MyAnonamouse rejected {context}: {reason}")
+            logger.error("MyAnonamouse rejected %s: %s", context, reason)
             return set()
 
         if "data" not in data:
-            raise MAMError(f"Unexpected response: {data}")
+            logger.debug("Unexpected MyAnonamouse response: %r", data)
+            raise MAMError("Unexpected response from MyAnonamouse: missing search results")
 
-        rows = data["data"]
-        if len(rows) > 100:
-            logger.debug(
-                "MyAnonamouse returned %d rows; parsing only the first 100 (total=%r, "
-                "total_found=%r)",
+        rows = data["data"] or []
+        total = max(
+            [
                 len(rows),
-                data.get("total"),
-                data.get("total_found"),
+                *(
+                    int(data[key])
+                    for key in ("total", "total_found")
+                    if str(data.get(key, "")).isdigit()
+                ),
+            ]
+        )
+        if total > 100:
+            logger.warning(
+                "MyAnonamouse search for %r is limited to %d of %d results; "
+                "refine the title if the desired edition is missing",
+                query.text or query.id,
+                min(len(rows), 100),
+                total,
             )
 
         torrents = {self._parse_torrent(row) for row in rows[:100]}
-        logger.info(
+        logger.debug(
             "MyAnonamouse returned %d torrents for the query %r",
             len(torrents),
             query.text or query.id,
@@ -249,12 +278,10 @@ class MyAnonamouse:
 
     def search_ebook(self, title: str) -> set[Torrent]:
         """Search for ebooks on MyAnonamouse matching the specified title."""
-        result = self.search(
-            MyAnonamouseQuery(
-                text=title, main_categories=[14], search_fields=["title", "author", "series"]
-            )
+        query = MyAnonamouseQuery(
+            text=title, main_categories=[14], search_fields=["title", "author", "series"]
         )
-        return result
+        return self.search(query)
 
     def download_torrent(self, torrent: Torrent) -> bytes | None:
         """Download the torrent file for the specified torrent."""
@@ -263,10 +290,10 @@ class MyAnonamouse:
                 "GET", f"{self.DOWNLOAD_URL}/?tid={torrent.book.id}", timeout=120
             )
             response.raise_for_status()
-            logger.debug("Torrent for %s downloaded successfully", torrent.book)
+            logger.debug("%s: torrent downloaded successfully", torrent.book)
             return response.content
         except requests.RequestException as e:
-            logger.error("Error downloading torrent for %s: %r", torrent.book, e)
+            logger.error("%s: could not download torrent: %s", torrent.book, e)
             return None
 
 

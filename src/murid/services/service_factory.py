@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import qbittorrentapi
 from croniter import croniter
 
-from ..clients.calibre import Calibre, CalibreConfig, CalibreError
+from ..clients.calibre import Calibre, CalibreConfig
 from ..clients.hardcover import Hardcover
 from ..clients.myanonamouse import MyAnonamouse
 from ..clients.torrent_clients.qbittorrent import Qbittorrent, QbittorrentConfig
@@ -41,7 +41,7 @@ class ServiceFactory:
         try:
             return apprise(logger, self.config["apprise"])
         except Exception as e:
-            logger.error("Error initializing Apprise: %r", e)
+            logger.error("Cannot initialize Apprise: %s", e)
             raise SystemExit(1) from e
 
     def reload(self):
@@ -55,13 +55,13 @@ class ServiceFactory:
             with open(self.args.config_file, "r", encoding="utf-8") as f:
                 return Config(f)
         except ConfigError as e:
-            logger.error("Error loading config: %r", e)
+            logger.error("Cannot load configuration: %s", e)
             raise SystemExit(1) from e
         except FileNotFoundError as e:
             logger.error("Config file not found: %r", self.args.config_file)
             raise SystemExit(1) from e
         except Exception as e:
-            logger.error("Unexpected error loading config: %r", e)
+            logger.error("Cannot load configuration: %s", e)
             raise SystemExit(1) from e
 
     def matcher(self) -> BookMatcher:
@@ -70,18 +70,14 @@ class ServiceFactory:
 
     def calibre(self):
         """Create a Calibre instance using the configuration file."""
-        try:
-            return Calibre(
-                CalibreConfig(
-                    executable=self.config["calibre"]["calibredb_executable"],
-                    library=self.config["calibre"]["library"],
-                    server_username=self.config["calibre"].get("server_username"),
-                    server_password=self.config["calibre"].get("server_password"),
-                )
+        return Calibre(
+            CalibreConfig(
+                executable=self.config["calibre"]["calibredb_executable"],
+                library=self.config["calibre"]["library"],
+                server_username=self.config["calibre"].get("server_username"),
+                server_password=self.config["calibre"].get("server_password"),
             )
-        except CalibreError as e:
-            logger.error("Error initializing Calibre: %r", e)
-            raise SystemExit(1) from e
+        )
 
     def hardcover(self) -> set[Hardcover]:
         """Create a list of Hardcover instances for each user specified in the configuration."""

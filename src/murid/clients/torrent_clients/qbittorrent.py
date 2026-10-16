@@ -13,6 +13,10 @@ from .torrent_client import TorrentClient
 logger = logging.getLogger("murid")
 
 
+class QbittorrentError(Exception):
+    """A qBittorrent operation failed before it could start."""
+
+
 @dataclass
 class QbittorrentConfig:
     """Configuration for the qBittorrent client."""
@@ -42,10 +46,9 @@ class Qbittorrent(TorrentClient):
             logger.debug("Successfully authenticated with qBittorrent")
             self.client.auth_log_out()
         except qbittorrentapi.LoginFailed as e:
-            logger.error("Failed to authenticate with qBittorrent: %r", e)
-            raise SystemExit(1) from e
-        logger.debug("qBittorrent: %s", self.client.app.version)
-        logger.debug("qBittorrent api: %s", self.client.app.web_api_version)
+            raise QbittorrentError(f"Failed to authenticate with qBittorrent: {e}") from e
+        logger.debug("qBittorrent version: %s", self.client.app.version)
+        logger.debug("qBittorrent API version: %s", self.client.app.web_api_version)
 
     def add_torrent(self, torrent_file: bytes, book: Book) -> str | None:
         """Add a torrent to qBittorrent and return its ID."""
@@ -59,7 +62,7 @@ class Qbittorrent(TorrentClient):
 
             if isinstance(tinfo, str):
                 if tinfo.strip() != "Ok.":
-                    logger.error("Failed to add %s to qBittorrent: %s", book, tinfo)
+                    logger.error("%s: failed to add to qBittorrent: %s", book, tinfo)
                     return None
                 # Older APIs acknowledge the add without returning its hash. A unique
                 # tag identifies this request even when other downloads arrive concurrently.
@@ -74,21 +77,21 @@ class Qbittorrent(TorrentClient):
                 torrent_ids = tinfo.added_torrent_ids
 
             if len(torrent_ids) != 1:
-                logger.error("Could not identify the added torrent for %s", book)
+                logger.error("%s: could not identify the added torrent", book)
                 return None
             torrent_id = torrent_ids[0]
             self.remove_tag(torrent_id, tracking_tag)
-            logger.info("Added %s to qBittorrent", book)
+            logger.info("%s: added to qBittorrent", book)
             return torrent_id
 
         except qbittorrentapi.UnsupportedMediaType415Error:
-            logger.error("Failed to add %s to qBittorrent: Unsupported media type", book)
+            logger.error("%s: failed to add to qBittorrent: unsupported media type", book)
         except qbittorrentapi.TorrentFileNotFoundError:
-            logger.error("Failed to add %s to qBittorrent: Torrent file not found", book)
+            logger.error("%s: failed to add to qBittorrent: torrent file not found", book)
         except qbittorrentapi.TorrentFilePermissionError:
-            logger.error("Failed to add %s to qBittorrent: Torrent file permission error", book)
+            logger.error("%s: failed to add to qBittorrent: torrent file permission error", book)
         except qbittorrentapi.Conflict409Error:
-            logger.error("Failed to add %s to qBittorrent: Torrent already downloaded", book)
+            logger.error("%s: failed to add to qBittorrent: torrent already downloaded", book)
         return None
 
     def get_completed_path(self, torrent_id: str) -> str | None:

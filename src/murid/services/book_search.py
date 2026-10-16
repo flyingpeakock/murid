@@ -1,5 +1,8 @@
 """Preview the MyAnonamouse search and selection for a Hardcover book."""
 
+from rich.text import Text
+
+from ..ui import book_data, colored, is_json, labeled, output
 from .book_lookup import find_hardcover_book
 
 
@@ -21,17 +24,13 @@ def _print_candidates(book, torrents, matcher, discovery):
             reasons.append("previously failed import")
         reasons.extend(selector.rejection_reasons(torrent))
         if not reasons and score < matcher.threshold:
-            reasons.append("match score below threshold")
-        if not reasons and not matcher.is_match(book, torrent.book):
-            reasons.append("book matching rules")
+            reasons.append(f"match score below threshold {matcher.threshold:.3f}")
+        if not reasons:
+            rejection = matcher.rejection_reason(book, torrent.book)
+            if rejection:
+                reasons.append(rejection)
 
-        if torrent is selected:
-            status = "SELECTED"
-        elif reasons:
-            status = "REJECTED: " + ", ".join(reasons)
-        else:
-            status = "eligible, not selected"
-        return score, status
+        return score, reasons
 
     candidates = [(torrent, *describe(torrent)) for torrent in torrents]
     candidates.sort(
@@ -42,14 +41,47 @@ def _print_candidates(book, torrents, matcher, discovery):
             item[0].book.id,
         )
     )
-    for torrent, score, status in candidates:
+    for torrent, score, reasons in candidates:
         file_types = ", ".join(torrent.file_types or []) or "unknown"
-        print(
-            f"- {status}: {torrent.book} [ID {torrent.book.id}, score {score:.3f}, "
-            f"language {torrent.language or 'unknown'}, files {file_types}, "
-            f"seeders {torrent.metadata.seeders}]"
+        output(
+            labeled(
+                (
+                    "- SELECTED: "
+                    if torrent is selected
+                    else "- REJECTED: "
+                    if reasons
+                    else "- ELIGIBLE: "
+                ),
+                str(torrent.book),
+                "bold green" if torrent is selected else "bold yellow" if reasons else "cyan",
+            ),
+            kind="candidate",
+            data={
+                "book": book_data(torrent.book),
+                "score": score,
+                "threshold": matcher.threshold,
+                "selected": torrent is selected,
+                "reasons": reasons,
+                "language": torrent.language,
+                "file_types": torrent.file_types or [],
+                "seeders": torrent.metadata.seeders,
+                "url": str(torrent),
+            },
         )
-        print(f"  {torrent}")
+        # Candidate records carry all metadata in JSON; extra lines are for people.
+        if not is_json():
+            output(
+                Text(
+                    f"  ID {torrent.book.id} · score {score:.3f} / {matcher.threshold:.3f}"
+                    f" · {torrent.language or 'unknown'} · {file_types}"
+                    f" · {torrent.metadata.seeders} seeders"
+                )
+            )
+            if reasons:
+                output(labeled("  Reason: ", "; ".join(reasons), "yellow"))
+            elif torrent is not selected:
+                output("  Eligible; another torrent was selected.")
+            output(Text(f"  {torrent}"))
     return selected
 
 
@@ -59,10 +91,20 @@ def search_book(name: str, factory, *, add: bool = False) -> None:
     matcher = factory.matcher()
     discovery = factory.torrent_discovery()
     _, torrents = discovery.find_torrents(book)
-    print(f"Hardcover: {book}")
-    print(f"MyAnonamouse candidates: {len(torrents)}")
+    output(
+        labeled("Hardcover: ", str(book), "bold cyan"),
+        kind="search",
+        data={"book": book_data(book), "count": len(torrents), "threshold": matcher.threshold},
+    )
+    output(
+        labeled(
+            "MyAnonamouse candidates: ",
+            f"{len(torrents)} (match threshold {matcher.threshold:.3f})",
+            "bold cyan",
+        )
+    )
     if not torrents:
-        print("No torrents found.")
+        output("[bold yellow]No torrents found.[/]")
         if add:
             raise BookSearchError("No torrent was selected")
         return
@@ -70,7 +112,7 @@ def search_book(name: str, factory, *, add: bool = False) -> None:
     selected = _print_candidates(book, torrents, matcher, discovery)
 
     if selected is None:
-        print("No torrent would be selected.")
+        output("[bold yellow]No torrent would be selected.[/]")
         if add:
             raise BookSearchError("No torrent was selected")
         return
@@ -86,10 +128,11 @@ def search_book(name: str, factory, *, add: bool = False) -> None:
     if not torrent_file:
         raise BookSearchError(f"Could not download torrent for {book}")
 
-    print(f"Adding selected torrent for {book} and waiting for Calibre import...")
+    output(labeled("Adding selected torrent: ", str(book), "bold cyan"))
     factory.torrent_import().import_torrents([(torrent_file, selected.book)])
     if not calibre.contains_book(book, matcher):
         raise BookSearchError(
-            "Book is not yet in Calibre after the import attempt; check status and the logs"
+            "Book is not yet in Calibre; run murid status, inspect qBittorrent, "
+            "then run murid retry-import"
         )
-    print(f"Imported {book} into Calibre")
+    output(colored(f"Imported {book} into Calibre", "bold green"))

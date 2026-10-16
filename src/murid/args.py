@@ -3,9 +3,11 @@
 import argparse
 import os
 import platform
+import sys
 from functools import partial
 from pathlib import Path
 
+from rich.console import Console
 from rich_argparse import ArgumentDefaultsRichHelpFormatter
 
 try:
@@ -18,6 +20,7 @@ class MuridArgumentParser(argparse.ArgumentParser):
     """Build Murid commands with detailed help available per command."""
 
     def __init__(self, description: str | None = None, *, is_subparser: bool = False, **kwargs):
+        self._plain_help = False
         kwargs.setdefault("formatter_class", ArgumentDefaultsRichHelpFormatter)
         if not is_subparser:
             kwargs.setdefault("epilog", "For command options, run: murid <command> --help")
@@ -172,12 +175,28 @@ class MuridArgumentParser(argparse.ArgumentParser):
                 default=config_path,
                 dest="config_file",
             )
-            if command in ("run", "schedule", "search-book", "retry-import", "test-connection"):
+            parser.add_argument(
+                "--format",
+                choices=["auto", "plain", "json"],
+                default="auto",
+                help="Output format: terminal layout, unwrapped plain text, or JSON Lines",
+                dest="output_format",
+            )
+            parser.add_argument(
+                "--no-color",
+                action="store_true",
+                help="Disable color in command output, logs, and help",
+                dest="no_color",
+            )
+            if command:
                 parser.add_argument(
                     "--log-level",
                     "-l",
                     help="Minimum severity of messages written to the log",
-                    default="info",
+                    default="info"
+                    if command
+                    in ("run", "schedule", "search-book", "retry-import", "test-connection")
+                    else "warning",
                     dest="log_level",
                     type=str.upper,
                     choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
@@ -190,6 +209,20 @@ class MuridArgumentParser(argparse.ArgumentParser):
                     action="store_true",
                     dest="dry_run",
                 )
+
+    def parse_known_args(self, args=None, namespace=None):
+        # Help exits during parsing, before main can configure normal output.
+        arguments = sys.argv[1:] if args is None else list(args)
+        self._plain_help = "--no-color" in arguments or any(
+            value in arguments for value in ("plain", "json", "--format=plain", "--format=json")
+        )
+        return super().parse_known_args(args, namespace)
+
+    def _get_formatter(self):
+        formatter = super()._get_formatter()
+        if getattr(self, "_plain_help", False):
+            formatter.console = Console(no_color=True, color_system=None)
+        return formatter
 
     @staticmethod
     def default_config_path() -> Path:

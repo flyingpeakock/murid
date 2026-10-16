@@ -83,10 +83,11 @@ def test_successful_import(service, torrent_client, calibre, matcher, book):
     torrent_client.add_torrent.return_value = "abc123"
     torrent_client.get_completed_path.return_value = "/downloads/dune"
 
-    service.import_torrents([(b"torrent", book)])
+    result = service.import_torrents([(b"torrent", book)])
 
     torrent_client.add_torrent.assert_called_once()
     calibre.add_book.assert_called_once_with(book, "/downloads/dune")
+    assert (result.added, result.imported, result.pending, result.failed) == (1, 1, 0, 0)
 
 
 def test_import_selects_requested_file_from_completed_pack(
@@ -150,15 +151,16 @@ def test_no_suitable_file_tags_torrent_and_notifies_apprise(
     notify.assert_not_called()
     assert len(apprise_client.calls) == 1
     assert apprise_client.calls[0]["title"] == "murid - ERROR"
-    assert "Could not select a unique ebook file" in apprise_client.calls[0]["body"]
+    assert "could not select a unique ebook file" in apprise_client.calls[0]["body"]
 
 
 def test_failed_torrent_add(service, torrent_client, calibre, book):
     torrent_client.add_torrent.return_value = None
 
-    service.import_torrents([(b"torrent", book)])
+    result = service.import_torrents([(b"torrent", book)])
 
     calibre.add_book.assert_not_called()
+    assert (result.added, result.failed) == (0, 1)
 
 
 def test_calibre_error_adds_tag(service, torrent_client, calibre, book):
@@ -181,7 +183,7 @@ def test_success_triggers_notification(service, torrent_client, calibre, notify,
 
     notify.assert_called_once()
     args, kwargs = notify.call_args
-    assert "Successfully imported" in kwargs["body"]
+    assert "imported into Calibre" in kwargs["body"]
 
 
 def test_failed_verification_adds_tag(service, torrent_client, calibre, book):

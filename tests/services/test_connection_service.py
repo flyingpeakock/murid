@@ -31,9 +31,10 @@ def test_connections_checks_each_service(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "OK Hardcover account 1: authenticated as User 1" in output
     assert "OK Hardcover account 2: authenticated as User 2" in output
-    assert "OK Calibre: 1 books readable" in output
+    assert "OK Calibre: 1 book readable" in output
     assert "OK MyAnonamouse: search API responded" in output
-    assert "OK qBittorrent: category 'murid' readable (1 torrents)" in output
+    assert "OK qBittorrent: category 'murid' readable (1 torrent)" in output
+    assert "Connections: 5 passed, 0 failed" in output
     assert tokens == ["Bearer first", "Bearer second"]
     mam.check_connection.assert_called_once_with()
 

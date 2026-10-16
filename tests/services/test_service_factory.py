@@ -80,7 +80,7 @@ def test_calibre_error_exits(args, config, monkeypatch):
         fail,
     )
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(CalibreError, match="boom"):
         factory.calibre()
 
 

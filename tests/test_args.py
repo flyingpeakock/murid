@@ -108,6 +108,13 @@ def test_arg_parser_flags():
     assert args.config_file == "/tmp/config.yaml"
 
 
+@pytest.mark.parametrize("command", ["run", "status", "validate-config"])
+def test_commands_accept_no_color(command):
+    args = MuridArgumentParser("test").parse_args([command, "--no-color"])
+
+    assert args.no_color is True
+
+
 def test_add_book_arguments():
     args = MuridArgumentParser("test").parse_args(
         ["add-book", "Dune", "/tmp/dune.epub", "--config", "/tmp/config.yaml"]

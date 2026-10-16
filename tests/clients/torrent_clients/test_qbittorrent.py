@@ -4,6 +4,7 @@ import pytest
 import qbittorrentapi
 
 from murid import Qbittorrent, QbittorrentConfig
+from murid.clients.torrent_clients.qbittorrent import QbittorrentError
 
 
 @pytest.fixture
@@ -39,7 +40,7 @@ def test_validate_success(client):
 def test_validate_login_failure(client):
     client.auth_log_in.side_effect = qbittorrentapi.LoginFailed("invalid credentials")
 
-    with pytest.raises(SystemExit, match="1"):
+    with pytest.raises(QbittorrentError, match="invalid credentials"):
         Qbittorrent(
             QbittorrentConfig(
                 client=client,
@@ -119,14 +120,14 @@ def test_get_completed_path_empty_result(client):
     assert qbt.get_completed_path("abc123") is None
 
 
-def test_login_failure_logs_error(client, caplog):
+def test_login_failure_leaves_reporting_to_caller(client, caplog):
     client.auth_log_in.side_effect = qbittorrentapi.LoginFailed("bad login")
 
     with caplog.at_level("ERROR"):
-        with pytest.raises(SystemExit):
+        with pytest.raises(QbittorrentError, match="Failed to authenticate with qBittorrent"):
             Qbittorrent(QbittorrentConfig(client=client, category="ebooks", dry_run=False))
 
-    assert "Failed to authenticate with qBittorrent" in caplog.text
+    assert caplog.text == ""
 
 
 def test_get_torrents_uses_configured_category(client):

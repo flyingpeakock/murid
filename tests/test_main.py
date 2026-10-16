@@ -37,12 +37,14 @@ def test_main_dispatches_command(monkeypatch, command):
     )
     monkeypatch.setattr(
         "murid.main.setup_logger",
-        lambda level, *, include_date: calls.append(("log", level, include_date)),
+        lambda level, *, include_date, color, output_format: calls.append(
+            ("log", level, include_date, color)
+        ),
     )
     monkeypatch.setattr("murid.main.run_command", lambda parsed: calls.append(("run", parsed)) or 0)
 
     assert main() == 0
-    assert calls == [("log", "INFO", command == "schedule"), ("run", args)]
+    assert calls == [("log", "INFO", command == "schedule", True), ("run", args)]
 
 
 def test_main_exits_on_exception(monkeypatch):
@@ -58,8 +60,7 @@ def test_main_exits_on_exception(monkeypatch):
 
     monkeypatch.setattr("murid.main.run_command", fail)
 
-    with pytest.raises(RuntimeError, match="boom"):
-        main()
+    assert main() == 1
 
 
 @pytest.mark.parametrize("phase", ["parse", "command"])

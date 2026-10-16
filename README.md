@@ -33,7 +33,6 @@ The goal is a mostly hands-off workflow for turning your “Want to Read” list
 - Automatic Calibre imports
 - Dry-run mode
 - Environment variable secret injection
-- Structured logging
 
 ## Architecture
 
@@ -169,9 +168,37 @@ command, as in the examples below.
 | `validate-config` | Validate a configuration file |
 | `print-config` | Print the parsed configuration, with secrets redacted by default |
 
+Every command accepts `--no-color`, `--log-level`, and `--format auto|plain|json`.
+`auto` uses terminal layouts when connected to a terminal and unwrapped text when
+redirected. `plain` always emits unwrapped text without terminal styling. `json`
+emits JSON Lines: one object per result or summary on stdout, with diagnostics on
+stderr (also JSON Lines). Each object has a `type` and readable `message`; result
+objects also carry fields such as book metadata, scores, progress, and outcome
+counts. Consumers should select records by `type` and ignore unfamiliar fields.
+`print-config --format json` emits a `config` record containing the parsed,
+redacted configuration. `NO_COLOR` and `--no-color` also apply to terminal help.
+
+```bash
+murid status --format json
+murid list-missing --format plain > missing-books.txt
+murid search-book "Dune" --no-color
+```
+
+`run` reports a final sync summary and returns a nonzero exit code if imports
+failed, downloads remain pending, a required lookup was skipped, or no acceptable
+torrent was available for a missing book. Dry runs report planned imports and do
+not count a pending download as a failure. `retry-import` also returns nonzero for
+pending, failed, or skipped imports. Scheduled runs report unresolved outcomes and
+continue to the next scheduled cycle. `test-notification` reports delivery success
+or failure; no configured Apprise destinations is a failure. Detailed tracebacks
+are available with `--log-level debug`.
+
 Murid replaces punctuation and search operators in generated queries with spaces,
 preserving Unicode letters, numbers, and combining marks. Queries without
-searchable words are skipped.
+searchable words are skipped. Rejected title queries are reported
+as warnings; alternate titles and other books can still be processed. Books whose
+title queries all fail are counted as search failures, rather than empty results.
+Authentication and connection failures still stop the sync.
 
 For example, inspect book matches or validate a configuration before syncing:
 

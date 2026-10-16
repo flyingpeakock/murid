@@ -53,10 +53,10 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
             torrent_books.add(torrent.book)
 
         logger.debug(
-            "Torrent filters for %r: input=%d eligible_books=%d rejected_language=%d "
+            "%s: torrent filters: input=%d eligible_books=%d rejected_language=%d "
             "rejected_filetype=%d rejected_blacklist=%d allowed_languages=%r "
             "wanted_filetypes=%r",
-            book.title,
+            book,
             len(torrents),
             len(torrent_books),
             rejected_by_language,
@@ -67,20 +67,28 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
         )
 
         if not torrent_books:
-            logger.info("No torrents for %s passed language and file type filters", book)
+            logger.info("%s: no torrents passed language, file type, and blacklist filters", book)
             return None
 
         best_match, score = matcher.best_match(book, torrent_books)
 
         if best_match and score >= matcher.threshold and matcher.is_match(book, best_match):
             ret = next(t for t in torrents if t.book == best_match)
-            logger.info("Selected torrent for %s: %s with similarity %.2f", book, ret, score)
+            logger.info(
+                "%s: selected torrent %s (match score %.3f, threshold %.3f)",
+                book,
+                ret,
+                score,
+                matcher.threshold,
+            )
             return ret
         logger.info(
-            "No torrent found for %s. Closest match: %s with similarity %.2f",
+            "%s: no acceptable torrent; closest candidate: %s (match score %.3f, "
+            "threshold %.3f). Use murid search-book to review candidates",
             book,
             best_match,
             score,
+            matcher.threshold,
         )
         return None
 

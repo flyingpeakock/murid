@@ -154,12 +154,10 @@ class Hardcover:
             data = response.json()
 
             if "errors" in data:
-                logger.error("GraphQL errors: %r", data["errors"])
                 raise HardcoverError(f"GraphQL errors: {data['errors']}")
 
             return data
         except requests.RequestException as e:
-            logger.error("Error making query to Hardcover API: %r", e)
             raise HardcoverError(f"Error making query to Hardcover API: {e}") from e
 
     def get_user(self) -> HardcoverUser:
@@ -406,9 +404,8 @@ class Hardcover:
         try:
             data = self.fetch_data()
             items = data.get("data", {}).get("user_books", [])
-        except HardcoverError:
-            logger.error("Failed to fetch books for user %s", self.user.name)
-            raise
+        except HardcoverError as error:
+            raise HardcoverError(f"Cannot fetch books for {self.user.name}: {error}") from error
 
         for item in items:
             book = item.get("book", {})
