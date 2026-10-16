@@ -3,8 +3,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from murid import Book, BookMatcher, SyncService
 from murid.clients.hardcover import HardcoverError
+from murid.domain.book import Book
+from murid.domain.book_matcher import BookMatcher
+from murid.services.sync_service import SyncService
 
 
 class FakeBook:

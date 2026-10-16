@@ -1,4 +1,5 @@
-from murid import Book, Torrent, TorrentMetadata
+from murid.domain.book import Book
+from murid.domain.torrent import Torrent, TorrentMetadata
 
 
 def make_book():

@@ -1,6 +1,6 @@
 import logging
 
-from murid import AppriseHandler, init_apprise, send_test_notification
+from murid.notifications.apprise import AppriseHandler, init_apprise, send_test_notification
 
 
 def test_emit_sends_error_notification():

@@ -4,7 +4,7 @@ from unittest.mock import Mock
 import pytest
 import requests
 
-from murid import Hardcover, HardcoverError, HardcoverUser
+from murid.clients.hardcover import Hardcover, HardcoverError, HardcoverUser
 
 
 @pytest.fixture

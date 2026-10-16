@@ -1,4 +1,6 @@
-from murid import Book, Torrent, TorrentMetadata, TorrentSelector
+from murid.domain.book import Book
+from murid.domain.torrent import Torrent, TorrentMetadata
+from murid.domain.torrent_selector import TorrentSelector
 
 
 class DummyMatcher:
@@ -244,7 +246,7 @@ def test_blacklist_does_not_filter_non_matching_torrents():
 
 
 def test_ranking_prefers_seeded_torrent_over_higher_scoring_unseeded():
-    from murid import BookMatcher
+    from murid.domain.book_matcher import BookMatcher
 
     target = make_book()
     unseeded = make_torrent(id=1)
@@ -257,7 +259,7 @@ def test_ranking_prefers_seeded_torrent_over_higher_scoring_unseeded():
 
 
 def test_ranking_respects_format_order_before_freeleech_and_seeder_count():
-    from murid import BookMatcher
+    from murid.domain.book_matcher import BookMatcher
 
     epub = make_torrent(id=2)
     mobi = make_torrent(file_types=["mobi"], id=1)
@@ -273,7 +275,7 @@ def test_ranking_respects_format_order_before_freeleech_and_seeder_count():
 
 
 def test_ranking_freeleech_then_seeders_then_stable_id():
-    from murid import BookMatcher
+    from murid.domain.book_matcher import BookMatcher
 
     first, second, third = (make_torrent(id=i) for i in (1, 2, 3))
     first.metadata.seeders = 100
@@ -287,7 +289,7 @@ def test_ranking_freeleech_then_seeders_then_stable_id():
 
 
 def test_unseeded_fallback_and_matching_rules_are_preserved():
-    from murid import BookMatcher
+    from murid.domain.book_matcher import BookMatcher
 
     matching = make_torrent(id=1)
     matching.metadata.seeders = 0
@@ -298,7 +300,7 @@ def test_unseeded_fallback_and_matching_rules_are_preserved():
 
 
 def test_filtered_torrent_cannot_be_selected_with_same_book_metadata():
-    from murid import BookMatcher
+    from murid.domain.book_matcher import BookMatcher
 
     rejected = make_torrent(language="sv")
     eligible = make_torrent(language="en")

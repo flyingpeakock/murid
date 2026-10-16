@@ -4,12 +4,13 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from murid import (
+from murid.clients.myanonamouse import (
     MAMError,
+    MAMSearchError,
     MyAnonamouse,
     MyAnonamouseQuery,
+    parse_size,
 )
-from murid.clients.myanonamouse import MAMSearchError, parse_size
 
 NEGATIVE_ONLY_ERROR = (
     "Search returned an error<br />Your search is only not. This is not supported. "

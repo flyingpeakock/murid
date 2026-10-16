@@ -1,4 +1,4 @@
-from murid import Book
+from murid.domain.book import Book
 
 
 def test_book_str():

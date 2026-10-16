@@ -3,7 +3,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from murid import Book, BookMatcher
+from murid.domain.book import Book
+from murid.domain.book_matcher import BookMatcher
 from murid.services.manual_import import ManualImportError, add_book
 
 

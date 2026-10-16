@@ -3,8 +3,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from murid import ServiceFactory
 from murid.clients.calibre import CalibreConfig, CalibreError
+from murid.services.service_factory import ServiceFactory
 
 
 @pytest.fixture

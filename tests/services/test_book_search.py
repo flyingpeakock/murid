@@ -4,7 +4,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from murid import Book, BookMatcher, Torrent, TorrentMetadata, TorrentSelector
+from murid.domain.book import Book
+from murid.domain.book_matcher import BookMatcher
+from murid.domain.torrent import Torrent, TorrentMetadata
+from murid.domain.torrent_selector import TorrentSelector
 from murid.services.book_lookup import BookLookupError
 from murid.services.book_search import BookSearchError, search_book
 

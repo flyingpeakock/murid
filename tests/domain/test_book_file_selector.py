@@ -1,7 +1,8 @@
 """Tests for selecting one ebook file from a completed torrent."""
 
-from murid import Book, BookMatcher
+from murid.domain.book import Book
 from murid.domain.book_file_selector import BookFileSelector
+from murid.domain.book_matcher import BookMatcher
 
 
 def make_book(title="Dune", authors=None):

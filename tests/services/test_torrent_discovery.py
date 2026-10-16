@@ -4,8 +4,8 @@ from unittest.mock import Mock, call
 
 import pytest
 
-from murid import TorrentDiscoveryService
 from murid.clients.myanonamouse import MAMError, MAMSearchError
+from murid.services.torrent_discovery import TorrentDiscoveryService
 
 
 def test_rejected_title_does_not_discard_alternate_title_results(mam, caplog):
@@ -340,7 +340,10 @@ def test_download_torrents_happy_path(mam, matcher):
 
 
 def test_downloads_keep_requested_hardcover_metadata(mam):
-    from murid import Book, BookMatcher, Torrent, TorrentMetadata, TorrentSelector
+    from murid.domain.book import Book
+    from murid.domain.book_matcher import BookMatcher
+    from murid.domain.torrent import Torrent, TorrentMetadata
+    from murid.domain.torrent_selector import TorrentSelector
 
     requested = Book(
         title="Dune",
