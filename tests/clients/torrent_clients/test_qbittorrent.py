@@ -183,3 +183,32 @@ def test_tag_lookup_scopes_category_and_handles_tag_whitespace(client):
     qbt = Qbittorrent(QbittorrentConfig(client=client, category="ebooks", dry_run=False))
     assert qbt.get_torrents_with_tag("murid_timeout") == [torrent]
     client.torrents_info.assert_called_once_with(category="ebooks", tag="murid_timeout")
+
+
+@pytest.mark.parametrize(
+    "source,content,expected",
+    [
+        ("/downloads", "/downloads/Dune/book.epub", "/mapped/Dune/book.epub"),
+        ("/downloads/", "/downloads/Dune.epub", "/mapped/Dune.epub"),
+        ("/downloads", "/downloads", "/mapped"),
+        ("/downloads", "/downloads-old/Dune.epub", "/downloads-old/Dune.epub"),
+        ("/downloads", "/other/downloads/Dune.epub", "/other/downloads/Dune.epub"),
+        ("/downloads", "/downloads/../other/Dune.epub", "/downloads/../other/Dune.epub"),
+        ("/", "/Dune.epub", "/mapped/Dune.epub"),
+        (r"C:\Downloads", r"C:\Downloads\Dune\book.epub", "/mapped/Dune/book.epub"),
+        (r"C:\Downloads", r"C:\Downloads-old\Dune.epub", r"C:\Downloads-old\Dune.epub"),
+        (r"C:\Downloads", r"D:\Downloads\Dune.epub", r"D:\Downloads\Dune.epub"),
+    ],
+)
+def test_path_mapping_respects_directories(client, monkeypatch, source, content, expected):
+    monkeypatch.setattr("murid.clients.torrent_clients.qbittorrent.time.sleep", lambda _: None)
+    client.torrents_info.return_value = [Mock(progress=1, content_path=content)]
+    qbt = Qbittorrent(
+        QbittorrentConfig(
+            client=client,
+            category="ebooks",
+            dry_run=False,
+            mapping={"qbit_path": source, "murid_path": "/mapped/"},
+        )
+    )
+    assert qbt.get_completed_path("abc123") == expected

@@ -1,8 +1,10 @@
 """qBittorrent client implementation for Murid."""
 
 import logging
+import ntpath
 import time
 from dataclasses import dataclass
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from uuid import uuid4
 
 import qbittorrentapi
@@ -109,13 +111,19 @@ class Qbittorrent(TorrentClient):
             return None
         path = torrents[0].content_path
 
-        if (
-            self.mapping
-            and self.mapping["qbit_path"]
-            and self.mapping["murid_path"]
-            and path.startswith(self.mapping["qbit_path"])
-        ):
-            path = path.replace(self.mapping["qbit_path"], self.mapping["murid_path"], 1)
+        if self.mapping and self.mapping["qbit_path"] and self.mapping["murid_path"]:
+            # qBittorrent may run on a different OS from Murid. Parse its path
+            # lexically using the source syntax, then join using the local OS.
+            source = self.mapping["qbit_path"]
+            windows_path = bool(ntpath.splitdrive(source)[0]) or "\\" in source
+            path_type = PureWindowsPath if windows_path else PurePosixPath
+            try:
+                relative = path_type(path).relative_to(path_type(source))
+            except ValueError:
+                pass
+            else:
+                if ".." not in relative.parts:
+                    path = str(Path(self.mapping["murid_path"]).joinpath(*relative.parts))
 
         return path
 
