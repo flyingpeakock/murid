@@ -10,7 +10,7 @@ from ..clients.calibre import Calibre, CalibreConfig
 from ..clients.hardcover import Hardcover
 from ..clients.myanonamouse import MyAnonamouse
 from ..clients.torrent_clients.qbittorrent import Qbittorrent, QbittorrentConfig
-from ..config.config import Config, ConfigError
+from ..config import Config, ConfigError
 from ..domain.book_matcher import BookMatcher
 from ..domain.torrent_selector import TorrentSelector
 from ..notifications.apprise import init_apprise as apprise
@@ -76,6 +76,7 @@ class ServiceFactory:
                 library=self.config["calibre"]["library"],
                 server_username=self.config["calibre"].get("server_username"),
                 server_password=self.config["calibre"].get("server_password"),
+                command_timeout_seconds=self.config["calibre"].get("command_timeout_seconds", 120),
             )
         )
 

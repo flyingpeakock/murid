@@ -1,6 +1,8 @@
 import pytest
 
-from murid import Book, BookMatcher, Calibre, CalibreConfig, CalibreError
+from murid.clients.calibre import Calibre, CalibreConfig, CalibreError
+from murid.domain.book import Book
+from murid.domain.book_matcher import BookMatcher
 
 
 class Result:
@@ -388,3 +390,22 @@ def test_import_preserves_source_identifiers_and_unnumbered_series(tmp_path):
     book.series_number = 0
     calibre.add_book(book, "/tmp/dune.epub")
     assert calls[-1][calls[-1].index("--series-index") + 1] == "0"
+
+
+@pytest.mark.parametrize("operation", ["validate", "list", "add"])
+def test_command_timeout_is_bounded_and_reported(operation, tmp_path):
+    import subprocess
+
+    def run(command, **kwargs):
+        assert kwargs["timeout"] == 7
+        if operation == "validate" or "--version" not in command:
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+        return Result()
+
+    config = CalibreConfig("calibredb", str(tmp_path), command_timeout_seconds=7)
+    with pytest.raises(CalibreError, match="timed out after 7 seconds"):
+        calibre = Calibre(config, run=run)
+        if operation == "list":
+            calibre.get_books()
+        elif operation == "add":
+            calibre.add_book(Book("Dune", ["Frank Herbert"], 1, [], "test"), "/book.epub")

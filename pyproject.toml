@@ -68,6 +68,7 @@ select = [
 
 [tool.pylint.main]
 files = ["src"]
+ignore = ["_version.py"]
 persistent = false
 py-version = "3.12"
 

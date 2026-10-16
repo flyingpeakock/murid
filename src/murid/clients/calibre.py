@@ -25,6 +25,7 @@ class CalibreConfig:
     library: str
     server_username: str | None = None
     server_password: str | None = None
+    command_timeout_seconds: int = 120
 
 
 class Calibre:
@@ -45,7 +46,12 @@ class Calibre:
                 stderr=subprocess.PIPE,
                 text=True,
                 check=True,
+                timeout=self.config.command_timeout_seconds,
             )
+        except subprocess.TimeoutExpired as e:
+            raise CalibreError(
+                f"Calibre command timed out after {self.config.command_timeout_seconds} seconds"
+            ) from e
         except FileNotFoundError as e:
             raise CalibreError(f"Calibre executable not found: {self.config.executable}") from e
         except subprocess.CalledProcessError as e:
@@ -202,12 +208,18 @@ class Calibre:
 
         password = f"{self.config.server_password}\n" if self.config.server_password else None
 
-        return self.run(
-            command,
-            input=password,
-            check=True,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            start_new_session=True,
-        ).stdout
+        try:
+            return self.run(
+                command,
+                input=password,
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
+                timeout=self.config.command_timeout_seconds,
+            ).stdout
+        except subprocess.TimeoutExpired as e:
+            raise CalibreError(
+                f"Calibre command timed out after {self.config.command_timeout_seconds} seconds"
+            ) from e

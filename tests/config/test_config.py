@@ -6,8 +6,7 @@ from io import StringIO
 import pytest
 import yaml
 
-from murid import Config, ConfigError
-from murid.config.config import _defaults, env_constructor
+from murid.config import Config, ConfigError, _defaults, env_constructor
 
 missing = object()
 base = _defaults.copy() | {
@@ -483,3 +482,44 @@ def test_blacklisted_torrent_ids_can_be_set(build_config):
 def test_torrent_timeout_seconds_must_be_int(build_config):
     with pytest.raises(ConfigError, match="Config item 'torrent_timeout_seconds' must be an int"):
         build_config(torrent_timeout_seconds="not-an-int")
+
+
+@pytest.mark.parametrize("value", [-0.01, 1.01, float("nan"), float("inf"), -float("inf")])
+def test_threshold_must_be_finite_and_in_range(build_config, value):
+    with pytest.raises(ConfigError, match="matcher_threshold.*between 0 and 1"):
+        build_config(matcher_threshold=value)
+
+
+@pytest.mark.parametrize("value", [0.0, 1.0])
+def test_threshold_boundaries_are_valid(build_config, value):
+    assert build_config(matcher_threshold=value).matcher_threshold == value
+
+
+@pytest.mark.parametrize("value", [0, -1, 65536, True])
+def test_port_must_be_valid(build_config, value):
+    with pytest.raises(ConfigError, match="qbittorrent.port"):
+        build_config(qbittorrent=base["qbittorrent"] | {"port": value})
+
+
+@pytest.mark.parametrize("value", [1, 65535])
+def test_port_boundaries_are_valid(build_config, value):
+    config = build_config(qbittorrent=base["qbittorrent"] | {"port": value})
+    assert config.qbittorrent["port"] == value
+
+
+@pytest.mark.parametrize("value", [0, -1, True, 1.5])
+@pytest.mark.parametrize("key", ["torrent_timeout_seconds", "calibre.command_timeout_seconds"])
+def test_timeouts_must_be_positive_integers(build_config, key, value):
+    overrides = (
+        {"calibre": {"library": "metadata.db", "command_timeout_seconds": value}}
+        if key.startswith("calibre.")
+        else {key: value}
+    )
+    with pytest.raises(ConfigError, match=key):
+        build_config(**overrides)
+
+
+def test_calibre_timeout_default_and_override(build_config):
+    assert build_config().calibre["command_timeout_seconds"] == 120
+    config = build_config(calibre={"library": "metadata.db", "command_timeout_seconds": 5})
+    assert config.calibre["command_timeout_seconds"] == 5

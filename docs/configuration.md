@@ -22,7 +22,7 @@ Defaults below apply to the YAML configuration. Required values must be supplied
 | `apprise` | List of Apprise notification URLs | `null` (disabled) |
 | `filetypes` | Accepted ebook formats, most preferred first | `["epub", "mobi", "azw3", "azw"]` |
 | `blacklisted_torrent_ids` | MyAnonamouse torrent IDs to exclude | `[]` |
-| `torrent_timeout_seconds` | Seconds to wait for a torrent to complete | `1800` |
+| `torrent_timeout_seconds` | Positive integer seconds to wait for a torrent to complete | `1800` |
 
 ### Calibre
 
@@ -31,6 +31,7 @@ These options belong under `calibre`.
 | Option | Description | Default |
 | --- | --- | --- |
 | `calibredb_executable` | Path to the `calibredb` executable | `calibredb` |
+| `command_timeout_seconds` | Positive integer maximum runtime for each `calibredb` command | `120` |
 | `library` | Local library path or Calibre content server URL | required |
 | `server_username` | Calibre content server username | `null` |
 | `server_password` | Calibre content server password | `null` |
@@ -42,7 +43,7 @@ These options belong under `qbittorrent`.
 | Option | Description | Default |
 | --- | --- | --- |
 | `host` | Web UI host | required |
-| `port` | Web UI port | required |
+| `port` | Web UI port, integer from `1` to `65535` | required |
 | `username` | Login username | required |
 | `password` | Login password | required |
 | `verify_cert` | Verify TLS certificates | `true` |
@@ -121,5 +122,10 @@ identifier per catalog type. Calibre supports one value per identifier type;
 identifier values retain their original case. Existing library records are not
 updated during import. Retries of earlier downloads still recover metadata from
 MyAnonamouse.
+
+Calibre commands that exceed `calibre.command_timeout_seconds` stop with an error.
+An import timeout leaves the download tagged for investigation and `retry-import`.
+Check the library before retrying: Calibre may have written the book before the
+command timed out. Increase the timeout for large files or slow content servers.
 
 For optional notifications, configure destination URLs using [Apprise](https://appriseit.com/getting-started/configuration/).

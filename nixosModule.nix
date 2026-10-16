@@ -16,6 +16,11 @@ in {
 
     configCalibreType = lib.types.submodule {
       options = {
+        command_timeout_seconds = lib.mkOption {
+          description = "Maximum runtime in seconds for each calibredb command";
+          type = lib.types.ints.positive;
+          default = 120;
+        };
         calibredb_executable = lib.mkOption {
           description = "Path to the calibredb executable";
           type = lib.types.str;
@@ -145,7 +150,7 @@ in {
 
             matcher_threshold = lib.mkOption {
               description = "Threshold for the matcher to consider a match valid (between 0 and 1)";
-              type = lib.types.float;
+              type = lib.types.addCheck lib.types.float (value: value >= 0 && value <= 1);
               default = 0.92;
             };
 
@@ -208,6 +213,7 @@ in {
 
             torrent_timeout_seconds = lib.mkOption {
               description = "Number of seconds before a torrent download is considered timed out";
+              type = lib.types.ints.positive;
               default = 1800; # 30 minutes
             };
           };

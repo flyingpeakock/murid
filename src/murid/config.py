@@ -1,6 +1,7 @@
 """Module for loading and validating the configuration for the Murid application."""
 
 import logging
+import math
 import os
 from io import StringIO
 from typing import Any
@@ -34,6 +35,7 @@ _defaults = {
         "library": None,
         "server_username": None,
         "server_password": None,
+        "command_timeout_seconds": 120,
     },
     "qbittorrent": {
         "host": _MISSING,
@@ -145,12 +147,17 @@ class Config:
         self._ensure_hardcover_api_keys(self.get("hardcover_api_keys"))
         self._ensure_type(self.get("redact_sensitive_data"), bool, "redact_sensitive_data")
         self._ensure_type(self.get("matcher_threshold"), float, "matcher_threshold")
+        threshold = self.get("matcher_threshold")
+        if not math.isfinite(threshold) or not 0 <= threshold <= 1:
+            raise ConfigError("Config item 'matcher_threshold' must be between 0 and 1")
         self._ensure_lang_codes(self.get("lang_codes"))
         self._ensure_qbittorrent(self.get("qbittorrent"))
         self._ensure_cron(self.get("schedule"))
         self._ensure_filetypes(self.get("filetypes"))
         self._ensure_blacklisted_torrent_ids(self.get("blacklisted_torrent_ids"))
         self._ensure_type(self.get("torrent_timeout_seconds"), int, "torrent_timeout_seconds")
+        if self.get("torrent_timeout_seconds") <= 0:
+            raise ConfigError("Config item 'torrent_timeout_seconds' must be greater than 0")
         self._ensure_calibre(self.get("calibre"))
 
         self._check_extra_keys(self._config)
@@ -183,7 +190,7 @@ class Config:
     @staticmethod
     def _ensure_type(data: Any, expected_type: type, position: str) -> None:
         """Ensure that the provided data is of the expected type."""
-        if not isinstance(data, expected_type):
+        if not isinstance(data, expected_type) or (expected_type is int and isinstance(data, bool)):
             raise ConfigError(
                 f"Config item '{position}' must be an {expected_type.__name__}"
                 if expected_type.__name__[0].lower() in "aeiou"
@@ -214,6 +221,8 @@ class Config:
                 Config._ensure_type(qbittorrent[key], int, f"qbittorrent.{key}")
             else:
                 Config._ensure_type(qbittorrent[key], str, f"qbittorrent.{key}")
+        if not 1 <= qbittorrent["port"] <= 65535:
+            raise ConfigError("Config item 'qbittorrent.port' must be between 1 and 65535")
         Config._ensure_type(qbittorrent.get("verify_cert", True), bool, "qbittorrent.verify_cert")
         Config._ensure_type(qbittorrent.get("category", "murid"), str, "qbittorrent.category")
         Config._ensure_type(qbittorrent.get("mapping", {}), dict, "qbittorrent.mapping")
@@ -238,6 +247,12 @@ class Config:
     def _ensure_calibre(calibre: dict) -> None:
         """Ensure that the calibre config item is valid."""
         Config._ensure_type(calibre, dict, "calibre")
+        timeout = calibre["command_timeout_seconds"]
+        Config._ensure_type(timeout, int, "calibre.command_timeout_seconds")
+        if timeout <= 0:
+            raise ConfigError(
+                "Config item 'calibre.command_timeout_seconds' must be greater than 0"
+            )
         for old_key in ("library_path", "server_url"):
             if old_key in calibre:
                 raise ConfigError(

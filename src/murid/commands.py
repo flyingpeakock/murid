@@ -8,7 +8,7 @@ import yaml
 from rich.text import Text
 
 from .clients.hardcover import HardcoverError
-from .config.config import Config, ConfigError
+from .config import Config, ConfigError
 from .notifications.apprise import send_test_notification
 from .services.book_lookup import BookLookupError
 from .services.book_search import BookSearchError, search_book

@@ -21,6 +21,7 @@ lang_codes:
 # Calibre settings
 calibre:
   calibredb_executable: "calibredb"
+  command_timeout_seconds: 120 # Maximum runtime for each calibredb command
   library: "http://localhost:8080/#books" # Or a local library path
   server_username: "user"
   server_password: !ENV CALIBRE_PASSWORD

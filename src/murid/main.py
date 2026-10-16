@@ -12,7 +12,7 @@ from .clients.hardcover import HardcoverError
 from .clients.myanonamouse import MAMError, MAMSearchError
 from .clients.torrent_clients.qbittorrent import QbittorrentError
 from .commands import run_command
-from .config.config import ConfigError
+from .config import ConfigError
 from .logging_config import setup_logger
 from .ui import colored, setup_output
 
