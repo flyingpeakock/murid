@@ -5,6 +5,7 @@ import logging
 import re
 import threading
 import time
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -32,6 +33,19 @@ class MyAnonamouseQuery:
 
 class MAMError(Exception):
     """Custom exception for errors related to MyAnonamouse interactions."""
+
+
+def _sanitize_query(text: str) -> str:
+    """Keep Unicode words, including their combining marks, without search operators."""
+    normalized = unicodedata.normalize("NFC", text)
+    if not any(character.isalnum() for character in normalized):
+        return ""
+    return " ".join(
+        "".join(
+            character if character.isspace() or unicodedata.category(character)[0] in "LNM" else " "
+            for character in normalized
+        ).split()
+    )
 
 
 class MyAnonamouse:
@@ -97,10 +111,11 @@ class MyAnonamouse:
 
     @staticmethod
     def _search_payload(query: MyAnonamouseQuery) -> dict[str, Any]:
-        """Build a request for the torrent search API."""
+        """Build a request, treating generated titles as words rather than search syntax."""
+        text = _sanitize_query(query.text)
         return {
             "tor": {
-                "text": query.text,
+                "text": text,
                 "cat": query.categories or [0],
                 "main_cat": query.main_categories or [],
                 "srchIn": query.search_fields
@@ -136,12 +151,17 @@ class MyAnonamouse:
     def search(self, query: MyAnonamouseQuery, *, raise_on_error: bool = False) -> set[Torrent]:
         """Search for torrents on MyAnonamouse matching the specified criteria."""
 
-        logger.debug("Searching MyAnonamouse for %r", query.text or query.id)
+        payload = self._search_payload(query)
+        text = payload["tor"]["text"]
+        if not text and query.id is None:
+            logger.debug("Skipping MyAnonamouse query %r: no searchable words", query.text)
+            return set()
+        logger.debug("Searching MyAnonamouse for %r", text or query.id)
         try:
             response = self._request(
                 "POST",
                 self.SEARCH_URL,
-                json=self._search_payload(query),
+                json=payload,
                 timeout=120,
             )
 

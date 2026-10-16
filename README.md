@@ -169,6 +169,10 @@ command, as in the examples below.
 | `validate-config` | Validate a configuration file |
 | `print-config` | Print the parsed configuration, with secrets redacted by default |
 
+Murid replaces punctuation and search operators in generated queries with spaces,
+preserving Unicode letters, numbers, and combining marks. Queries without
+searchable words are skipped.
+
 For example, inspect book matches or validate a configuration before syncing:
 
 ```bash

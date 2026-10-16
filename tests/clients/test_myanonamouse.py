@@ -12,6 +12,45 @@ from murid import (
 from murid.clients.myanonamouse import parse_size
 
 
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        (
+            "Agua Para Elefantes Mti / Water for Elephants Mti",
+            "Agua Para Elefantes Mti Water for Elephants Mti",
+        ),
+        ('-Example @author (Title) | "Other" /2 !word*', "Example author Title Other 2 word"),
+        ("  L’Étranger — Café & 東京\n", "L Étranger Café 東京"),
+        ("Cafe\u0301", "Café"),
+        ("हिंदी / বাংলা", "हिंदी বাংলা"),
+        ("Title_with_underscores", "Title with underscores"),
+        ("Water for Elephants", "Water for Elephants"),
+    ],
+)
+def test_title_queries_are_sanitized_before_request(mam, title, expected):
+    response = Mock()
+    response.json.return_value = {"data": []}
+    mam._request = Mock(return_value=response)
+    assert mam.search_ebook(title) == set()
+    mam._request.assert_called_once()
+    assert mam._request.call_args.kwargs["json"]["tor"]["text"] == expected
+
+
+@pytest.mark.parametrize("title", ["", "  \n", "/ - () @ ! *", "___", "\u0301"])
+def test_queries_without_words_do_not_make_requests(mam, title):
+    mam._request = Mock()
+    assert mam.search_ebook(title) == set()
+    mam._request.assert_not_called()
+
+
+def test_id_lookup_still_works_with_empty_query(mam):
+    response = Mock()
+    response.json.return_value = {"data": []}
+    mam._request = Mock(return_value=response)
+    mam.search(MyAnonamouseQuery(text="", id=123))
+    assert mam._request.call_args.kwargs["json"]["tor"]["id"] == "123"
+
+
 @pytest.fixture
 def mam():
     return MyAnonamouse("fake-cookie")
@@ -113,7 +152,7 @@ def test_check_connection_accepts_zero_results(mam):
 
     response.raise_for_status.assert_called_once_with()
     assert mam._request.call_args.args == ("POST", mam.SEARCH_URL)
-    assert mam._request.call_args.kwargs["json"]["tor"]["text"] == "murid-connection-check"
+    assert mam._request.call_args.kwargs["json"]["tor"]["text"] == "murid connection check"
 
 
 def test_check_connection_accepts_mam_empty_search_error(mam):
@@ -148,7 +187,7 @@ def test_search_request_error_returns_empty_set(mam):
     def boom(*args, **kwargs):
         raise requests.RequestException("boom")
 
-    mam.session.post = boom
+    mam._request = boom
 
     assert mam.search(MyAnonamouseQuery(text="Dune")) == set()
 
