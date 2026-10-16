@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from html import unescape
 from typing import Any
 
 import requests
@@ -200,8 +201,11 @@ class MyAnonamouse:
 
         return Torrent(
             book=Book(
-                title=str(data.get("title", "")),
-                authors=[a.strip() for _, a in json.loads(data.get("author_info", "{}")).items()],
+                title=unescape(str(data.get("title", ""))),
+                authors=[
+                    unescape(str(author)).strip()
+                    for author in json.loads(data.get("author_info", "{}")).values()
+                ],
                 id=int(data.get("id", 0)),
                 isbn=[data.get("isbn", None)],
                 source="myanonamouse",

@@ -206,6 +206,18 @@ def test_parse_torrent_multiple_authors():
     ]
 
 
+def test_parse_torrent_decodes_html_entities_in_book_metadata():
+    torrent = MyAnonamouse._parse_torrent(
+        {
+            "title": "The Blighted Stars",
+            "author_info": '{"1":"Megan E O&#039;Keefe"}',
+        }
+    )
+
+    assert torrent.book.title == "The Blighted Stars"
+    assert torrent.book.authors == ["Megan E O'Keefe"]
+
+
 def test_download_torrent_uses_request_wrapper(mam):
     class Response:
         content = b"torrent data"
