@@ -64,6 +64,24 @@ The `murid` command in the shell runs the Nix-built package. Use the Python comm
 above to run local edits, or `nix build` to rebuild the package. Run
 `nix flake check` for the flake checks, including the NixOS module test on Linux.
 
+### Continuous integration
+
+The [CI workflow](../.github/workflows/ci.yml) runs on pull requests, pushes to
+`main`, and manual dispatch. It checks Ruff and Pylint, runs tests with
+coverage on Python 3.12, 3.13, and 3.14, builds a source distribution and wheel,
+and smoke-tests the installed wheel. A separate job runs the Nix flake checks
+and builds the Linux package.
+
+To run the Python checks locally after installing the development dependencies:
+
+```bash
+ruff check src tests
+pylint src --ignore=_version.py
+python -m pytest --cov=murid --cov-report=term-missing
+```
+
+GitHub Actions are pinned to commits; Dependabot checks for updates weekly.
+
 ## NixOS Flake
 
 Add Murid as a flake input, then include its module in your NixOS module list. For example:
