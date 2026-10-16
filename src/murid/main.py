@@ -35,7 +35,10 @@ def _main() -> int:
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
-    setup_logger(getattr(args, "log_level", "ERROR"))
+    setup_logger(
+        getattr(args, "log_level", "ERROR"),
+        include_date=args.command == "schedule",
+    )
 
     logger.info(
         r"""
