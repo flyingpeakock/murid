@@ -16,7 +16,7 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
     def __init__(
         self,
         lang_codes: set[str],
-        wanted_filetypes: set[str] | None = None,
+        wanted_filetypes: Iterable[str] | None = None,
         blacklist: set[str] | None = None,
     ):
         self.lang_codes = lang_codes
@@ -25,16 +25,21 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
             blacklist = set()
         self.blacklist = blacklist
 
-        if not wanted_filetypes:
-            wanted_filetypes = {"epub", "mobi", "azw3"}
-        self.wanted_filetypes = wanted_filetypes
+        formats = wanted_filetypes if wanted_filetypes is not None else ("epub", "mobi", "azw3")
+        # Sets remain supported for callers without an explicit format preference.
+        if isinstance(formats, (set, frozenset)):
+            formats = sorted(formats)
+        self.filetype_priority = {
+            filetype: index for index, filetype in enumerate(dict.fromkeys(formats))
+        }
+        self.wanted_filetypes = set(self.filetype_priority)
 
     def select(
         self, book: Book, torrents: Iterable[Torrent], matcher: BookMatcher
     ) -> Torrent | None:
         """Select the best matching torrent for the given book from the list of torrents"""
         torrents = list(torrents)
-        torrent_books = set()
+        eligible = []
         rejected_by_language = 0
         rejected_by_filetype = 0
         rejected_by_blacklist = 0
@@ -50,15 +55,15 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
             if reasons:
                 continue
 
-            torrent_books.add(torrent.book)
+            eligible.append(torrent)
 
         logger.debug(
-            "%s: torrent filters: input=%d eligible_books=%d rejected_language=%d "
+            "%s: torrent filters: input=%d eligible_torrents=%d rejected_language=%d "
             "rejected_filetype=%d rejected_blacklist=%d allowed_languages=%r "
             "wanted_filetypes=%r",
             book,
             len(torrents),
-            len(torrent_books),
+            len(eligible),
             rejected_by_language,
             rejected_by_filetype,
             rejected_by_blacklist,
@@ -66,31 +71,60 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
             sorted(self.wanted_filetypes),
         )
 
-        if not torrent_books:
+        if not eligible:
             logger.info("%s: no torrents passed language, file type, and blacklist filters", book)
             return None
 
-        best_match, score = matcher.best_match(book, torrent_books)
-
-        if best_match and score >= matcher.threshold and matcher.is_match(book, best_match):
-            ret = next(t for t in torrents if t.book == best_match)
+        scored = [(torrent, matcher.similarity(book, torrent.book)) for torrent in eligible]
+        accepted = [
+            (torrent, score)
+            for torrent, score in scored
+            if score >= matcher.threshold and matcher.is_match(book, torrent.book)
+        ]
+        if accepted:
+            selected, score = min(accepted, key=lambda item: self.preference(*item))
             logger.info(
-                "%s: selected torrent %s (match score %.3f, threshold %.3f)",
+                "%s: selected torrent %s (match score %.3f, threshold %.3f; "
+                "%d seeders, formats %s, freeleech %s)",
                 book,
-                ret,
+                selected,
                 score,
                 matcher.threshold,
+                selected.metadata.seeders,
+                ", ".join(selected.file_types or []),
+                selected.metadata.freeleech,
             )
-            return ret
+            return selected
+        closest, score = max(scored, key=lambda item: item[1])
         logger.info(
             "%s: no acceptable torrent; closest candidate: %s (match score %.3f, "
             "threshold %.3f). Use murid search-book to review candidates",
             book,
-            best_match,
+            closest.book,
             score,
             matcher.threshold,
         )
         return None
+
+    def preference(self, torrent: Torrent, score: float) -> tuple:
+        """Rank valid matches by availability, confidence, format, and download cost."""
+        format_rank = min(
+            (
+                self.filetype_priority[fmt]
+                for fmt in torrent.file_types or []
+                if fmt in self.filetype_priority
+            ),
+            default=len(self.filetype_priority),
+        )
+        return (
+            torrent.metadata.seeders <= 0,
+            -score,
+            format_rank,
+            not torrent.metadata.freeleech,
+            -torrent.metadata.seeders,
+            torrent.book.id,
+            torrent.download_hash or "",
+        )
 
     def rejection_reasons(self, torrent: Torrent) -> list[str]:
         """Return the configured filters that reject a torrent before book matching."""

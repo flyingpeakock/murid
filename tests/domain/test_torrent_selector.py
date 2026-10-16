@@ -7,8 +7,8 @@ class DummyMatcher:
         self.threshold = threshold
         self.match = match
 
-    def best_match(self, book, candidates):
-        return self.result
+    def similarity(self, book, candidate):
+        return self.result[1] if candidate == self.result[0] else 0.0
 
     def is_match(self, book, candidate):
         return self.match
@@ -241,3 +241,67 @@ def test_blacklist_does_not_filter_non_matching_torrents():
     )
 
     assert result is torrent
+
+
+def test_ranking_prefers_seeded_torrent_over_higher_scoring_unseeded():
+    from murid import BookMatcher
+
+    target = make_book()
+    unseeded = make_torrent(id=1)
+    unseeded.metadata.seeders = 0
+    seeded = make_torrent(title="Dune: A Novel", id=2)
+    seeded.metadata.seeders = 1
+    matcher = BookMatcher()
+    assert matcher.similarity(target, unseeded.book) > matcher.similarity(target, seeded.book)
+    assert TorrentSelector({"en"}).select(target, [unseeded, seeded], matcher) is seeded
+
+
+def test_ranking_respects_format_order_before_freeleech_and_seeder_count():
+    from murid import BookMatcher
+
+    epub = make_torrent(id=2)
+    mobi = make_torrent(file_types=["mobi"], id=1)
+    mobi.metadata.freeleech = True
+    mobi.metadata.seeders = 100
+    matcher = BookMatcher()
+    assert (
+        TorrentSelector({"en"}, ["epub", "mobi"]).select(make_book(), [mobi, epub], matcher) is epub
+    )
+    assert (
+        TorrentSelector({"en"}, ["mobi", "epub"]).select(make_book(), [epub, mobi], matcher) is mobi
+    )
+
+
+def test_ranking_freeleech_then_seeders_then_stable_id():
+    from murid import BookMatcher
+
+    first, second, third = (make_torrent(id=i) for i in (1, 2, 3))
+    first.metadata.seeders = 100
+    second.metadata.freeleech = third.metadata.freeleech = True
+    third.metadata.seeders = 20
+    selector, matcher = TorrentSelector({"en"}), BookMatcher()
+    assert selector.select(make_book(), [first, second, third], matcher) is third
+    third.metadata.seeders = second.metadata.seeders
+    for candidates in ([first, second, third], [third, second, first]):
+        assert selector.select(make_book(), candidates, matcher) is second
+
+
+def test_unseeded_fallback_and_matching_rules_are_preserved():
+    from murid import BookMatcher
+
+    matching = make_torrent(id=1)
+    matching.metadata.seeders = 0
+    wrong = make_torrent(title="Little Women", id=2)
+    wrong.metadata.seeders = 1000
+    wrong.metadata.freeleech = True
+    assert TorrentSelector({"en"}).select(make_book(), [wrong, matching], BookMatcher()) is matching
+
+
+def test_filtered_torrent_cannot_be_selected_with_same_book_metadata():
+    from murid import BookMatcher
+
+    rejected = make_torrent(language="sv")
+    eligible = make_torrent(language="en")
+    assert (
+        TorrentSelector({"en"}).select(make_book(), [rejected, eligible], BookMatcher()) is eligible
+    )

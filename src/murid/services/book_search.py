@@ -36,7 +36,7 @@ def _print_candidates(book, torrents, matcher, discovery):
     candidates.sort(
         key=lambda item: (
             item[0] is not selected,
-            -item[1],
+            selector.preference(item[0], item[1]),
             item[0].book.title.casefold(),
             item[0].book.id,
         )

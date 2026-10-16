@@ -189,7 +189,7 @@ in {
             };
 
             filetypes = lib.mkOption {
-              description = "List of filetypes to consider when matching books";
+              description = "Accepted ebook formats in preference order";
               type = lib.types.listOf lib.types.str;
               default = [
                 "epub"

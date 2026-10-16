@@ -317,7 +317,7 @@ export MURID_CONFIG_FILE=/path/to/config.yaml
 | `schedule`                | Cron expression                       | `0 * * * *` |
 | `redact_sensitive_data`   | Hide secrets in logs                  | `true`      |
 | `apprise`                 | Notifications via [Apprise](https://appriseit.com/getting-started/configuration/)   | `None`      |
-| `filetypes`               | List of filetypes to support          | `["epub", "mobi", "azw3", "azw"]` |
+| `filetypes`               | Accepted formats in preference order          | `["epub", "mobi", "azw3", "azw"]` |
 | `blacklisted_torrent_ids` | List of MaM torrent id's to blacklist | `[]` |
 | `torrent_timeout_seconds` | Seconds before a torrent is considered to have timed out | `1800` |
 
@@ -363,6 +363,15 @@ qbittorrent:
 ```
 
 This allows murid to correctly locate files reported by qBittorrent.
+
+### Torrent preferences
+
+The order of `filetypes` controls format preference for both torrent selection
+and ebook selection within a download. Torrents must first pass the configured
+filters and book matching rules. Murid then prefers torrents with seeders, higher
+match scores, earlier formats in `filetypes`, freeleech, and more seeders, in that
+order. Ties use the torrent ID for reproducible selection. Unseeded torrents remain
+eligible when no seeded match is available.
 
 ## Credentials
 

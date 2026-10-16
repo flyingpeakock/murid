@@ -155,7 +155,7 @@ class ServiceFactory:
         """Create a TorrentSelector instance."""
         return TorrentSelector(
             lang_codes=set(self.config["lang_codes"]),
-            wanted_filetypes=set(self.config["filetypes"]),
+            wanted_filetypes=self.config["filetypes"],
             blacklist=set(self.config["blacklisted_torrent_ids"]),
         )
 

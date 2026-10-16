@@ -61,7 +61,7 @@ apprise: null
 #   - "discord://webhook_id/webhook_token"
 #   - "telegram://bot_token/chat_id"
 
-# Accepted ebook formats
+# Accepted ebook formats, most preferred first
 filetypes:
   - epub
   - mobi
