@@ -119,6 +119,8 @@ def test_search_book_rejects_ambiguous_hardcover_name():
 
 def test_search_book_adds_selected_torrent_and_checks_calibre(capsys):
     target = book(1)
+    target.identifiers = {"Goodreads": ["44767458"]}
+    target.isbn = ["9780441172719"]
     selected = torrent(101)
     factory, discovery = make_factory({target}, {selected})
     factory.calibre().contains_book.side_effect = [False, True]
@@ -127,9 +129,7 @@ def test_search_book_adds_selected_torrent_and_checks_calibre(capsys):
     search_book("Dune", factory, add=True)
 
     discovery.mam.download_torrent.assert_called_once_with(selected)
-    factory.torrent_import().import_torrents.assert_called_once_with(
-        [(b"torrent file", selected.book)]
-    )
+    factory.torrent_import().import_torrents.assert_called_once_with([(b"torrent file", target)])
     assert factory.calibre().contains_book.call_count == 2
     assert "Imported Dune by Frank Herbert into Calibre" in capsys.readouterr().out
 

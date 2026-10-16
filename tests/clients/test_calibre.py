@@ -212,6 +212,8 @@ def test_add_book(tmp_path):
         "Dune",
         "--authors",
         "Frank Herbert",
+        "--identifier",
+        "isbn:9780441172719",
         "/tmp/dune.epub",
     ]
 
@@ -358,3 +360,31 @@ def test_get_books_extra_data(tmp_path, caplog):
 
     assert len(books) == 1
     assert "Extra data after JSON response: 'extra'" in caplog.text
+
+
+def test_import_preserves_source_identifiers_and_unnumbered_series(tmp_path):
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        return Result()
+
+    calibre = Calibre(CalibreConfig("calibredb", str(tmp_path)), run=run)
+    book = Book(
+        title="Dune",
+        authors=["Frank Herbert"],
+        id=123,
+        source="hardcover",
+        isbn=[None, "invalid", "0-441-17271-7", "9780441013593"],
+        identifiers={"Goodreads": ["", "234", "567"], "Amazon": "B0AbCd1234"},
+        series="Dune",
+    )
+    calibre.add_book(book, "/tmp/dune.epub")
+    command = calls[-1]
+    ids = [command[i + 1] for i, arg in enumerate(command) if arg == "--identifier"]
+    assert ids == ["goodreads:234", "amazon:B0AbCd1234", "isbn:9780441172719", "hardcover:123"]
+    assert command[command.index("--series") + 1] == "Dune"
+    assert "--series-index" not in command
+    book.series_number = 0
+    calibre.add_book(book, "/tmp/dune.epub")
+    assert calls[-1][calls[-1].index("--series-index") + 1] == "0"

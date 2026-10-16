@@ -149,7 +149,7 @@ class TorrentDiscoveryService:
 
             download_future = executor.submit(self.mam.download_torrent, torrent)
             self.last_counts["selected"] += 1
-            download_futures[download_future] = torrent.book
+            download_futures[download_future] = book
         return download_futures
 
     def collect_downloads(

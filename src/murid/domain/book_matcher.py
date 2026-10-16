@@ -147,7 +147,7 @@ class BookMatcher:
         }
 
     @classmethod
-    def _normalize_identifier_platform(cls, platform: str) -> str:
+    def normalize_identifier_platform(cls, platform: str) -> str:
         """Normalize catalog names shared between Hardcover and Calibre."""
         name = cls.normalize(platform).replace(" ", "")
         aliases = {
@@ -174,7 +174,7 @@ class BookMatcher:
         if not value:
             return ""
 
-        platform = cls._normalize_identifier_platform(platform)
+        platform = cls.normalize_identifier_platform(platform)
         parsed = urlsplit(value)
         if parsed.scheme and parsed.netloc:
             path = unquote(parsed.path).rstrip("/")
@@ -208,7 +208,7 @@ class BookMatcher:
             elif not isinstance(values, (list, tuple, set)):
                 continue
 
-            normalized_platform = cls._normalize_identifier_platform(str(platform))
+            normalized_platform = cls.normalize_identifier_platform(str(platform))
             if not normalized_platform:
                 continue
 

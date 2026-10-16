@@ -205,7 +205,7 @@ def test_submit_downloads_happy_path(mam, matcher):
 
     assert len(result) == 1
     future = list(result.keys())[0]
-    assert result[future] == torrent_book
+    assert result[future] is book
 
 
 def test_submit_downloads_skips_torrent_tagged_import_failed(mam, matcher):
@@ -337,3 +337,29 @@ def test_download_torrents_happy_path(mam, matcher):
     result = service.download_torrents(books, matcher)
 
     assert result == [(b"file", SimpleNamespace())]
+
+
+def test_downloads_keep_requested_hardcover_metadata(mam):
+    from murid import Book, BookMatcher, Torrent, TorrentMetadata, TorrentSelector
+
+    requested = Book(
+        title="Dune",
+        authors=["Frank Herbert"],
+        id=42,
+        source="hardcover",
+        isbn=["9780441172719"],
+        identifiers={"Goodreads": ["44767458"]},
+    )
+    candidate = Torrent(
+        book=Book(title="Dune", authors=["Frank Herbert"], id=99, source="myanonamouse", isbn=[]),
+        metadata=TorrentMetadata(14, 100, 10, 0, False, False),
+        language="ENG",
+        file_types=["epub"],
+    )
+    mam.search_ebook.return_value = {candidate}
+    mam.download_torrent.return_value = b"torrent"
+    service = TorrentDiscoveryService(mam, ["ENG"], TorrentSelector({"ENG"}))
+    downloads = service.download_torrents([requested], BookMatcher())
+    assert downloads == [(b"torrent", requested)]
+    assert downloads[0][1] is requested
+    mam.download_torrent.assert_called_once_with(candidate)

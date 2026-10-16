@@ -129,7 +129,7 @@ def search_book(name: str, factory, *, add: bool = False) -> None:
         raise BookSearchError(f"Could not download torrent for {book}")
 
     output(labeled("Adding selected torrent: ", str(book), "bold cyan"))
-    factory.torrent_import().import_torrents([(torrent_file, selected.book)])
+    factory.torrent_import().import_torrents([(torrent_file, book)])
     if not calibre.contains_book(book, matcher):
         raise BookSearchError(
             "Book is not yet in Calibre; run murid status, inspect qBittorrent, "

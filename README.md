@@ -364,7 +364,7 @@ qbittorrent:
 
 This allows murid to correctly locate files reported by qBittorrent.
 
-### Torrent preferences
+### Torrent preferences and imported metadata
 
 The order of `filetypes` controls format preference for both torrent selection
 and ebook selection within a download. Torrents must first pass the configured
@@ -372,6 +372,14 @@ filters and book matching rules. Murid then prefers torrents with seeders, highe
 match scores, earlier formats in `filetypes`, freeleech, and more seeders, in that
 order. Ties use the torrent ID for reproducible selection. Unseeded torrents remain
 eligible when no seeded match is available.
+
+New downloads and `search-book --add` use the requested Hardcover book's metadata
+when importing into Calibre. Imports preserve title, authors, series (including
+position zero), the first valid ISBN, the Hardcover book ID, and the first nonempty
+identifier per catalog type. Calibre supports one value per identifier type;
+identifier values retain their original case. Existing library records are not
+updated by this change. Retries of earlier downloads still recover metadata from
+MyAnonamouse.
 
 ## Credentials
 

@@ -8,6 +8,7 @@ import subprocess
 from dataclasses import dataclass
 
 from ..domain.book import Book
+from ..domain.book_matcher import BookMatcher
 
 logger = logging.getLogger("murid")
 
@@ -130,11 +131,14 @@ class Calibre:
 
         args = ["add", "--title", book.title, "--authors", ", ".join(book.authors)]
 
-        if book.series and book.series_number:
+        for name, value in self._import_identifiers(book).items():
+            args.extend(["--identifier", f"{name}:{value}"])
+
+        if book.series:
+            args.extend(["--series", book.series])
+        if book.series and book.series_number is not None:
             args.extend(
                 [
-                    "--series",
-                    book.series,
                     "--series-index",
                     str(book.series_number),
                 ]
@@ -147,6 +151,28 @@ class Calibre:
             raise CalibreError(f"Error adding book to Calibre: {e.stderr}") from e
         except Exception as e:
             raise CalibreError(f"Error adding book to Calibre: {e}") from e
+
+    @staticmethod
+    def _import_identifiers(book: Book) -> dict[str, str]:
+        """Calibre stores one value per type; preserve the first usable source ID."""
+        identifiers = {}
+        for platform, values in book.identifiers.items():
+            name = BookMatcher.normalize_identifier_platform(platform)
+            if not name or ":" in name:
+                continue
+            if isinstance(values, str):
+                values = [values]
+            for value in values:
+                if value is not None and str(value).strip():
+                    identifiers.setdefault(name, str(value).strip())
+                    break
+        for isbn in book.isbn:
+            if normalized := BookMatcher.normalize_isbn(isbn):
+                identifiers["isbn"] = normalized
+                break
+        if book.source == "hardcover":
+            identifiers["hardcover"] = str(book.id)
+        return identifiers
 
     def contains_book(self, book: Book, matcher) -> bool:
         """Check if a book already exists in the Calibre library using the provided matcher."""
