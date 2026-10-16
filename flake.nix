@@ -76,7 +76,16 @@
         config,
         system,
         ...
-      }: {
+      }: let
+        python = pkgs.python3;
+        pythonPackages = project.renderers.withPackages {inherit python;};
+        pythonEnv = python.withPackages pythonPackages;
+        pylintEnv = python.withPackages (
+          packages:
+            pythonPackages packages
+            ++ [packages.pylint]
+        );
+      in {
         packages.default = mkPackage pkgs;
 
         checks =
@@ -94,6 +103,11 @@
           alejandra.enable = true;
           deadnix.enable = true;
           flake-checker.enable = true;
+          pylint = {
+            enable = true;
+            package = pylintEnv;
+            pass_filenames = false;
+          };
           statix.enable = true;
           ruff.enable = true;
         };
@@ -104,18 +118,14 @@
             ${config.pre-commit.installationScript}
             echo 1>&2 "Welcome to the development shell for murid!"
           '';
-          packages = let
-            python = pkgs.python3;
-            arg = project.renderers.withPackages {inherit python;};
-            pythonEnv = python.withPackages arg;
-          in [
+          packages = [
             (mkPackage pkgs)
             pkgs.calibre
             pkgs.alejandra
             pkgs.hatch
             pkgs.pyenv
             pkgs.ruff
-            pkgs.pylint
+            pylintEnv
             pkgs.python3Packages.pytest
             pkgs.python3Packages.pytest-cov
             pkgs.python3Packages.virtualenv

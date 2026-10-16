@@ -39,6 +39,7 @@ murid = "murid.main:main"
 
 [project.optional-dependencies]
 dev = [
+  "pylint",
   "pytest",
   "pytest-cov",
   "ruff"
@@ -64,6 +65,11 @@ select = [
   "I",  # import sorting
   "B",  # bugbear (potentially buggy code)
 ]
+
+[tool.pylint.main]
+files = ["src"]
+persistent = false
+py-version = "3.12"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
