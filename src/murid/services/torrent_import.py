@@ -139,8 +139,9 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
             self.last_outcome = "failed"
             if book_file is None:
                 logger.error(
-                    "%s: could not select a unique ebook file; select an individual ebook "
-                    "with murid add-book <name> <path>, then run murid retry-import",
+                    "%s: could not select a unique ebook file; import an individual ebook "
+                    "with murid add-book <Hardcover-title> <ebook-file-path>. "
+                    "After importing, murid retry-import can clear the failed-import tag",
                     book,
                 )
                 self.torrent_client.add_tag(torrent_id, "murid_import_failed")
