@@ -151,12 +151,10 @@ class MyAnonamouse:
             )
 
         torrents = {self._parse_torrent(row) for row in rows[:100]}
-        logger.debug(
-            "MyAnonamouse returned %d parsed results for %r (server total=%r, found=%r)",
+        logger.info(
+            "MyAnonamouse returned %d torrents for the query %r",
             len(torrents),
             query.text or query.id,
-            data.get("total"),
-            data.get("total_found"),
         )
         return torrents
 
@@ -211,13 +209,6 @@ class MyAnonamouse:
                 text=title, main_categories=[14], search_fields=["title", "author", "series"]
             )
         )
-        if not result:
-            logger.info("No torrents found for %r", title)
-        else:
-            count = len(result)
-            logger.info(
-                "Found %d potential torrent%s for %s", count, "" if count == 1 else "s", title
-            )
         return result
 
     def download_torrent(self, torrent: Torrent) -> bytes | None:

@@ -150,20 +150,23 @@ class TorrentDiscoveryService:
                 for timed_out_book in incomplete_timed_out_books
             )
         ]
+
+        if not books_to_search:
+            return set()
+
         skipped_count = len(books) - len(books_to_search)
         logger.info(
-            "Searching for torrents for %d book%s",
+            "%d book%s are missing from the Calibre library",
             len(books_to_search),
             "s" if len(books_to_search) != 1 else "",
         )
+        logger.info("Missing books: %r", [str(book) for book in books_to_search])
         if skipped_count:
             logger.info(
                 "Skipping search for %d book%s with an incomplete timed-out torrent",
                 skipped_count,
                 "s" if skipped_count != 1 else "",
             )
-        if not books_to_search:
-            return set()
 
         with ThreadPoolExecutor(max_workers=min(10, len(books_to_search))) as executor:
             search_futures = {

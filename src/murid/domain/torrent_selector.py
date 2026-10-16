@@ -81,7 +81,12 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
 
         if best_match and score >= matcher.threshold and matcher.is_match(book, best_match):
             ret = next(t for t in torrents if t.book == best_match)
-            logger.debug("Best torrent for %s is %s with similarity %.2f", book, ret, score)
+            logger.info("Selected torrent for %s: %s with similarity %.2f", book, ret, score)
             return ret
-        logger.info("No good torrent match for %s. Best similarity: %.2f", book, score)
+        logger.info(
+            "No torrent found for %s. Closest match: %s with similarity %.2f",
+            book,
+            best_match,
+            score,
+        )
         return None

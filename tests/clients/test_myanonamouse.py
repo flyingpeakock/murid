@@ -141,24 +141,6 @@ def test_search_ebook_title_only(mam):
     assert captured["query"].text == "Dune"
 
 
-def test_search_ebook_logs_found(mam, caplog):
-    mam.search = lambda *a, **k: [object(), object()]
-
-    with caplog.at_level("INFO"):
-        mam.search_ebook("Dune")
-
-    assert "Found 2 potential torrents for" in caplog.text
-
-
-def test_search_ebook_logs_not_found(mam, caplog):
-    mam.search = lambda *a, **k: []
-
-    with caplog.at_level("INFO"):
-        mam.search_ebook("Dune")
-
-    assert "No torrents found for" in caplog.text
-
-
 def test_parse_torrent_multiple_authors():
     torrent = MyAnonamouse._parse_torrent({"author_info": '{"1":"Author One","2":"Author Two"}'})
 

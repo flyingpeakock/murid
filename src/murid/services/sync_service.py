@@ -89,7 +89,7 @@ class SyncService:
     def fetch_calibre_books(calibre: Calibre) -> set[Book]:
         """Fetch books from the Calibre library."""
         books = calibre.get_books()
-        logger.info("Fetched %d books from Calibre database", len(books))
+        logger.debug("Calibre library contains %d books", len(books))
         return books
 
     @staticmethod
@@ -98,7 +98,7 @@ class SyncService:
         with ThreadPoolExecutor(max_workers=min(10, len(hardcover))) as executor:
             results = executor.map(lambda client: client.get_books(), hardcover)
             books = set(chain.from_iterable(results))
-        logger.info("Fetched %d books from Hardcover API", len(books))
+        logger.debug("Hardcover library contains %d books", len(books))
         return books
 
     @staticmethod
@@ -108,6 +108,7 @@ class SyncService:
         matcher: BookMatcher,
     ) -> set[tuple[Book, Book, float]]:
         """Match books from the Hardcover list against the Calibre library."""
+        logger.info("Determining which Hardcover books need to be downloaded")
         matches = matcher.match_books(calibre_books, hardcover_books)
         logger.debug("%d books already present in Calibre library", len(matches))
         return matches
