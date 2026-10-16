@@ -265,7 +265,13 @@ export QBITTORRENT_PASSWORD="..."
 
 In PowerShell, set them with `$env:HARDCOVER_API_KEY = "Bearer ..."` and the equivalent `$env:NAME = "..."` for the others.
 
-Set these variables in the environment that runs Murid. The default config location depends on your operating system; `--config` can point to a config file anywhere.
+Set these variables in the environment that runs Murid. The default config location depends on your operating system. To use a config file elsewhere without passing `--config` on every command, set `MURID_CONFIG_FILE`:
+
+```bash
+export MURID_CONFIG_FILE=/path/to/config.yaml
+```
+
+`--config` can point to a config file anywhere and takes precedence over `MURID_CONFIG_FILE`.
 
 ## Configuration Reference
 

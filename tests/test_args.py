@@ -6,11 +6,32 @@ from murid import __version__
 from murid.args import MuridArgumentParser
 
 
+@pytest.fixture(autouse=True)
+def clear_config_file_environment(monkeypatch):
+    """Keep parser defaults independent of the developer shell environment."""
+    monkeypatch.delenv("MURID_CONFIG_FILE", raising=False)
+
+
 def test_default_config_path_linux(monkeypatch):
     monkeypatch.setattr("platform.system", lambda: "Linux")
     monkeypatch.setenv("XDG_CONFIG_HOME", "/tmp/config")
 
     assert MuridArgumentParser.default_config_path() == Path("/tmp/config/murid/config.yaml")
+
+
+def test_config_path_uses_environment_variable(monkeypatch):
+    monkeypatch.setenv("MURID_CONFIG_FILE", "/tmp/murid.yaml")
+    monkeypatch.setattr("platform.system", lambda: "Plan9")
+
+    assert MuridArgumentParser.default_config_path() == Path("/tmp/murid.yaml")
+
+
+def test_cli_config_path_takes_precedence_over_environment(monkeypatch):
+    monkeypatch.setenv("MURID_CONFIG_FILE", "/tmp/from-environment.yaml")
+
+    args = MuridArgumentParser("test").parse_args(["run", "--config", "/tmp/from-cli.yaml"])
+
+    assert args.config_file == "/tmp/from-cli.yaml"
 
 
 def test_default_config_path_linux_fallback(monkeypatch):

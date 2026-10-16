@@ -193,7 +193,11 @@ class MuridArgumentParser(argparse.ArgumentParser):
 
     @staticmethod
     def default_config_path() -> Path:
-        """Get the default config file path based on the operating system."""
+        """Get the config file path from the environment or operating-system default."""
+        config_file = os.getenv("MURID_CONFIG_FILE")
+        if config_file:
+            return Path(config_file)
+
         app_name = "murid"
         file_name = "config.yaml"
 
