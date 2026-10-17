@@ -18,6 +18,7 @@ def test_rejected_title_does_not_discard_alternate_title_results(mam, caplog):
     )
     torrent = Mock()
     mam.search_ebook.side_effect = [MAMSearchError("negative-only query"), {torrent}]
+    mam.search_author.return_value = []
     _, results = TorrentDiscoveryService(mam, [], None).find_torrents(book)
     assert results == {torrent}
     assert "-Rejected" in caplog.text
@@ -121,6 +122,27 @@ def test_find_torrents_searches_main_and_alternate_titles_without_author(mam):
         call("Main title"),
         call("Alternate title"),
     ]
+    mam.search_author.assert_not_called()
+
+
+def test_find_torrents_searches_author_before_alternate_title_on_title_miss(mam):
+    book = SimpleNamespace(
+        title="Main title",
+        authors=["Author"],
+        series=None,
+        series_number=None,
+        alternative_titles=["Alternate title"],
+    )
+    torrent = Mock()
+    torrent.book = SimpleNamespace(series=None, series_number=None)
+    mam.search_ebook.side_effect = [[], []]
+    mam.search_author.return_value = [torrent]
+
+    _, torrents = TorrentDiscoveryService(mam, ["eng"], None).find_torrents(book)
+
+    assert torrents == {torrent}
+    assert mam.search_ebook.call_args_list == [call("Main title"), call("Alternate title")]
+    mam.search_author.assert_called_once_with("Author")
 
 
 def test_collect_downloads_filters_none():

@@ -269,6 +269,21 @@ def test_search_ebook_title_only(mam):
     assert captured["query"].text == "Dune"
 
 
+def test_search_author_searches_author_field_only(mam):
+    captured = {}
+
+    def fake_search(query):
+        captured["query"] = query
+        return []
+
+    mam.search = fake_search
+
+    mam.search_author("Frank Herbert")
+
+    assert captured["query"].text == "Frank Herbert"
+    assert captured["query"].search_fields == ["author"]
+
+
 def test_parse_torrent_multiple_authors():
     torrent = MyAnonamouse._parse_torrent({"author_info": '{"1":"Author One","2":"Author Two"}'})
 

@@ -83,13 +83,48 @@ class TorrentDiscoveryService:
         return titles
 
     def _search_titles(self, book: Book) -> set[Torrent]:
-        """Search each distinct main or alternate title without an author filter."""
+        """Search the main title, then authors, then alternate titles."""
         results: set[Torrent] = set()
         rejected = 0
         titles = self._titles_to_search(book)
-        for title in titles:
+        if titles:
+            title = titles[0]
             logger.debug(
                 "%s: searching MyAnonamouse by title only: %r",
+                book,
+                title,
+            )
+            title_results = set()
+            try:
+                title_results = self.mam.search_ebook(title)
+                results.update(title_results)
+            except MAMSearchError as error:
+                rejected += 1
+                logger.warning(
+                    "%s: title query %r rejected: %s; skipping this title", book, title, error
+                )
+
+            if not title_results:
+                for author in getattr(book, "authors", []) or []:
+                    logger.debug(
+                        "%s: searching MyAnonamouse by author only: %r",
+                        book,
+                        author,
+                    )
+                    try:
+                        results.update(self.mam.search_author(author))
+                    except MAMSearchError as error:
+                        rejected += 1
+                        logger.warning(
+                            "%s: author query %r rejected: %s; skipping this author",
+                            book,
+                            author,
+                            error,
+                        )
+
+        for title in titles[1:]:
+            logger.debug(
+                "%s: searching MyAnonamouse by alternate title only: %r",
                 book,
                 title,
             )
@@ -100,7 +135,9 @@ class TorrentDiscoveryService:
                 logger.warning(
                     "%s: title query %r rejected: %s; skipping this title", book, title, error
                 )
-        if titles and rejected == len(titles):
+
+        attempted = len(titles) + (len(getattr(book, "authors", []) or []) if titles else 0)
+        if attempted and rejected == attempted:
             raise MAMSearchError(
                 f"{book}: all {rejected} title queries were rejected; "
                 "review the titles on Hardcover and MyAnonamouse"

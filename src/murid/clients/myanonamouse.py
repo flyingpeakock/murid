@@ -283,6 +283,11 @@ class MyAnonamouse:
         )
         return self.search(query)
 
+    def search_author(self, author: str) -> set[Torrent]:
+        """Search for ebooks whose author field matches the specified author."""
+        query = MyAnonamouseQuery(text=author, main_categories=[14], search_fields=["author"])
+        return self.search(query)
+
     def download_torrent(self, torrent: Torrent) -> bytes | None:
         """Download the torrent file for the specified torrent."""
         try:
