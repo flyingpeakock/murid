@@ -52,9 +52,12 @@ def _main() -> int:
         output_format=getattr(args, "output_format", "auto"),
     )
 
-    logger.info(
-        colored(
-            r"""
+    if getattr(args, "output_format", "auto") == "json":
+        logger.info("Starting murid %s", __version__)
+    else:
+        logger.info(
+            colored(
+                r"""
      ) _     _
     ( (^)-~-(^)
 __,-.\_( 6 6 )__,-.___
@@ -66,9 +69,9 @@ __,-.\_( 6 6 )__,-.___
   \VERSION/
    \______________/
 """.replace("VERSION", f"v{__version__}".center(16)),
-            "cyan",
-        ),
-    )
+                "cyan",
+            ),
+        )
 
     try:
         return run_command(args)
