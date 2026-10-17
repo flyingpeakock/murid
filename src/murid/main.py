@@ -53,22 +53,21 @@ def _main() -> int:
     )
 
     if getattr(args, "output_format", "auto") == "json":
-        logger.info("Starting murid %s", __version__)
+        logger.info("Starting murid v%s", __version__)
     else:
         logger.info(
             colored(
                 r"""
-     ) _     _
-    ( (^)-~-(^)
-__,-.\_( 6 6 )__,-.___
-| 'M'   \   /   'M'  |
-|        >o<         |
-    ______/\______
-   /              \
-  / starting murid \
-  \VERSION/
-   \______________/
-""".replace("VERSION", f"v{__version__}".center(16)),
+          ) _     _
+         ( (^)-~-(^)
+     __,-.\_( 6 6 )__,-.___
+   _/  'M' ~ \   / ~~'M' ~ \_
+  // ~~  ~~ ~ >o<  ~~~   ~  \\
+ // ~~ ~~~ ~ ~ | ~~~ ~ ~~ ~  \\
+//____________.|._____________\\
+`-------------`-'--------------'
+MURID_VERSION
+""".replace("MURID_VERSION", f"Murid v{__version__}".center(32)),
                 "cyan",
             ),
         )

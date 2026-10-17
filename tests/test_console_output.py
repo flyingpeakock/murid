@@ -300,7 +300,7 @@ def test_debug_includes_one_traceback(monkeypatch, capsys):
     assert main() == 1
     captured = capsys.readouterr()
     assert captured.err.count("Traceback (most recent call last)") == 1
-    assert "starting murid" in captured.err
+    assert "Murid" in captured.err
     assert captured.out == ""
 
 
