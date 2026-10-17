@@ -80,6 +80,19 @@ pylint src --ignore=_version.py
 python -m pytest --cov=murid --cov-report=term-missing
 ```
 
+The default test run includes offline integration tests in `tests/integration`.
+They exercise the CLI with real configuration, clients, matching, and services,
+using fake HTTP responses, a stateful qBittorrent API stand-in, and a temporary
+`calibredb` executable. They require a POSIX shell but no credentials or running
+external services. Run only these tests with `python -m pytest -m integration`,
+or exclude them with `python -m pytest -m 'not integration'`.
+
+Every CLI command has integration coverage, including search previews and imports,
+match review filters, status and retry handling, configuration validation and
+redaction, connection checks, and Apprise notification delivery. Scheduler tests
+use a controlled clock to verify configuration reloads and recovery after a failed
+cycle without waiting for cron intervals.
+
 GitHub Actions are pinned to commits; Dependabot checks for updates weekly.
 
 ## NixOS Flake

@@ -75,6 +75,7 @@ py-version = "3.12"
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = ["integration: offline CLI workflows across Murid components"]
 addopts = [
   "-ra"
 ]
