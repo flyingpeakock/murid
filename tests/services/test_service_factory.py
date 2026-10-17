@@ -182,6 +182,25 @@ def test_sync_service(args, config, monkeypatch):
     assert result == ("sync", factory)
 
 
+def test_retry_service_loads_all_hardcover_accounts_lazily(args, config, monkeypatch):
+    factory = ServiceFactory(args, config, initialize_notifier=False)
+    clients = [Mock(), Mock()]
+    clients[0].get_books.return_value = ["first-book"]
+    clients[1].get_books.return_value = ["second-book"]
+    load_clients = Mock(return_value=clients)
+    monkeypatch.setattr(factory, "hardcover", load_clients)
+    monkeypatch.setattr(factory, "qbittorrent", Mock())
+    monkeypatch.setattr(factory, "torrent_import", Mock())
+    monkeypatch.setattr(factory, "myanonamouse", Mock())
+
+    service = factory.retry_service()
+    load_clients.assert_not_called()
+    assert list(service.hardcover_books()) == ["first-book", "second-book"]
+    load_clients.assert_called_once_with()
+    for client in clients:
+        client.get_books.assert_called_once_with()
+
+
 def test_qbittorrent_without_dry_run_option(config, monkeypatch):
     args = SimpleNamespace(config_file="/tmp/config.yaml")
     factory = ServiceFactory(args, config)

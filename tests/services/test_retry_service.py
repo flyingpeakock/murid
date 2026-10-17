@@ -20,6 +20,7 @@ def torrent_client():
 def import_service():
     service = Mock()
     service.dry_run = False
+    service.matcher = BookMatcher()
     return service
 
 
@@ -29,11 +30,17 @@ def mam():
 
 
 @pytest.fixture
-def service(torrent_client, import_service, mam):
+def hardcover_books(book):
+    return Mock(return_value=[book])
+
+
+@pytest.fixture
+def service(torrent_client, import_service, mam, hardcover_books):
     return RetryService(
         torrent_client=torrent_client,
         import_service=import_service,
         myanonamouse=mam,
+        hardcover_books=hardcover_books,
     )
 
 
@@ -44,7 +51,7 @@ def book():
         authors=["Frank Herbert"],
         id=1,
         isbn=[],
-        source="test",
+        source="hardcover",
     )
 
 
@@ -65,7 +72,7 @@ def test_fetch_previous_torrents_valid_mid(service, torrent_client):
     assert list(service.fetch_previous_torrents()) == [("torrent1", 123)]
 
 
-def test_fetch_previous_torrents_ignores_missing_mid(
+def test_fetch_previous_torrents_reports_missing_identity(
     service,
     torrent_client,
 ):
@@ -76,7 +83,7 @@ def test_fetch_previous_torrents_ignores_missing_mid(
         )
     ]
 
-    assert list(service.fetch_previous_torrents()) == []
+    assert list(service.fetch_previous_torrents()) == [("torrent1", None)]
 
 
 def test_fetch_previous_torrents_mixed(service, torrent_client):
@@ -88,6 +95,7 @@ def test_fetch_previous_torrents_mixed(service, torrent_client):
 
     assert list(service.fetch_previous_torrents()) == [
         ("a", 111),
+        ("b", None),
         ("c", 222),
     ]
 
@@ -237,7 +245,7 @@ def test_scheduled_retry_tags_completed_import_failure(
             notify=Mock(),
         )
     )
-    service = RetryService(torrent_client, import_service, mam)
+    service = RetryService(torrent_client, import_service, mam, lambda: [book])
     service.fetch_previous_torrents = Mock(return_value=[("torrent1", 123)])
     service.get_book_by_mam_id = Mock(return_value=book)
     monkeypatch.setattr("murid.services.torrent_import.time.sleep", lambda _: None)
@@ -387,16 +395,111 @@ def test_restart_recovers_download_interrupted_before_timeout(book, mam, complet
 
     assert torrents[0].tags == "murid_pending"
     importer = Mock(dry_run=False)
+    importer.matcher = BookMatcher()
     importer.calibre.contains_book.side_effect = [False, True] if completed else [False]
     importer.process_torrent.return_value = completed
-    mam.search.return_value = [make_torrent(book)]
-    restarted = RetryService(client, importer, mam)
+    mam_book = Book("Dune", ["Frank Herbert"], 123, [], "myanonamouse")
+    mam.search.return_value = [make_torrent(mam_book)]
+    restarted = RetryService(client, importer, mam, lambda: [book])
 
     assert restarted.retry_torrents() == (set() if completed else {book})
     importer.process_torrent.assert_called_once_with("abc123", book)
     assert restarted.last_result.imported == int(completed)
     assert restarted.last_result.pending == int(not completed)
     assert ("murid_pending" in torrents[0].tags) is not completed
+
+
+@pytest.mark.parametrize("manual", [False, True])
+def test_recovery_uses_hardcover_metadata(
+    service, torrent_client, import_service, mam, hardcover_books, manual
+):
+    requested = Book(
+        "Children of Dune",
+        ["Frank Herbert"],
+        42,
+        ["9780441104024"],
+        "hardcover",
+        series="Dune",
+        series_number=3,
+        alternative_titles=["Les Enfants de Dune"],
+        identifiers={"hardcover": "42", "goodreads": ["44492285"]},
+        search_alternative_titles=["Children of Dune"],
+    )
+    hardcover_books.return_value = [requested, requested]
+    mam_book = Book("Children of Dune", ["Frank Herbert"], 123, [], "myanonamouse")
+    mam.search.return_value = [make_torrent(mam_book)]
+    torrent = SimpleNamespace(hash="download", comment="MID=123", tags="murid_pending")
+    torrent_client.get_torrents.return_value = [torrent]
+    torrent_client.get_torrents_with_tag.side_effect = lambda tag: (
+        [torrent] if tag == "murid_pending" else []
+    )
+    import_service.calibre.contains_book.side_effect = [False, True]
+    import_service.process_torrent.return_value = True
+    if manual:
+        assert service.retry_imports().imported == 1
+    else:
+        assert service.retry_torrents() == set()
+        assert service.last_result.imported == 1
+    import_service.process_torrent.assert_called_once_with("download", requested)
+    hardcover_books.assert_called_once_with()
+    assert requested.source == "hardcover"
+
+
+@pytest.mark.parametrize("manual", [False, True])
+@pytest.mark.parametrize("matches", ["missing", "ambiguous", "wrong_author"])
+def test_unresolved_hardcover_identity_is_skipped(
+    service, torrent_client, import_service, mam, book, hardcover_books, manual, matches
+):
+    if matches == "missing":
+        hardcover_books.return_value = []
+    elif matches == "ambiguous":
+        other = Book("Dune", ["Frank Herbert"], 99, [], "hardcover")
+        hardcover_books.return_value = [book, other]
+    else:
+        hardcover_books.return_value = [Book("Dune", ["Someone Else"], 99, [], "hardcover")]
+    mam.search.return_value = [make_torrent(book)]
+    torrent = SimpleNamespace(hash="abc", comment="MID=123", tags="murid_pending")
+    torrent_client.get_torrents.return_value = [torrent]
+    torrent_client.get_torrents_with_tag.return_value = [torrent]
+    if manual:
+        assert service.retry_imports().skipped == 1
+    else:
+        assert service.retry_torrents() == set()
+        assert service.last_result.skipped == 1
+    import_service.process_torrent.assert_not_called()
+    torrent_client.remove_tag.assert_not_called()
+
+
+def test_hardcover_books_are_loaded_once_per_retry_batch(
+    service, torrent_client, import_service, mam, book, hardcover_books
+):
+    torrent_client.get_torrents.return_value = [
+        SimpleNamespace(hash="first", comment="MID=123", tags="murid_pending"),
+        SimpleNamespace(hash="second", comment="MID=124", tags="murid_timeout"),
+    ]
+    mam.search.return_value = [make_torrent(book)]
+    import_service.calibre.contains_book.return_value = True
+    assert service.retry_imports().already_present == 2
+    hardcover_books.assert_called_once_with()
+    hardcover_books.return_value = []
+    assert service.retry_imports().skipped == 2
+    assert hardcover_books.call_count == 2
+
+
+def test_hardcover_failure_keeps_downloads_tagged(
+    service, torrent_client, import_service, mam, book, hardcover_books
+):
+    from murid.clients.hardcover import HardcoverError
+
+    torrent_client.get_torrents.return_value = [
+        SimpleNamespace(hash="abc", comment="MID=123", tags="murid_pending")
+    ]
+    mam.search.return_value = [make_torrent(book)]
+    hardcover_books.side_effect = HardcoverError("unavailable")
+    with pytest.raises(HardcoverError, match="unavailable"):
+        service.retry_imports()
+    import_service.process_torrent.assert_not_called()
+    torrent_client.remove_tag.assert_not_called()
 
 
 @pytest.mark.parametrize("already_present", [False, True])

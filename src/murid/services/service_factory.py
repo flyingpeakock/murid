@@ -166,4 +166,5 @@ class ServiceFactory:
             self.qbittorrent(),
             self.torrent_import(),
             self.myanonamouse(),
+            lambda: (book for client in self.hardcover() for book in client.get_books()),
         )

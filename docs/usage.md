@@ -149,7 +149,12 @@ Each scheduled run checks pending and timed-out torrents again, including downlo
 left behind by an interrupted run. Once the book is confirmed in Calibre, Murid
 clears the pending and timeout tags. If a completed download fails to import, Murid
 marks it `murid_import_failed`; use `retry-import` after investigating the failure.
-Recovery uses the MyAnonamouse ID in the torrent comment to look up book metadata.
+Recovery uses the MyAnonamouse ID in the torrent comment to identify the download,
+then matches its title, authors, and identifiers against the configured Hardcover
+Want to Read lists. A unique match supplies the Hardcover ID and book metadata
+used for file selection and import. Books missing from those lists or matching
+multiple Hardcover works are reported as skipped and remain tagged for attention;
+check the reading lists or import an individual ebook with `add-book`.
 
 If two requested books resolve to the same torrent hash in a batch, Murid imports
 the first book and reports the second as a failure instead of replacing the first.
