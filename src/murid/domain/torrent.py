@@ -43,26 +43,10 @@ class Torrent:
         return f"https://www.myanonamouse.net/t/{self.book.id}"
 
     def __hash__(self) -> int:
-        if self.download_hash is not None:
-            return hash(self.download_hash)
-
-        return hash(
-            (
-                self.book,
-                self.language,
-                tuple(self.file_types or ()),
-            )
-        )
+        return hash((self.book.source, self.book.id))
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, Torrent):
             return NotImplemented
 
-        if self.download_hash is not None and other.download_hash is not None:
-            return self.download_hash == other.download_hash
-
-        return (
-            self.book == other.book
-            and self.language == other.language
-            and self.file_types == other.file_types
-        )
+        return (self.book.source, self.book.id) == (other.book.source, other.book.id)

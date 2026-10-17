@@ -50,3 +50,31 @@ def test_str():
     )
 
     assert str(torrent) == "https://www.myanonamouse.net/t/123"
+
+
+def test_metadata_changes_preserve_set_membership_and_deduplication():
+    torrent = Torrent(make_book(), make_metadata())
+    torrents = {torrent}
+    torrent.book.series = "Dune"
+    torrent.book.series_number = 1
+    torrent.book.alternative_titles.append("Dune: Book One")
+    torrent.language = "ENG"
+    torrent.file_types = ["epub"]
+    torrent.download_hash = "new-download-token"
+
+    assert torrent in torrents
+    duplicate = Torrent(make_book(), make_metadata(), download_hash="another-token")
+    assert duplicate == torrent
+    assert hash(duplicate) == hash(torrent)
+    torrents.add(duplicate)
+    assert len(torrents) == 1
+    torrents.remove(torrent)
+    assert not torrents
+
+
+def test_different_torrent_ids_remain_distinct():
+    first = Torrent(make_book(), make_metadata(), download_hash="same-token")
+    second = Torrent(make_book(), make_metadata(), download_hash="same-token")
+    second.book.id = 456
+    assert first != second
+    assert len({first, second}) == 2
