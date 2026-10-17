@@ -59,8 +59,15 @@ def test_book_log_handler_uses_full_book_argument():
     )
     text = BookRichHandler().render_message(record, record.getMessage())
     assert [(span.start, span.end, str(span.style)) for span in text.spans] == [
-        (0, len(str(book)), "bold cyan"),
+        (0, len(str(book)), "bold green"),
     ]
+
+
+def test_log_handler_colors_generic_info_messages():
+    record = logging.LogRecord("murid", logging.INFO, "", 0, "Searching for books", (), None)
+    text = BookRichHandler().render_message(record, record.getMessage())
+
+    assert not text.spans
 
 
 def test_setup_logger_non_tty(monkeypatch):

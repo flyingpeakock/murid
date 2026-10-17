@@ -34,17 +34,18 @@ class BookRichHandler(RichHandler):
         if isinstance(record.msg, Text):
             return record.msg.copy()
         text = Text(message)
-        if isinstance(record.args, tuple) and record.args:
-            book = record.args[0]
-            prefix = f"{book}: "
-            if hasattr(book, "title") and hasattr(book, "authors") and message.startswith(prefix):
-                text.stylize("bold cyan", 0, len(prefix) - 2)
-                if message[len(prefix) :].startswith(("imported", "added to", "already in")):
-                    text.stylize("green", len(prefix), len(message))
         if record.levelno >= logging.ERROR:
             text.stylize("red")
         elif record.levelno >= logging.WARNING:
             text.stylize("yellow")
+
+        if isinstance(record.args, tuple) and record.args:
+            book = record.args[0]
+            prefix = f"{book}: "
+            if hasattr(book, "title") and hasattr(book, "authors") and message.startswith(prefix):
+                text.stylize("bold green", 0, len(prefix) - 2)
+                if message[len(prefix) :].startswith(("imported", "added to", "already in")):
+                    text.stylize("green", len(prefix), len(message))
         return text
 
 
