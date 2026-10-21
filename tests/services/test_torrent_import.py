@@ -1,5 +1,6 @@
 import logging
 import time
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -83,7 +84,7 @@ def test_successful_import(service, torrent_client, calibre, matcher, book):
     result = service.import_torrents([(b"torrent", book)])
 
     torrent_client.add_torrent.assert_called_once()
-    calibre.add_book.assert_called_once_with(book, "/downloads/dune")
+    calibre.add_book.assert_called_once_with(book, str(Path("/downloads/dune")))
     assert (result.added, result.imported, result.pending, result.failed) == (1, 1, 0, 0)
 
 
@@ -293,7 +294,7 @@ def test_shared_hash_reports_collision_without_losing_first_book(
 
     result = service.import_torrents([(b"pack", book), (b"pack", other)])
 
-    calibre.add_book.assert_called_once_with(book, "/downloads/dune.epub")
+    calibre.add_book.assert_called_once_with(book, str(Path("/downloads/dune.epub")))
     assert (result.added, result.imported, result.failed, result.pending) == (1, 1, 1, 0)
     assert "already assigned" in caplog.text
     torrent_client.remove_tag.assert_called_once_with("shared", "murid_pending")

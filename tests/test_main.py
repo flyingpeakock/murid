@@ -22,7 +22,7 @@ def test_inspection_commands_report_missing_config(monkeypatch, capsys, tmp_path
     assert exc.value.code == 1
     captured = capsys.readouterr()
     assert "[ERROR] Config file not found:" in captured.err
-    assert config_file in captured.err
+    assert repr(config_file) in captured.err
     assert "starting murid" not in captured.err
     assert captured.out == ""
 
