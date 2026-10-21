@@ -68,9 +68,10 @@ above to run local edits, or `nix build` to rebuild the package. Run
 
 The [CI workflow](../.github/workflows/ci.yml) runs on pull requests, pushes to
 `main`, and manual dispatch. It checks Ruff and Pylint, runs tests with
-coverage on Python 3.12, 3.13, and 3.14, builds a source distribution and wheel,
-and smoke-tests the installed wheel. A separate job runs the Nix flake checks
-and builds the Linux package.
+coverage on Linux with Python 3.12, 3.13, and 3.14, and on Windows and macOS with
+Python 3.14. The full test suite, including offline integration tests, runs on
+each platform. Linux jobs also build a source distribution and wheel, smoke-test
+the installed wheel, run the Nix flake checks, and build the Nix package.
 
 To run the Python checks locally after installing the development dependencies:
 
@@ -82,9 +83,10 @@ python -m pytest --cov=murid --cov-report=term-missing
 
 The default test run includes offline integration tests in `tests/integration`.
 They exercise the CLI with real configuration, clients, matching, and services,
-using fake HTTP responses, a stateful qBittorrent API stand-in, and a temporary
-`calibredb` executable. They require a POSIX shell but no credentials or running
-external services. Run only these tests with `python -m pytest -m integration`,
+using fake HTTP responses, a stateful qBittorrent API stand-in, and a `calibredb`
+stand-in launched through Python in a real subprocess. They require no shell,
+credentials, or running external services.
+Run only these tests with `python -m pytest -m integration`,
 or exclude them with `python -m pytest -m 'not integration'`.
 
 Every CLI command has integration coverage, including search previews and imports,

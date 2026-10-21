@@ -57,8 +57,7 @@ def test_default_config_path_windows(monkeypatch):
 
     path = MuridArgumentParser.default_config_path()
 
-    assert str(path).endswith("murid/config.yaml")
-    assert "Roaming" in str(path)
+    assert path == Path(r"C:\Users\Test\AppData\Roaming") / "murid" / "config.yaml"
 
 
 def test_default_config_path_unsupported(monkeypatch):

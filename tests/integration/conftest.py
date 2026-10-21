@@ -2,9 +2,10 @@
 
 import json
 import logging
-import shlex
+import subprocess
 import sys
 import time
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +14,7 @@ import requests
 import yaml
 
 from murid import ui
+from murid.clients.calibre import Calibre
 from murid.clients.myanonamouse import MyAnonamouse
 from murid.main import main
 
@@ -69,7 +71,7 @@ class FakeQbittorrentAPI:
 
 @pytest.fixture
 def workflow(tmp_path, monkeypatch, capsys):
-    library = tmp_path / "library"
+    library = tmp_path / "library with spaces"
     library.mkdir()
     database = library / "books.json"
     database.write_text("[]")
@@ -79,16 +81,19 @@ def workflow(tmp_path, monkeypatch, capsys):
     (downloads / "Dune.mobi").write_bytes(b"fixture alternate format")
     (downloads / "README.txt").write_text("not an ebook")
 
-    executable = tmp_path / "calibredb"
     script = Path(__file__).with_name("fake_calibredb.py")
-    executable.write_text(
-        f'#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(str(script))} "$@"\n'
+
+    def run_calibredb(command, **kwargs):
+        # Keep real subprocess execution without an OS-specific shell launcher.
+        return subprocess.run([command[0], str(script), *command[1:]], **kwargs)
+
+    monkeypatch.setattr(
+        "murid.services.service_factory.Calibre", partial(Calibre, run=run_calibredb)
     )
-    executable.chmod(0o755)
     config = {
         "hardcover_api_keys": ["Bearer integration-token"],
         "mam_id": "integration-cookie",
-        "calibre": {"calibredb_executable": str(executable), "library": str(library)},
+        "calibre": {"calibredb_executable": sys.executable, "library": str(library)},
         "qbittorrent": {
             "host": "http://qbittorrent.invalid",
             "port": 8080,

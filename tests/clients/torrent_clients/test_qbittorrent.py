@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import ANY, Mock
 
 import pytest
@@ -189,14 +190,14 @@ def test_tag_lookup_scopes_category_and_handles_tag_whitespace(client):
 @pytest.mark.parametrize(
     "source,content,expected",
     [
-        ("/downloads", "/downloads/Dune/book.epub", "/mapped/Dune/book.epub"),
-        ("/downloads/", "/downloads/Dune.epub", "/mapped/Dune.epub"),
-        ("/downloads", "/downloads", "/mapped"),
+        ("/downloads", "/downloads/Dune/book.epub", Path("/mapped/Dune/book.epub")),
+        ("/downloads/", "/downloads/Dune.epub", Path("/mapped/Dune.epub")),
+        ("/downloads", "/downloads", Path("/mapped")),
         ("/downloads", "/downloads-old/Dune.epub", "/downloads-old/Dune.epub"),
         ("/downloads", "/other/downloads/Dune.epub", "/other/downloads/Dune.epub"),
         ("/downloads", "/downloads/../other/Dune.epub", "/downloads/../other/Dune.epub"),
-        ("/", "/Dune.epub", "/mapped/Dune.epub"),
-        (r"C:\Downloads", r"C:\Downloads\Dune\book.epub", "/mapped/Dune/book.epub"),
+        ("/", "/Dune.epub", Path("/mapped/Dune.epub")),
+        (r"C:\Downloads", r"C:\Downloads\Dune\book.epub", Path("/mapped/Dune/book.epub")),
         (r"C:\Downloads", r"C:\Downloads-old\Dune.epub", r"C:\Downloads-old\Dune.epub"),
         (r"C:\Downloads", r"D:\Downloads\Dune.epub", r"D:\Downloads\Dune.epub"),
     ],
@@ -212,4 +213,4 @@ def test_path_mapping_respects_directories(client, monkeypatch, source, content,
             mapping={"qbit_path": source, "murid_path": "/mapped/"},
         )
     )
-    assert qbt.get_completed_path("abc123") == expected
+    assert qbt.get_completed_path("abc123") == str(expected)
