@@ -24,7 +24,10 @@ def test_sync_imports_preferred_file_and_second_run_is_idempotent(workflow):
     assert books[0]["identifiers"]["hardcover"] == "42"
     imported = json.loads((workflow.library / "imports.jsonl").read_text())
     assert imported[-1] == str(workflow.downloads / "Dune.epub")
-    assert workflow.api.torrents[0].tags == ""
+    assert set(workflow.api.torrents[0].tags.split(",")) == {
+        "murid_media_ebook",
+        "murid_hardcover_42",
+    }
     assert workflow.api.added_files == [b"fixture torrent bytes"]
 
     workflow.requests.clear()
@@ -79,7 +82,12 @@ def test_failed_import_can_be_retried_without_adding_another_torrent(workflow):
 
     assert result.code == 1
     assert summary(result)["failed"] == 1
-    assert workflow.api.torrents[0].tags == "murid_import_failed"
+    assert set(workflow.api.torrents[0].tags.split(",")) == {
+        "murid_pending",
+        "murid_import_failed",
+        "murid_media_ebook",
+        "murid_hardcover_42",
+    }
     assert workflow.database.read_text() == "[]"
 
     failure.unlink()
@@ -88,7 +96,10 @@ def test_failed_import_can_be_retried_without_adding_another_torrent(workflow):
 
     assert retry.code == 0, retry.errors
     assert len(json.loads(workflow.database.read_text())) == 1
-    assert workflow.api.torrents[0].tags == ""
+    assert set(workflow.api.torrents[0].tags.split(",")) == {
+        "murid_media_ebook",
+        "murid_hardcover_42",
+    }
     assert len(workflow.api.added_files) == 1
     assert not any("download.php" in url for _, url, _ in workflow.requests)
 

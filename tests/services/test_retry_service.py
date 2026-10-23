@@ -6,6 +6,7 @@ import pytest
 from murid.clients.myanonamouse import MAMError
 from murid.domain.book import Book
 from murid.domain.book_matcher import BookMatcher
+from murid.domain.book_request import BookRequest
 from murid.domain.torrent import Torrent, TorrentMetadata
 from murid.libraries.calibre import CalibreLibrary
 from murid.services.retry_service import RetryService
@@ -14,13 +15,16 @@ from murid.services.torrent_import import TorrentImportConfig, TorrentImportServ
 
 @pytest.fixture
 def torrent_client():
-    return Mock()
+    client = Mock()
+    client.get_torrents.return_value = []
+    return client
 
 
 @pytest.fixture
 def import_service():
     service = Mock()
     service.dry_run = False
+    service.last_outcome = "imported"
     service.matcher = BookMatcher()
     return service
 
@@ -54,51 +58,6 @@ def book():
         isbn=[],
         source="hardcover",
     )
-
-
-def test_fetch_previous_torrents_empty(service, torrent_client):
-    torrent_client.get_torrents_with_tag.return_value = []
-
-    assert list(service.fetch_previous_torrents()) == []
-
-
-def test_fetch_previous_torrents_valid_mid(service, torrent_client):
-    torrent_client.get_torrents_with_tag.return_value = [
-        SimpleNamespace(
-            hash="torrent1",
-            comment="something MID=123 something",
-        )
-    ]
-
-    assert list(service.fetch_previous_torrents()) == [("torrent1", 123)]
-
-
-def test_fetch_previous_torrents_reports_missing_identity(
-    service,
-    torrent_client,
-):
-    torrent_client.get_torrents_with_tag.return_value = [
-        SimpleNamespace(
-            hash="torrent1",
-            comment="no mam id here",
-        )
-    ]
-
-    assert list(service.fetch_previous_torrents()) == [("torrent1", None)]
-
-
-def test_fetch_previous_torrents_mixed(service, torrent_client):
-    torrent_client.get_torrents_with_tag.return_value = [
-        SimpleNamespace(hash="a", comment="MID=111"),
-        SimpleNamespace(hash="b", comment="nothing"),
-        SimpleNamespace(hash="c", comment="MID=222"),
-    ]
-
-    assert list(service.fetch_previous_torrents()) == [
-        ("a", 111),
-        ("b", None),
-        ("c", 222),
-    ]
 
 
 def make_torrent(book):
@@ -150,7 +109,7 @@ def test_retry_torrents_success(
     torrent_client,
     book,
 ):
-    service.fetch_previous_torrents = Mock(return_value=[("torrent1", 123)])
+    torrent_client.get_torrents.return_value = [tagged_torrent("murid_pending,murid_timeout")]
 
     service.get_book_by_mam_id = Mock(return_value=book)
 
@@ -160,8 +119,8 @@ def test_retry_torrents_success(
     assert service.retry_torrents() == set()
 
     assert torrent_client.remove_tag.call_args_list == [
-        call("torrent1", "murid_timeout"),
         call("torrent1", "murid_pending"),
+        call("torrent1", "murid_timeout"),
     ]
 
 
@@ -171,14 +130,14 @@ def test_retry_torrents_returns_book_while_torrent_is_incomplete(
     torrent_client,
     book,
 ):
-    service.fetch_previous_torrents = Mock(return_value=[("torrent1", 123)])
+    torrent_client.get_torrents.return_value = [tagged_torrent("murid_pending,murid_timeout")]
 
     service.get_book_by_mam_id = Mock(return_value=book)
 
     import_service.process_torrent.return_value = False
     import_service.library.contains_book.return_value = False
 
-    assert service.retry_torrents() == {book}
+    assert service.retry_torrents() == {BookRequest(book)}
 
     torrent_client.remove_tag.assert_not_called()
 
@@ -188,7 +147,7 @@ def test_retry_torrents_book_not_found(
     import_service,
     torrent_client,
 ):
-    service.fetch_previous_torrents = Mock(return_value=[("torrent1", 123)])
+    torrent_client.get_torrents.return_value = [tagged_torrent("murid_pending,murid_timeout")]
 
     service.get_book_by_mam_id = Mock(return_value=None)
 
@@ -201,7 +160,7 @@ def test_retry_torrents_book_not_found(
 def test_retry_torrents_does_not_import_book_already_in_calibre(
     service, import_service, torrent_client, book
 ):
-    service.fetch_previous_torrents = Mock(return_value=[("torrent1", 123)])
+    torrent_client.get_torrents.return_value = [tagged_torrent("murid_pending,murid_timeout")]
     service.get_book_by_mam_id = Mock(return_value=book)
     import_service.library.contains_book.return_value = True
 
@@ -209,26 +168,22 @@ def test_retry_torrents_does_not_import_book_already_in_calibre(
 
     import_service.process_torrent.assert_not_called()
     assert torrent_client.remove_tag.call_args_list == [
-        call("torrent1", "murid_timeout"),
         call("torrent1", "murid_pending"),
+        call("torrent1", "murid_timeout"),
     ]
 
 
-def test_retry_torrents_clears_timeout_after_failed_import(
+def test_retry_torrents_retains_state_after_failed_import(
     service, import_service, torrent_client, book
 ):
-    service.fetch_previous_torrents = Mock(return_value=[("torrent1", 123)])
+    torrent_client.get_torrents.return_value = [tagged_torrent("murid_pending,murid_timeout")]
     service.get_book_by_mam_id = Mock(return_value=book)
     import_service.library.contains_book.return_value = False
     import_service.process_torrent.return_value = True
-
-    assert service.retry_torrents() == set()
-
-    import_service.process_torrent.assert_called_once_with("torrent1", book)
-    assert torrent_client.remove_tag.call_args_list == [
-        call("torrent1", "murid_timeout"),
-        call("torrent1", "murid_pending"),
-    ]
+    import_service.last_outcome = "failed"
+    assert service.retry_torrents() == {BookRequest(book)}
+    assert service.last_result.failed == 1
+    torrent_client.remove_tag.assert_not_called()
 
 
 def test_scheduled_retry_tags_completed_import_failure(
@@ -247,28 +202,25 @@ def test_scheduled_retry_tags_completed_import_failure(
         )
     )
     service = RetryService(torrent_client, import_service, mam, lambda: [book])
-    service.fetch_previous_torrents = Mock(return_value=[("torrent1", 123)])
+    torrent_client.get_torrents.return_value = [tagged_torrent("murid_pending,murid_timeout")]
     service.get_book_by_mam_id = Mock(return_value=book)
     monkeypatch.setattr("murid.services.torrent_import.time.sleep", lambda _: None)
 
-    assert service.retry_torrents() == set()
+    assert service.retry_torrents() == {BookRequest(book)}
 
     torrent_client.add_tag.assert_called_once_with("torrent1", "murid_import_failed")
-    assert torrent_client.remove_tag.call_args_list == [
-        call("torrent1", "murid_timeout"),
-        call("torrent1", "murid_pending"),
-    ]
+    torrent_client.remove_tag.assert_not_called()
 
 
 def test_retry_torrents_dry_run_does_not_import_or_change_tags(
     service, import_service, torrent_client, book
 ):
-    service.fetch_previous_torrents = Mock(return_value=[("torrent1", 123)])
+    torrent_client.get_torrents.return_value = [tagged_torrent("murid_pending,murid_timeout")]
     service.get_book_by_mam_id = Mock(return_value=book)
     import_service.library.contains_book.return_value = False
     import_service.dry_run = True
 
-    assert service.retry_torrents() == {book}
+    assert service.retry_torrents() == {BookRequest(book)}
 
     import_service.process_torrent.assert_not_called()
     torrent_client.remove_tag.assert_not_called()
@@ -297,6 +249,7 @@ def test_retry_imports_keeps_failed_tag_on_failure(service, torrent_client, impo
     service.get_book_by_mam_id = Mock(return_value=book)
     import_service.library.contains_book.return_value = False
     import_service.process_torrent.return_value = True
+    import_service.last_outcome = "failed"
 
     result = service.retry_imports()
 
@@ -359,11 +312,12 @@ def test_retry_imports_replaces_timeout_with_failure_tag(
     service.get_book_by_mam_id = Mock(return_value=book)
     import_service.library.contains_book.return_value = False
     import_service.process_torrent.return_value = True
+    import_service.last_outcome = "failed"
 
     result = service.retry_imports()
 
     assert result.failed == 1
-    torrent_client.remove_tag.assert_called_once_with("torrent1", "murid_timeout")
+    torrent_client.remove_tag.assert_not_called()
 
 
 @pytest.mark.parametrize("completed", [False, True])
@@ -385,7 +339,9 @@ def test_restart_recovers_download_interrupted_before_timeout(book, mam, complet
     api.torrents_add.side_effect = add
     api.torrents_remove_tags.side_effect = remove
     api.torrents_info.side_effect = lambda **kwargs: [
-        torrent for torrent in torrents if kwargs["tag"] in torrent.tags.split(",")
+        torrent
+        for torrent in torrents
+        if not kwargs.get("tag") or kwargs["tag"] in torrent.tags.split(",")
     ]
     client = Qbittorrent(QbittorrentConfig(api, "murid", False))
     interrupted = TorrentImportService(TorrentImportConfig(client, Mock(), Mock(), Mock()))
@@ -394,16 +350,21 @@ def test_restart_recovers_download_interrupted_before_timeout(book, mam, complet
     with pytest.raises(KeyboardInterrupt):
         interrupted.import_torrents([(b"torrent", book)])
 
-    assert torrents[0].tags == "murid_pending"
+    assert set(torrents[0].tags.split(",")) == {
+        "murid_pending",
+        "murid_media_ebook",
+        "murid_hardcover_1",
+    }
     importer = Mock(dry_run=False)
     importer.matcher = BookMatcher()
+    importer.last_outcome = "imported"
     importer.library.contains_book.side_effect = [False, True] if completed else [False]
     importer.process_torrent.return_value = completed
     mam_book = Book("Dune", ["Frank Herbert"], 123, [], "myanonamouse")
     mam.search.return_value = [make_torrent(mam_book)]
     restarted = RetryService(client, importer, mam, lambda: [book])
 
-    assert restarted.retry_torrents() == (set() if completed else {book})
+    assert restarted.retry_torrents() == (set() if completed else {BookRequest(book)})
     importer.process_torrent.assert_called_once_with("abc123", book)
     assert restarted.last_result.imported == int(completed)
     assert restarted.last_result.pending == int(not completed)

@@ -330,6 +330,39 @@ recovery; manual audiobook CLI routing remains in step 7.
 
 ### 6. Preserve routing and identity across restarts
 
+**Implemented (2026-10-23):** Torrent adds now include `murid_media_<type>` and
+`murid_hardcover_<id>` alongside `murid_pending` in the initial API request. The
+client checks that the tags persisted before returning the hash. Conflicting work
+or media tags abort the batch before importing, including a shared hash selected
+for different works. Lifecycle cleanup preserves request identity tags.
+
+Sync and scheduled runs now route discoveries and completed downloads by media.
+Retry constructs only the required backend and recovers tagged works through a
+direct Hardcover ID lookup, independent of list membership and MaM comments. Legacy
+untagged ebook torrents retain MaM/comment matching against current Hardcover lists.
+Unidentifiable/conflicting recovery state is reported and blocks new discovery to
+avoid duplicate downloads. Known pending and failed requests suppress only the
+same work and medium. A removed backend produces an explicit configuration error.
+
+Copied-but-unverified audio stays pending after the separate ingestion deadline,
+without being marked as a failed torrent or repeatedly polled until the download
+timeout. Its next retry reuses the journal and verifies the exact destination and
+track inventory, even if a general library title match exists elsewhere. Failure
+and pending tags remain until successful verification; `retry-import` performs one
+pass without discovery or torrent additions. Dry runs neither import nor clear tags.
+
+Offline verification covers removal from lists, both media, legacy ebooks,
+audio-only operation without Calibre, mixed sync with one medium already present,
+malformed identities, shared-hash conflicts, and delayed ingestion through the real
+shared-folder backend with the original source removed and no recopy/download.
+A live read-only Hardcover check confirmed direct work lookup for the audiobook-list
+entry, including matching ID/title/authors. No live torrent additions, copies, scans,
+notifications, or configuration changes occurred. Live ingestion remains unverified.
+Manual audiobook flags and full diagnostics/deployment support remain in step 7.
+
+Verification: all 856 Python tests passed. Ruff, the repository's Pylint hook,
+and whitespace checks passed. No NixOS options changed in this phase.
+
 - Persist media type and Hardcover identity when adding a torrent, alongside
   existing pending tags, so interrupted runs can recover the original request.
 - Retain recovery behavior for legacy ebook torrents.

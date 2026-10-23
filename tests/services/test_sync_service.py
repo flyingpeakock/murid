@@ -65,9 +65,7 @@ def test_run_orchestrates_pipeline(factory):
     calibre = Mock()
     calibre.get_books.return_value = []
 
-    factory.wanted_requests.return_value = {
-        BookRequest(FakeBook(title="Book", authors=["Author"]))
-    }
+    factory.wanted_requests.return_value = {BookRequest(FakeBook(title="Book", authors=["Author"]))}
 
     matcher = Mock()
     matcher.match_books.return_value = []
@@ -81,7 +79,7 @@ def test_run_orchestrates_pipeline(factory):
 
     retry_service = Mock()
     incomplete = FakeBook("Incomplete")
-    retry_service.retry_torrents.return_value = {incomplete}
+    retry_service.retry_torrents.return_value = {BookRequest(incomplete)}
 
     factory.library.return_value = calibre
     factory.matcher.return_value = matcher
@@ -95,10 +93,10 @@ def test_run_orchestrates_pipeline(factory):
     factory.wanted_requests.assert_called_once()
     factory.matcher.assert_called_once()
     factory.torrent_discovery.assert_called_once()
-    factory.torrent_import.assert_called_once()
+    factory.torrent_import.assert_not_called()
     factory.retry_service.assert_called_once()
 
-    torrent_import.import_torrents.assert_called_once()
+    torrent_import.import_torrents.assert_not_called()
     torrent_discovery.download_torrents.assert_called_once()
     assert torrent_discovery.download_torrents.call_args.args[2] == {BookRequest(incomplete)}
 
@@ -162,3 +160,40 @@ def test_start_scheduler_recovers_from_failed_cycle(monkeypatch, factory, failur
 
     assert factory.reload.call_count == 2
     service.run.assert_called_once_with()
+
+
+def test_mixed_sync_acquires_only_missing_medium(factory):
+    from murid.services.retry_service import RetryImportResult
+    from murid.services.torrent_import import ImportResult
+
+    book = Book("Dune", ["Frank Herbert"], 42, [], "hardcover")
+    audio_request = BookRequest(book, "audiobook")
+    factory.wanted_requests.return_value = {BookRequest(book), audio_request}
+    libraries = {
+        "ebook": Mock(get_books=Mock(return_value={book})),
+        "audiobook": Mock(get_books=Mock(return_value=set())),
+    }
+    factory.library.side_effect = libraries.__getitem__
+    factory.matcher.return_value = BookMatcher()
+    factory.retry_service.return_value.retry_torrents.return_value = set()
+    factory.retry_service.return_value.last_result = RetryImportResult()
+    discovery = factory.torrent_discovery.return_value
+    discovery.download_torrents.return_value = [(b"audio", audio_request)]
+    discovery.last_counts = {"searched": 1, "selected": 1, "skipped": 0}
+    importer = factory.torrent_import.return_value
+    importer.import_torrents.side_effect = lambda batch: (
+        ImportResult(added=1, imported=1) if list(batch) == [(b"audio", book)] else None
+    )
+    assert SyncService(factory).run()
+    factory.torrent_import.assert_called_once_with("audiobook")
+
+
+def test_unidentifiable_recovery_stops_new_discovery(factory):
+    from murid.services.retry_service import RetryImportResult
+
+    factory.retry_service.return_value.retry_torrents.return_value = set()
+    factory.retry_service.return_value.last_result = RetryImportResult(skipped=1)
+    assert SyncService(factory).run() is False
+    factory.wanted_requests.assert_not_called()
+    factory.torrent_discovery.assert_not_called()
+    factory.torrent_import.assert_not_called()

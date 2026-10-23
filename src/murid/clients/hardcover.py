@@ -449,34 +449,7 @@ class Hardcover:
             raise HardcoverError(f"Cannot fetch books for {self.user.name}: {error}") from error
 
         for item in items:
-            book = item.get("book", {})
-
-            authors = [
-                c["author"]["name"] for c in (book.get("contributions") or []) if c.get("author")
-            ]
-
-            editions = book.get("editions") or []
-            isbn = self._extract_isbn(editions)
-            series, series_number = self._extract_series_info(book)
-
-            books.add(
-                Book(
-                    id=book.get("id"),
-                    title=book.get("title"),
-                    authors=authors,
-                    isbn=isbn,
-                    source="hardcover",
-                    series=series,
-                    series_number=series_number,
-                    alternative_titles=self._extract_alternative_titles(book, editions),
-                    search_alternative_titles=(
-                        self._extract_alternative_titles(book, editions, self.lang_codes)
-                        if self.lang_codes is not None
-                        else None
-                    ),
-                    identifiers=self._extract_identifiers(book, editions),
-                )
-            )
+            books.add(self._book(item.get("book", {})))
 
         if not books:
             logger.warning("No books found for user %s", self.user.name)
@@ -491,3 +464,46 @@ class Hardcover:
             )
 
         return books
+
+    def _book(self, book: dict) -> Book:
+        """Map the same work metadata for list inspection and restart recovery."""
+        authors = [
+            c["author"]["name"] for c in (book.get("contributions") or []) if c.get("author")
+        ]
+
+        editions = book.get("editions") or []
+        isbn = self._extract_isbn(editions)
+        series, series_number = self._extract_series_info(book)
+        return Book(
+            id=book.get("id"),
+            title=book.get("title"),
+            authors=authors,
+            isbn=isbn,
+            source="hardcover",
+            series=series,
+            series_number=series_number,
+            alternative_titles=self._extract_alternative_titles(book, editions),
+            search_alternative_titles=(
+                self._extract_alternative_titles(book, editions, self.lang_codes)
+                if self.lang_codes is not None
+                else None
+            ),
+            identifiers=self._extract_identifiers(book, editions),
+        )
+
+    def get_book(self, book_id: int) -> Book | None:
+        """Recover a work by its persisted ID even after it leaves every reading list."""
+        query = """
+        query GetBook($book_id: Int!) {
+          books(where: {id: {_eq: $book_id}}) { BOOK_FIELDS }
+        }
+        """.replace("BOOK_FIELDS", self._BOOK_FIELDS)
+        books = self.make_query(query, variables={"book_id": book_id})["data"]["books"]
+        if not isinstance(books, list) or len(books) > 1:
+            raise HardcoverError("Hardcover returned an invalid work lookup")
+        if not books:
+            return None
+        book = self._book(books[0])
+        if book.id != book_id:
+            raise HardcoverError("Hardcover returned an unexpected work identity")
+        return book

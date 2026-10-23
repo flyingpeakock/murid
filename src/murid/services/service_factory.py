@@ -12,6 +12,7 @@ from ..clients.hardcover import Hardcover
 from ..clients.myanonamouse import MyAnonamouse
 from ..clients.torrent_clients.qbittorrent import Qbittorrent, QbittorrentConfig
 from ..config import Config, ConfigError, hardcover_list_settings, requested_media_types
+from ..domain.book import Book
 from ..domain.book_matcher import BookMatcher
 from ..domain.book_request import BookRequest, MediaType
 from ..domain.torrent_selector import TorrentSelector
@@ -19,7 +20,7 @@ from ..libraries.audiobookshelf import AudiobookLibraryConfig, AudiobookshelfLib
 from ..libraries.calibre import CalibreLibrary
 from ..libraries.library import Library
 from ..notifications.apprise import init_apprise as apprise
-from .retry_service import RetryService
+from .retry_service import RetryRecovery, RetryService
 from .sync_service import SyncService
 from .torrent_discovery import TorrentDiscoveryService
 from .torrent_import import TorrentImportConfig, TorrentImportService
@@ -75,8 +76,8 @@ class ServiceFactory:
 
     def calibre(self):
         """Create a Calibre instance using the configuration file."""
-        if "ebook" not in requested_media_types(self.config["hardcover_api_keys"]):
-            raise ConfigError("This operation requires an ebook request and Calibre configuration")
+        if not self.config.get("calibre"):
+            raise ConfigError("This operation requires Calibre configuration")
         return Calibre(
             CalibreConfig(
                 executable=self.config["calibre"]["calibredb_executable"],
@@ -155,8 +156,8 @@ class ServiceFactory:
         """Prevent incomplete audiobook support from ignoring or misrouting requests."""
         if "audiobook" in requested_media_types(self.config["hardcover_api_keys"]):
             raise ConfigError(
-                "Audiobook execution is not supported yet; library inspection is available, "
-                "but audiobook import and restart recovery are not connected"
+                "Manual audiobook commands are not supported yet; "
+                "run, schedule, and retry-import support audiobook requests"
             )
 
     def myanonamouse(self):
@@ -194,17 +195,17 @@ class ServiceFactory:
             self.qbittorrent(),
         )
 
-    def torrent_import(self):
-        """Create a TorrentImportService instance"""
-        self.require_ebook_workflow()
+    def torrent_import(self, media_type: MediaType = "ebook"):
+        """Create an importer for one destination, including recovery of older requests."""
         return TorrentImportService(
             TorrentImportConfig(
                 torrent_client=self.qbittorrent(),
-                library=self.library("ebook"),
+                library=self.library(media_type),
                 matcher=self.matcher(),
                 notify=self.notifier(),
                 dry_run=getattr(self.args, "dry_run", False),
                 timeout=self.config["torrent_timeout_seconds"],
+                media_type=media_type,
             )
         )
 
@@ -229,12 +230,17 @@ class ServiceFactory:
             media_type=media_type,
         )
 
+    def recovery_book(self, book_id: int) -> Book | None:
+        """Fetch a persisted work independently of its current reading-list membership."""
+        entry = hardcover_list_settings(self.config["hardcover_api_keys"])[0]
+        return self._hardcover_client(entry).get_book(book_id)
+
     def retry_service(self):
-        """Create a RetryService instance."""
-        self.require_ebook_workflow()
+        """Route persisted requests lazily, without initializing unrelated libraries."""
         return RetryService(
             self.qbittorrent(),
-            self.torrent_import(),
+            None,
             self.myanonamouse(),
-            lambda: (book for client in self.hardcover() for book in client.get_books()),
+            lambda: (request.book for request in self.wanted_requests()),
+            recovery=RetryRecovery(self.torrent_import, self.recovery_book),
         )

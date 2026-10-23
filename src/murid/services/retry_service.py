@@ -2,16 +2,18 @@
 
 import logging
 import re
-from collections.abc import Callable, Iterable, Iterator
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, fields
 
 from ..clients.myanonamouse import MAMError, MyAnonamouse, MyAnonamouseQuery
 from ..clients.torrent_clients import TorrentClient
 from ..domain.book import Book
+from ..domain.book_request import BookRequest, MediaType
+from ..domain.torrent_request import IMPORT_TAGS, read_request_tags
 from .torrent_import import TorrentImportService
 
 logger = logging.getLogger("murid")
-_IMPORT_TAGS = {"murid_pending", "murid_timeout", "murid_import_failed"}
+_IMPORT_TAGS = set(IMPORT_TAGS)
 
 
 @dataclass(frozen=True)
@@ -25,126 +27,112 @@ class RetryImportResult:
     skipped: int = 0
 
 
+@dataclass(frozen=True)
+class RetryRecovery:
+    """Lazy access to media backends and persisted Hardcover work metadata."""
+
+    importer: Callable[[MediaType], TorrentImportService]
+    book: Callable[[int], Book | None]
+
+
 class RetryService:
     """Service responsible for retrying torrents that previously timed out during import."""
 
     def __init__(
         self,
         torrent_client: TorrentClient,
-        import_service: TorrentImportService,
+        import_service: TorrentImportService | None,
         myanonamouse: MyAnonamouse,
         hardcover_books: Callable[[], Iterable[Book]],
+        *,
+        recovery: RetryRecovery | None = None,
     ) -> None:
         """Initialize the RetryService with the necessary dependencies."""
         self.torrent_client = torrent_client
-        self.import_service = import_service
         self.myanonamouse = myanonamouse
         self.hardcover_books = hardcover_books
         self._hardcover_books: list[Book] | None = None
         self.last_result = RetryImportResult()
+        self._recovery = recovery
+        self._import_services = {"ebook": import_service} if import_service is not None else {}
 
-    def retry_torrents(self) -> set[Book]:
-        """Retry timed-out torrents and return books whose torrents remain incomplete."""
-        incomplete_books = set()
-        self._hardcover_books = None
-        imported = already_present = pending = failed = skipped = 0
-        library = self.import_service.library
-        matcher = self.import_service.matcher
-        for torrent_id, mam_id in self.fetch_previous_torrents():
-            book = self.get_book_by_mam_id(mam_id) if mam_id is not None else None
-            if book is None:
-                skipped += 1
-                continue
-
-            if library.contains_book(book, matcher):
-                already_present += 1
-                if not self.import_service.dry_run:
-                    self.torrent_client.remove_tag(torrent_id, "murid_timeout")
-                    self.torrent_client.remove_tag(torrent_id, "murid_pending")
-                continue
-
-            if self.import_service.dry_run:
-                logger.info("%s: dry run would retry import", book)
-                incomplete_books.add(book)
-                pending += 1
-                continue
-
-            if not self.import_service.process_torrent(torrent_id, book):
-                logger.info("%s: still downloading; will check again next run", book)
-                incomplete_books.add(book)
-                pending += 1
-                continue
-
-            if library.contains_book(book, matcher):
-                imported += 1
-            else:
-                # process_torrent marks completed downloads with failed imports.
-                failed += 1
-            self.torrent_client.remove_tag(torrent_id, "murid_timeout")
-            self.torrent_client.remove_tag(torrent_id, "murid_pending")
-        self.last_result = RetryImportResult(imported, already_present, pending, failed, skipped)
-        return incomplete_books
+    def retry_torrents(self) -> set[BookRequest]:
+        """Recover tagged requests once and suppress duplicate discovery while unresolved."""
+        return self._retry()
 
     def retry_imports(self) -> RetryImportResult:
-        """Retry tagged downloads once without searching for or adding new torrents."""
-        imported = already_present = pending = failed = skipped = 0
-        self._hardcover_books = None
-        library = self.import_service.library
-        matcher = self.import_service.matcher
+        """Retry tagged requests without searching for or adding another torrent."""
+        self._retry()
+        return self.last_result
 
-        for torrent in self.torrent_client.get_torrents():
-            tags = {tag.strip() for tag in (torrent.tags or "").split(",")}
-            relevant_tags = tags & _IMPORT_TAGS
-            if not relevant_tags:
-                continue
+    def _importer(self, media: MediaType) -> TorrentImportService:
+        if media not in self._import_services:
+            if self._recovery is None:
+                raise ValueError(f"No import backend configured for {media}")
+            self._import_services[media] = self._recovery.importer(media)
+        return self._import_services[media]
 
+    def _request(self, torrent, tags: set[str]) -> BookRequest | None:
+        media, work_id = read_request_tags(tags)
+        if work_id is None:
             mam_id = self._mam_id(torrent)
             book = self.get_book_by_mam_id(mam_id) if mam_id is not None else None
-            if book is None:
-                logger.warning("Skipping torrent %s: could not identify its book", torrent.hash)
-                skipped += 1
+        elif self._recovery is not None:
+            book = self._recovery.book(work_id)
+        else:
+            book = next((book for book in self.hardcover_books() if book.id == work_id), None)
+        if book is None:
+            return None
+        if work_id is not None and (book.id != work_id or book.source.lower() != "hardcover"):
+            raise ValueError("Recovered book does not match the torrent's Hardcover identity")
+        return BookRequest(book, media)
+
+    def _retry(self) -> set[BookRequest]:
+        self._hardcover_books = None
+        incomplete = set()
+        counts = {field.name: 0 for field in fields(RetryImportResult)}
+        for torrent in self.torrent_client.get_torrents():
+            tags = {tag.strip() for tag in (torrent.tags or "").split(",")}
+            relevant = tags & _IMPORT_TAGS
+            if not relevant:
                 continue
-
-            if library.contains_book(book, matcher):
-                logger.info("%s: already in Calibre", book)
-                for tag in relevant_tags:
-                    self.torrent_client.remove_tag(torrent.hash, tag)
-                already_present += 1
+            try:
+                request = self._request(torrent, tags)
+            except ValueError as error:
+                logger.error(
+                    "Torrent %s: %s; inspect its Murid tags before retrying", torrent.hash, error
+                )
+                request = None
+            if request is None:
+                logger.warning("Skipping torrent %s: could not identify its request", torrent.hash)
+                counts["skipped"] += 1
                 continue
+            importer = self._importer(request.media_type)
+            outcome = self._retry_request(torrent.hash, request, importer)
+            counts[outcome] += 1
+            if outcome in {"pending", "failed"}:
+                incomplete.add(request)
+            elif not importer.dry_run:
+                for tag in IMPORT_TAGS:
+                    if tag in relevant:
+                        self.torrent_client.remove_tag(torrent.hash, tag)
+        self.last_result = RetryImportResult(**counts)
+        return incomplete
 
-            if not self.import_service.process_torrent(torrent.hash, book):
-                logger.info("%s: still downloading", book)
-                pending += 1
-                continue
-
-            if library.contains_book(book, matcher):
-                for tag in relevant_tags:
-                    self.torrent_client.remove_tag(torrent.hash, tag)
-                imported += 1
-            else:
-                if "murid_timeout" in relevant_tags:
-                    self.torrent_client.remove_tag(torrent.hash, "murid_timeout")
-                if "murid_pending" in relevant_tags:
-                    self.torrent_client.remove_tag(torrent.hash, "murid_pending")
-                failed += 1
-
-        return RetryImportResult(imported, already_present, pending, failed, skipped)
-
-    def fetch_previous_torrents(self) -> Iterator[tuple[str, int | None]]:
-        """Fetch unfinished imports, including downloads interrupted before their timeout."""
-        previous_torrents = {
-            torrent.hash: torrent
-            for tag in ("murid_timeout", "murid_pending")
-            for torrent in self.torrent_client.get_torrents_with_tag(tag)
-        }.values()
-        if not previous_torrents:
-            return
-        logger.debug(
-            "Found %d torrents with unfinished imports",
-            len(previous_torrents),
-        )
-        for torrent in previous_torrents:
-            yield torrent.hash, self._mam_id(torrent)
+    @staticmethod
+    def _retry_request(torrent_id, request, importer) -> str:
+        book = request.book
+        # Audio import must verify the journal's exact destination and track inventory;
+        # a title match elsewhere cannot complete a copied-but-unverified import.
+        if request.media_type == "ebook" and importer.library.contains_book(book, importer.matcher):
+            logger.info("%s: already in %s", book, importer.library.name)
+            return "already_present"
+        if importer.dry_run:
+            logger.info("%s [%s]: dry run would retry import", book, request.media_type)
+            return "pending"
+        if not importer.process_torrent(torrent_id, book):
+            return "pending"
+        return {"imported": "imported", "failed": "failed"}.get(importer.last_outcome, "pending")
 
     @staticmethod
     def _mam_id(torrent) -> int | None:
@@ -185,7 +173,7 @@ class RetryService:
         matches = [
             book
             for book in self._hardcover_books
-            if self.import_service.matcher.is_match(book, mam_book)
+            if self._importer("ebook").matcher.is_match(book, mam_book)
         ]
         if len(matches) == 1:
             return matches[0]

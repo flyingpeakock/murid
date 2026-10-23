@@ -10,6 +10,8 @@ from uuid import uuid4
 import qbittorrentapi
 
 from ...domain.book import Book
+from ...domain.book_request import BookRequest, MediaType
+from ...domain.torrent_request import read_request_tags, request_tags
 from .torrent_client import TorrentClient
 
 logger = logging.getLogger("murid")
@@ -52,14 +54,17 @@ class Qbittorrent(TorrentClient):
         logger.debug("qBittorrent version: %s", self.client.app.version)
         logger.debug("qBittorrent API version: %s", self.client.app.web_api_version)
 
-    def add_torrent(self, torrent_file: bytes, book: Book) -> str | None:
+    def add_torrent(
+        self, torrent_file: bytes, book: Book, *, media_type: MediaType = "ebook"
+    ) -> str | None:
         """Add a torrent to qBittorrent and return its ID."""
         tracking_tag = f"murid_add_{uuid4().hex}"
+        identity_tags = request_tags(BookRequest(book, media_type))
         try:
             tinfo = self.client.torrents_add(
                 torrent_files=torrent_file,
                 category=self.category,
-                tags=f"{tracking_tag},murid_pending",
+                tags=",".join([tracking_tag, "murid_pending", *sorted(identity_tags)]),
             )
 
             if isinstance(tinfo, str):
@@ -82,6 +87,7 @@ class Qbittorrent(TorrentClient):
                 logger.error("%s: could not identify the added torrent", book)
                 return None
             torrent_id = torrent_ids[0]
+            self._verify_identity(torrent_id, media_type, identity_tags)
             self.remove_tag(torrent_id, tracking_tag)
             logger.info("%s: added to qBittorrent", book)
             return torrent_id
@@ -95,6 +101,21 @@ class Qbittorrent(TorrentClient):
         except qbittorrentapi.Conflict409Error:
             logger.error("%s: failed to add to qBittorrent: torrent already downloaded", book)
         return None
+
+    def _verify_identity(self, torrent_id, media_type, expected_tags) -> None:
+        """Abort the batch if a shared hash acquired conflicting request identity."""
+        torrents = self.client.torrents_info(category=self.category, torrent_hashes=torrent_id)
+        if len(torrents) != 1 or not isinstance(torrents[0].tags, str):
+            raise QbittorrentError(f"Could not verify persisted request tags for {torrent_id}")
+        tags = {tag.strip() for tag in torrents[0].tags.split(",")}
+        try:
+            medium, _ = read_request_tags(tags)
+        except ValueError as error:
+            raise QbittorrentError(
+                f"{error}; inspect torrent {torrent_id} before retrying"
+            ) from None
+        if medium != media_type or not expected_tags <= tags or "murid_pending" not in tags:
+            raise QbittorrentError(f"Request tags were not persisted; inspect torrent {torrent_id}")
 
     def get_completed_path(self, torrent_id: str) -> str | None:
         """Get the completed path of a torrent by its ID, or None if it's not yet completed."""

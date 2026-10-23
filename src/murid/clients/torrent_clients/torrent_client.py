@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 
 from ...domain.book import Book
+from ...domain.book_request import MediaType
 
 
 class TorrentClient(ABC):
@@ -11,7 +12,9 @@ class TorrentClient(ABC):
     poll_interval: int
 
     @abstractmethod
-    def add_torrent(self, torrent_file: bytes, book: Book) -> str | None:
+    def add_torrent(
+        self, torrent_file: bytes, book: Book, *, media_type: MediaType = "ebook"
+    ) -> str | None:
         """Add a torrent with a persistent murid_pending tag and return its ID."""
 
     @abstractmethod

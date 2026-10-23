@@ -10,6 +10,7 @@ from ..domain.book import Book
 from ..domain.book_matcher import BookMatcher, MatchReview
 from ..domain.book_request import BookRequest
 from ..ui import book_data, colored, labeled, match_review, output
+from .retry_service import RetryImportResult
 from .torrent_discovery import TorrentDiscoveryService
 from .torrent_import import ImportResult
 
@@ -25,7 +26,6 @@ class SyncService:
 
     def start_scheduler(self) -> None:
         """Start the scheduler to run the synchronization process at regular intervals."""
-        self.factory.require_ebook_workflow()
         base_time = datetime.now()
         cron_iter = self.factory.cron_iter(base_time)
 
@@ -76,17 +76,23 @@ class SyncService:
             raise
 
     def _run(self) -> bool:
-        """Retry earlier downloads, discover missing books, and import available ebooks."""
-        self.factory.require_ebook_workflow()
+        """Retry earlier downloads, discover missing requests, and route completed downloads."""
         retry_service = self.factory.retry_service()
-        # Legacy retry state is ebook-only until restart routing is implemented.
-        incomplete_requests = {BookRequest(book) for book in retry_service.retry_torrents()}
+        incomplete_requests = retry_service.retry_torrents()
+        if (
+            isinstance(retry_service.last_result, RetryImportResult)
+            and retry_service.last_result.skipped
+        ):
+            logger.error(
+                "Request recovery is incomplete; resolve skipped torrents before discovery"
+            )
+            return self._summary(0, {}, ImportResult(), retry_service)
 
         matcher = self.factory.matcher()
 
         wanted_requests = self.get_wanted_requests(matcher)
         if not wanted_requests:
-            logger.info("No books missing from Calibre library; nothing to do")
+            logger.info("No requests missing from their destination libraries; nothing to do")
             return self._summary(0, {}, ImportResult(), retry_service)
 
         torrent_discovery = self.factory.torrent_discovery()
@@ -97,11 +103,16 @@ class SyncService:
             incomplete_requests,
         )
 
-        torrent_import = self.factory.torrent_import()
-        # Acquisition is still guarded above; the importer remains ebook-only until step 5.
-        result = torrent_import.import_torrents(
-            (data, request.book) for data, request in wanted_torrents
-        )
+        result = ImportResult()
+        for media in sorted({request.media_type for _, request in wanted_torrents}):
+            torrent_import = self.factory.torrent_import(media)
+            imported = torrent_import.import_torrents(
+                (data, request.book)
+                for data, request in wanted_torrents
+                if request.media_type == media
+            )
+            for key, count in asdict(imported).items():
+                setattr(result, key, getattr(result, key) + count)
         return self._summary(
             len(wanted_requests), torrent_discovery.last_counts, result, retry_service
         )

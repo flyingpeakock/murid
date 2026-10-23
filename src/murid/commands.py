@@ -69,8 +69,8 @@ def _run_work_command(args: Namespace) -> int:
             output(
                 "[bold cyan]Retry import:[/] "
                 f"{result.imported} imported, "
-                f"{result.already_present} already in Calibre, "
-                f"{result.pending} still downloading, {result.failed} failed, "
+                f"{result.already_present} already present, "
+                f"{result.pending} pending, {result.failed} failed, "
                 f"{result.skipped} skipped",
                 kind="retry_summary",
                 data={

@@ -42,16 +42,16 @@ def test_grouped_ebook_lists_use_every_list(workflow):
     assert records(result, "missing_summary")[0]["count"] == 1
 
 
-def test_grouped_audio_config_validates_but_execution_is_explicitly_unsupported(workflow):
+def test_grouped_audio_config_can_run_discovery_without_library_writes(workflow):
     configure_audio(workflow)
     workflow.config["hardcover_api_keys"] = [{
         "api_key": "Bearer integration-token",
         "reading_list": {"audiobooks": {"type": "audiobook"}},
     }]
     assert workflow.run("validate-config").code == 0
-    result = workflow.run("run")
-    assert result.code == 1
-    assert "Audiobook execution is not supported yet" in str(result.errors)
+    result = workflow.run("run", "--dry-run")
+    assert records(result, "sync_summary")[0]["missing"] == 1
+    assert workflow.api.added_files == []
 
 
 def test_audio_print_config_json_always_hides_key(workflow):
@@ -64,8 +64,7 @@ def test_audio_print_config_json_always_hides_key(workflow):
     assert "private-audio-key" not in str(result)
 
 
-@pytest.mark.parametrize("command", ["run", "schedule",
-                                     "retry-import", "search-book", "add-book"])
+@pytest.mark.parametrize("command", ["search-book", "add-book"])
 @pytest.mark.parametrize("mixed", [False, True])
 def test_audio_workflows_report_unsupported_without_changes(workflow, command, mixed):
     ebook_config = workflow.config["calibre"]
@@ -81,7 +80,7 @@ def test_audio_workflows_report_unsupported_without_changes(workflow, command, m
     before = workflow.database.read_text()
     result = workflow.run(*args)
     assert result.code == 1
-    assert "Audiobook execution is not supported yet" in str(result.errors)
+    assert "Manual audiobook commands are not supported yet" in str(result.errors)
     assert workflow.database.read_text() == before
     assert workflow.api.added_files == []
 

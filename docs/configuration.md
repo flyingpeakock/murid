@@ -64,15 +64,13 @@ unknown media types are rejected. Overlapping users and lists represent one
 request per Hardcover book ID and media type; requesting both means acquiring
 both independently.
 
-**Audiobook acquisition is not yet supported.** Configuration validation, printing,
-`list-missing`, and `review-matches` support audiobook and mixed requests. Inspection
-compares ebooks against Calibre and audiobooks against Audiobookshelf independently;
-the output includes the media type and destination. An ebook-only Audiobookshelf
-item does not satisfy an audiobook request, and lookup failures abort inspection.
-Run, schedule, manual search/import, and retry workflows still reject configurations
-requesting audiobooks with an explicit error. Audiobookshelf connection diagnostics
-remain pending until the full permission and mount checks are implemented.
-Keep scheduled acquisition on ebook-only lists during this phase.
+`run`, `schedule`, and `retry-import` now route ebook and audiobook requests to
+Calibre and Audiobookshelf independently. Inspection output includes media and
+destination. Ebook-only Audiobookshelf items do not satisfy audio requests, and
+library lookup failures abort the cycle. Manual audiobook search/import flags and
+full connection diagnostics remain to be implemented. Before enabling scheduled
+audiobook acquisition, finish the controlled live import and service-user mount
+verification described in [the integration notes](audiobookshelf-integration.md).
 
 ```yaml
 hardcover_api_keys:
@@ -116,9 +114,8 @@ see [integration verification and pending live checks](audiobookshelf-integratio
 The top-level `filetypes` continues to control ebook preferences only. Discovery
 uses separate audiobook preferences from `audiobookshelf.filetypes`. Main title,
 alternate title, and author fallback searches are scoped to MaM main category 14
-for ebooks or 13 for audiobooks. Audiobook acquisition remains blocked until
-restart recovery is connected. The import backend is implemented; manual audiobook
-CLI routing follows in step 7.
+for ebooks or 13 for audiobooks. Automatic import and restart recovery are connected;
+manual audiobook CLI routing follows in step 7.
 
 Library inspection uses paginated item listing and fetches expanded details for
 audio candidates to preserve author names and verify playable tracks. It sends
@@ -155,6 +152,23 @@ and durable journal available for retry. Keep staging journals, partial folders,
 and destination `.murid-import.json` markers; retries use them to resume safely.
 A delayed scan does not require another copy. Live ingestion and service-user
 mount permissions remain to be verified before rollout.
+
+Murid adds `murid_media_ebook` or `murid_media_audiobook` and
+`murid_hardcover_<id>` with the initial torrent add, alongside `murid_pending`.
+These identity tags remain after success. Restarts fetch tagged works directly
+from Hardcover by ID, so recovery does not require continued reading-list membership
+or a MaM comment. Keep a valid Hardcover API key configured. Untagged legacy torrents
+remain ebooks and use their MaM comment plus a unique current Hardcover-list match.
+Missing or conflicting request identity blocks new discovery until resolved, rather
+than risking a duplicate download or an import into the wrong library.
+
+A delayed audiobook scan remains pending for the next run; an import failure keeps
+its lifecycle tags and suppresses another download of that work and medium while
+recovery is unresolved. `retry-import` retries once and never adds torrents. It
+clears pending/timeout/failure tags only after success in the correct library.
+For audio this includes verification of the persisted destination and tracks;
+a general title match cannot clear a copied-but-unverified import. Dry runs retain
+all tags and perform no imports or scans.
 
 ### Calibre
 
