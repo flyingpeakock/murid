@@ -15,8 +15,8 @@ the tagged server source below determines this contract.
 
 Murid implements library inspection and a shared-folder import backend against this
 contract. Automated tests cover copying, crash recovery, scans, and API verification
-with offline fixtures; live checks so far are read-only. Acquisition remains guarded
-until torrent restart recovery is connected.
+with offline fixtures; live checks so far are read-only. Automatic sync and torrent
+restart recovery are connected; controlled ingestion remains required before rollout.
 
 ## Authentication and access
 
@@ -143,6 +143,22 @@ than falling back to a replacing operation. Filesystem behavior was tested on Li
 macOS/Windows branches have not been exercised here. Server root path checks cannot
 prove physical bind-mount alias placement; deployment must ensure staging is truly
 outside every scanned root. Source files are never moved, linked, or modified.
+
+## Request recovery verification (step 6)
+
+Initial torrent adds persist media and Hardcover work identity. Offline tests cover
+recovery after list removal, independent ebook/audio routing, retained pending and
+failed state, malformed/conflicting tags, and aborting a batch when a shared hash
+acquires multiple request identities. The real shared-folder backend is exercised
+through torrent import/retry with delayed ingestion, removal of the original source,
+and a later successful verification without another copy or torrent add. Legacy
+ebook recovery, dry runs, and mixed sync with only one missing medium also pass.
+
+A read-only live check recovered work 427844 directly through Hardcover's
+`books(where: {id: {_eq: $book_id}})` query using the same fields as list fetching.
+The work ID, title, and authors matched the audiobook-list entry. The harness
+permitted only read-only Hardcover GraphQL requests and blocked all other HTTP
+operations. No torrent additions, library copies, or scans were performed.
 
 ## Remaining live verification
 

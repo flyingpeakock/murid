@@ -113,7 +113,13 @@ def test_import_selects_requested_file_from_completed_pack(
 
 @pytest.mark.parametrize("directory", [False, True])
 def test_automatic_import_keeps_format_filtering(
-    service, torrent_client, calibre, book, monkeypatch, tmp_path, directory,
+    service,
+    torrent_client,
+    calibre,
+    book,
+    monkeypatch,
+    tmp_path,
+    directory,
 ):
     pdf = tmp_path / "Dune.pdf"
     pdf.write_bytes(b"ebook")
@@ -314,7 +320,11 @@ def test_shared_hash_reports_collision_without_losing_first_book(
     calibre.add_book.assert_called_once_with(book, str(Path("/downloads/dune.epub")))
     assert (result.added, result.imported, result.failed, result.pending) == (1, 1, 1, 0)
     assert "already assigned" in caplog.text
-    torrent_client.remove_tag.assert_called_once_with("shared", "murid_pending")
+    assert {call.args for call in torrent_client.remove_tag.call_args_list} == {
+        ("shared", "murid_pending"),
+        ("shared", "murid_timeout"),
+        ("shared", "murid_import_failed"),
+    }
 
 
 def test_calibre_timeout_tags_import_failure(service, torrent_client, calibre, book, monkeypatch):

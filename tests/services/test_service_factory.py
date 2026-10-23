@@ -52,8 +52,6 @@ def test_grouped_lists_expand_to_independent_requests(args, config, monkeypatch)
     }
     constructor.assert_any_call("Bearer key", list_slug="want-to-read")
     constructor.assert_any_call("Bearer key", list_slug="audio")
-    with pytest.raises(ConfigError, match="Audiobook execution is not supported"):
-        factory.sync_service().run()
 
 
 def test_grouped_ebook_lists_all_reach_legacy_workflow(args, config, monkeypatch):
@@ -77,8 +75,6 @@ def test_grouped_ebook_lists_all_reach_legacy_workflow(args, config, monkeypatch
     "operation",
     [
         "hardcover",
-        "retry_service",
-        "torrent_import",
     ],
 )
 def test_audiobook_workflows_fail_before_constructing_clients(args, config, monkeypatch, operation):
@@ -87,7 +83,7 @@ def test_audiobook_workflows_fail_before_constructing_clients(args, config, monk
     client = Mock(side_effect=AssertionError("No network calls expected"))
     monkeypatch.setattr("murid.services.service_factory.Hardcover", client)
     factory = ServiceFactory(args, config, initialize_notifier=False)
-    with pytest.raises(ConfigError, match="Audiobook execution is not supported yet"):
+    with pytest.raises(ConfigError, match="Manual audiobook commands are not supported yet"):
         getattr(factory, operation)()
     client.assert_not_called()
 
@@ -97,7 +93,7 @@ def test_audio_only_factory_does_not_initialize_calibre(args, config, monkeypatc
     config.pop("calibre")
     client = Mock()
     monkeypatch.setattr("murid.services.service_factory.Calibre", client)
-    with pytest.raises(ConfigError, match="requires an ebook request"):
+    with pytest.raises(ConfigError, match="requires Calibre configuration"):
         ServiceFactory(args, config, initialize_notifier=False).calibre()
     client.assert_not_called()
 
@@ -320,23 +316,16 @@ def test_sync_service(args, config, monkeypatch):
     assert result == ("sync", factory)
 
 
-def test_retry_service_loads_all_hardcover_accounts_lazily(args, config, monkeypatch):
+def test_retry_service_loads_hardcover_requests_lazily(args, config, monkeypatch):
     factory = ServiceFactory(args, config, initialize_notifier=False)
-    clients = [Mock(), Mock()]
-    clients[0].get_books.return_value = ["first-book"]
-    clients[1].get_books.return_value = ["second-book"]
-    load_clients = Mock(return_value=clients)
-    monkeypatch.setattr(factory, "hardcover", load_clients)
+    requests = Mock(return_value=[])
+    monkeypatch.setattr(factory, "wanted_requests", requests)
     monkeypatch.setattr(factory, "qbittorrent", Mock())
-    monkeypatch.setattr(factory, "torrent_import", Mock())
     monkeypatch.setattr(factory, "myanonamouse", Mock())
-
     service = factory.retry_service()
-    load_clients.assert_not_called()
-    assert list(service.hardcover_books()) == ["first-book", "second-book"]
-    load_clients.assert_called_once_with()
-    for client in clients:
-        client.get_books.assert_called_once_with()
+    requests.assert_not_called()
+    assert list(service.hardcover_books()) == []
+    requests.assert_called_once_with()
 
 
 def test_qbittorrent_without_dry_run_option(config, monkeypatch):
@@ -382,3 +371,28 @@ def test_hardcover_per_user_list_settings(args, config, monkeypatch):
     constructor.assert_any_call("Bearer custom", list_slug="download-queue")
     constructor.assert_any_call("Bearer default", list_slug="want-to-read")
     assert all(client.lang_codes == ["eng"] for client in clients)
+
+
+def test_audio_sync_import_and_retry_do_not_construct_calibre(args, config, monkeypatch):
+    config["torrent_timeout_seconds"] = 1800
+    config["hardcover_api_keys"] = [{"api_key": "Bearer key", "media_types": ["audiobook"]}]
+    config.pop("calibre")
+    config["audiobookshelf"] = {
+        "url": "https://audio.example.com",
+        "api_key": "secret",
+        "library_id": "library",
+        "library_path": "/shared/books",
+    }
+    calibre = Mock(side_effect=AssertionError("Calibre must not be initialized"))
+    hardcover = Mock(side_effect=AssertionError("Recovery must load work metadata lazily"))
+    monkeypatch.setattr("murid.services.service_factory.Calibre", calibre)
+    monkeypatch.setattr("murid.services.service_factory.Hardcover", hardcover)
+    factory = ServiceFactory(args, config, initialize_notifier=False)
+    monkeypatch.setattr(factory, "qbittorrent", Mock())
+    monkeypatch.setattr(factory, "myanonamouse", Mock())
+    retry = factory.retry_service()
+    importer = retry._importer("audiobook")
+    assert importer.media_type == "audiobook"
+    assert isinstance(importer.library, AudiobookshelfLibrary)
+    calibre.assert_not_called()
+    hardcover.assert_not_called()

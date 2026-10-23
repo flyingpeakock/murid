@@ -145,7 +145,7 @@ def workflow(tmp_path, monkeypatch, capsys):
             if state.hardcover_error:
                 data = {"errors": [{"message": "reading list unavailable"}]}
             elif "GetListBooks" in kwargs["json"]["query"]:
-                assert kwargs["json"]["variables"]["slug"] == "download-queue"
+                assert kwargs["json"]["variables"]["slug"] in {"download-queue", "audiobooks"}
                 assert kwargs["json"]["variables"]["user_id"] == 1
                 data = {
                     "data": {
@@ -162,6 +162,18 @@ def workflow(tmp_path, monkeypatch, capsys):
                                         }
                                     }
                                 ]
+                            }
+                        ]
+                    }
+                }
+            elif "GetBook(" in kwargs["json"]["query"]:
+                data = {
+                    "data": {
+                        "books": [
+                            {
+                                "id": kwargs["json"]["variables"]["book_id"],
+                                "title": "Dune",
+                                "contributions": [{"author": {"name": "Frank Herbert"}}],
                             }
                         ]
                     }

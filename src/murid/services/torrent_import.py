@@ -10,7 +10,9 @@ import apprise
 from ..clients.torrent_clients.torrent_client import TorrentClient
 from ..domain.book import Book
 from ..domain.book_matcher import BookMatcher
-from ..libraries.library import Library, LibraryError
+from ..domain.book_request import MediaType
+from ..domain.torrent_request import IMPORT_TAGS
+from ..libraries.library import Library, LibraryError, LibraryImportPending
 
 logger = logging.getLogger("murid")
 
@@ -36,6 +38,7 @@ class TorrentImportConfig:
     notify: Callable[[str, str, apprise.NotifyType], None]
     dry_run: bool = False
     timeout: int = 1800  # 30 minutes
+    media_type: MediaType = "ebook"
 
 
 class TorrentImportService:  # pylint: disable=too-many-instance-attributes
@@ -49,6 +52,7 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
         self.dry_run = config.dry_run
         self.matcher = config.matcher
         self.timeout = config.timeout
+        self.media_type = config.media_type
         self.last_outcome = "pending"
 
     def import_torrents(self, torrent_files: Iterable[tuple[bytes, Book]]) -> ImportResult:
@@ -75,7 +79,9 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
         pending = {}  # torrent_id -> book
 
         for torrent_file, book in torrent_files:
-            torrent_id = self.torrent_client.add_torrent(torrent_file, book)
+            torrent_id = self.torrent_client.add_torrent(
+                torrent_file, book, media_type=self.media_type
+            )
             if torrent_id:
                 if torrent_id in pending:
                     logger.error(
@@ -106,10 +112,12 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
 
             for torrent_id, book in pending.items():
                 if self.process_torrent(torrent_id, book):
-                    self.torrent_client.remove_tag(torrent_id, "murid_pending")
                     completed.append(torrent_id)
                     if self.last_outcome == "imported":
+                        self.clear_import_tags(torrent_id)
                         result.imported += 1
+                    elif self.last_outcome == "pending":
+                        result.pending += 1
                     else:
                         result.failed += 1
 
@@ -122,7 +130,7 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
 
             if self._is_timeout(start_time, pending):
                 break
-        result.pending = len(pending)
+        result.pending += len(pending)
         return result
 
     def process_torrent(self, torrent_id: str, book: Book) -> bool:
@@ -154,9 +162,14 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
                 logger.error(
                     "%s: failed to verify import into %s; run murid status, "
                     "inspect the library, then run murid retry-import",
-                    book, self.library.name,
+                    book,
+                    self.library.name,
                 )
                 self.torrent_client.add_tag(torrent_id, "murid_import_failed")
+        except LibraryImportPending as error:
+            self.last_outcome = "pending"
+            self.torrent_client.add_tag(torrent_id, "murid_pending")
+            logger.warning("%s: %s; ingestion will be checked next run", book, error)
         except LibraryError as error:
             self.last_outcome = "failed"
             logger.error(
@@ -168,6 +181,12 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
             self.torrent_client.add_tag(torrent_id, "murid_import_failed")
 
         return True
+
+    def clear_import_tags(self, torrent_id: str) -> None:
+        """Clear lifecycle state only after the destination library confirms success."""
+        if not self.dry_run:
+            for tag in IMPORT_TAGS:
+                self.torrent_client.remove_tag(torrent_id, tag)
 
     def _is_timeout(self, start_time: float, pending: dict) -> bool:
         """Check if the timeout has been reached since the given start time."""

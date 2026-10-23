@@ -347,3 +347,35 @@ def test_custom_list_api_failure_propagates(hardcover):
     hardcover.make_query = Mock(side_effect=HardcoverError("permission denied"))
     with pytest.raises(HardcoverError, match="Cannot fetch books.*permission denied"):
         hardcover.get_books()
+
+
+def test_get_book_recovers_metadata_without_reading_a_list(hardcover):
+    hardcover.make_query = Mock(
+        return_value={
+            "data": {
+                "books": [
+                    {
+                        "id": 42,
+                        "title": "Dune",
+                        "contributions": [{"author": {"name": "Frank Herbert"}}],
+                        "book_series": [{"position": 0, "series": {"name": "Dune"}}],
+                    }
+                ]
+            }
+        }
+    )
+    book = hardcover.get_book(42)
+    assert (book.id, book.source, book.title, book.series_number) == (42, "hardcover", "Dune", 0)
+    query = hardcover.make_query.call_args.args[0]
+    assert "books(where:" in query and "user_books" not in query
+    assert hardcover.make_query.call_args.kwargs["variables"] == {"book_id": 42}
+
+
+@pytest.mark.parametrize("books", [[], [{"id": 99}], [{"id": 42}, {"id": 43}], "invalid"])
+def test_get_book_does_not_substitute_a_different_work(hardcover, books):
+    hardcover.make_query = Mock(return_value={"data": {"books": books}})
+    if books == []:
+        assert hardcover.get_book(42) is None
+    else:
+        with pytest.raises(HardcoverError):
+            hardcover.get_book(42)

@@ -14,6 +14,9 @@ def client():
 
     client.app.version = "5.1.0"
     client.app.web_api_version = "2.11.0"
+    client.torrents_info.return_value = [
+        Mock(hash="abc123", tags="murid_pending,murid_media_ebook")
+    ]
 
     return client
 
@@ -150,14 +153,21 @@ def test_add_torrent_unsuccessful_response(client, book, response):
 
 def test_add_torrent_legacy_response_tracks_delayed_add(client, book):
     client.torrents_add.return_value = "Ok."
-    client.torrents_info.side_effect = [[], [Mock(hash="abc123")]]
+    client.torrents_info.side_effect = [
+        [],
+        [Mock(hash="abc123")],
+        [Mock(hash="abc123", tags="murid_pending,murid_media_ebook")],
+    ]
     qbt = Qbittorrent(
         QbittorrentConfig(client=client, category="ebooks", dry_run=False), poll_interval=0
     )
     assert qbt.add_torrent(b"torrent-data", book) == "abc123"
-    tag, pending_tag = client.torrents_add.call_args.kwargs["tags"].split(",")
-    assert pending_tag == "murid_pending"
-    client.torrents_info.assert_called_with(category="ebooks", tag=tag)
+    tag, *state_tags = client.torrents_add.call_args.kwargs["tags"].split(",")
+    assert set(state_tags) == {"murid_pending", "murid_media_ebook"}
+    assert any(
+        call.kwargs == {"category": "ebooks", "tag": tag}
+        for call in client.torrents_info.call_args_list
+    )
     client.torrents_remove_tags.assert_called_once_with(tags=tag, torrent_hashes="abc123")
 
 
