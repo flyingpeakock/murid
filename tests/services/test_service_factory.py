@@ -4,7 +4,83 @@ from unittest.mock import Mock
 import pytest
 
 from murid.clients.calibre import CalibreConfig, CalibreError
+from murid.config import ConfigError
+from murid.domain.book import Book
 from murid.services.service_factory import ServiceFactory
+
+
+def test_wanted_requests_normalize_and_combine_lists(args, config, monkeypatch):
+    config["hardcover_api_keys"] = [
+        "Bearer legacy",
+        {"api_key": "Bearer both", "media_types": ["ebook", "audiobook"]},
+        {"api_key": "Bearer audio", "list": "audio", "media_types": ["audiobook"]},
+    ]
+    book = Book("Title", ["Author"], 42, [], "Hardcover")
+    clients = []
+
+    def create(token, list_slug):
+        client = Mock()
+        client.get_books.return_value = [book]
+        clients.append((token, list_slug))
+        return client
+
+    monkeypatch.setattr("murid.services.service_factory.Hardcover", create)
+    requests = ServiceFactory(args, config, initialize_notifier=False).wanted_requests()
+    assert {request.identity for request in requests} == {(42, "ebook"), (42, "audiobook")}
+    assert ("Bearer legacy", "want-to-read") in clients
+    assert ("Bearer audio", "audio") in clients
+
+
+def test_grouped_lists_expand_to_independent_requests(args, config, monkeypatch):
+    config["hardcover_api_keys"] = [{"api_key": "Bearer key", "reading_list": {
+        "want-to-read": {}, "audio": {"type": "audiobook"},
+    }}]
+    book = Book("Title", ["Author"], 42, [], "Hardcover")
+    constructor = Mock(side_effect=lambda *args, **kwargs: Mock(get_books=lambda: [book]))
+    monkeypatch.setattr("murid.services.service_factory.Hardcover", constructor)
+    factory = ServiceFactory(args, config, initialize_notifier=False)
+    assert {request.identity for request in factory.wanted_requests()} == {
+        (42, "ebook"), (42, "audiobook"),
+    }
+    constructor.assert_any_call("Bearer key", list_slug="want-to-read")
+    constructor.assert_any_call("Bearer key", list_slug="audio")
+    with pytest.raises(ConfigError, match="Audiobook execution is not supported"):
+        factory.sync_service()
+
+
+def test_grouped_ebook_lists_all_reach_legacy_workflow(args, config, monkeypatch):
+    config["hardcover_api_keys"] = [{"api_key": "Bearer key", "reading_list": {
+        "want-to-read": {}, "a": {},
+    }}]
+    constructor = Mock(side_effect=lambda *args, **kwargs: Mock())
+    monkeypatch.setattr("murid.services.service_factory.Hardcover", constructor)
+    assert len(ServiceFactory(args, config, initialize_notifier=False).hardcover()) == 2
+    constructor.assert_any_call("Bearer key", list_slug="want-to-read")
+    constructor.assert_any_call("Bearer key", list_slug="a")
+
+
+@pytest.mark.parametrize("operation", [
+    "hardcover", "sync_service", "retry_service", "torrent_discovery", "torrent_import",
+])
+def test_audiobook_workflows_fail_before_constructing_clients(args, config, monkeypatch, operation):
+    config["hardcover_api_keys"] = [{"api_key": "Bearer key", "media_types": ["audiobook"]}]
+    config.pop("calibre")
+    client = Mock(side_effect=AssertionError("No network calls expected"))
+    monkeypatch.setattr("murid.services.service_factory.Hardcover", client)
+    factory = ServiceFactory(args, config, initialize_notifier=False)
+    with pytest.raises(ConfigError, match="Audiobook execution is not supported yet"):
+        getattr(factory, operation)()
+    client.assert_not_called()
+
+
+def test_audio_only_factory_does_not_initialize_calibre(args, config, monkeypatch):
+    config["hardcover_api_keys"] = [{"api_key": "Bearer key", "media_types": ["audiobook"]}]
+    config.pop("calibre")
+    client = Mock()
+    monkeypatch.setattr("murid.services.service_factory.Calibre", client)
+    with pytest.raises(ConfigError, match="requires an ebook request"):
+        ServiceFactory(args, config, initialize_notifier=False).calibre()
+    client.assert_not_called()
 
 
 @pytest.fixture

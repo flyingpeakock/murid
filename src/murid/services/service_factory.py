@@ -10,8 +10,9 @@ from ..clients.calibre import Calibre, CalibreConfig
 from ..clients.hardcover import Hardcover
 from ..clients.myanonamouse import MyAnonamouse
 from ..clients.torrent_clients.qbittorrent import Qbittorrent, QbittorrentConfig
-from ..config import Config, ConfigError
+from ..config import Config, ConfigError, hardcover_list_settings, requested_media_types
 from ..domain.book_matcher import BookMatcher
+from ..domain.book_request import BookRequest
 from ..domain.torrent_selector import TorrentSelector
 from ..notifications.apprise import init_apprise as apprise
 from .retry_service import RetryService
@@ -70,6 +71,8 @@ class ServiceFactory:
 
     def calibre(self):
         """Create a Calibre instance using the configuration file."""
+        if "ebook" not in requested_media_types(self.config["hardcover_api_keys"]):
+            raise ConfigError("This operation requires an ebook request and Calibre configuration")
         return Calibre(
             CalibreConfig(
                 executable=self.config["calibre"]["calibredb_executable"],
@@ -82,21 +85,49 @@ class ServiceFactory:
 
     def hardcover(self) -> set[Hardcover]:
         """Create a list of Hardcover instances for each user specified in the configuration."""
-        keys = self.config["hardcover_api_keys"]
-        lang_codes = self.config["lang_codes"]
-
-        def create_client(entry):
-            if isinstance(entry, dict):
-                client = Hardcover(entry["api_key"], list_slug=entry.get("list", "want-to-read"))
-            else:
-                client = Hardcover(entry)
-            if hasattr(client, "lang_codes"):
-                client.lang_codes = lang_codes
-            return client
-
+        self.require_ebook_workflow()
+        keys = [
+            settings
+            for entry in self.config["hardcover_api_keys"]
+            for settings in (
+                hardcover_list_settings([entry])
+                if isinstance(entry, dict) and "reading_list" in entry else [entry]
+            )
+        ]
         with ThreadPoolExecutor(max_workers=min(10, len(keys))) as executor:
-            hardcover_clients = set(executor.map(create_client, keys))
+            hardcover_clients = set(executor.map(self._hardcover_client, keys))
         return hardcover_clients
+
+    def _hardcover_client(self, entry):
+        if isinstance(entry, dict):
+            client = Hardcover(entry["api_key"], list_slug=entry.get("list", "want-to-read"))
+        else:
+            client = Hardcover(entry)
+        if hasattr(client, "lang_codes"):
+            client.lang_codes = self.config["lang_codes"]
+        return client
+
+    def wanted_requests(self) -> set[BookRequest]:
+        """Fetch lists as independent requests, combining overlapping work identities."""
+        entries = hardcover_list_settings(self.config["hardcover_api_keys"])
+
+        def fetch(entry):
+            return {
+                BookRequest(book, media)
+                for book in self._hardcover_client(entry).get_books()
+                for media in entry["media_types"]
+            }
+
+        with ThreadPoolExecutor(max_workers=min(10, len(entries))) as executor:
+            return set().union(*executor.map(fetch, entries))
+
+    def require_ebook_workflow(self):
+        """Prevent incomplete audiobook support from ignoring or misrouting requests."""
+        if "audiobook" in requested_media_types(self.config["hardcover_api_keys"]):
+            raise ConfigError(
+                "Audiobook execution is not supported yet; configuration validation is available, "
+                "but library routing, discovery, and import are not connected"
+            )
 
     def myanonamouse(self):
         """Create a MyAnonamouse instance using the MAM ID from the configuration."""
@@ -126,6 +157,7 @@ class ServiceFactory:
 
     def torrent_discovery(self):
         """Create a TorrentDiscoveryService instance using the MyAnonamouse client."""
+        self.require_ebook_workflow()
         return TorrentDiscoveryService(
             self.myanonamouse(),
             self.config["lang_codes"],
@@ -135,6 +167,7 @@ class ServiceFactory:
 
     def torrent_import(self):
         """Create a TorrentImportService instance"""
+        self.require_ebook_workflow()
         return TorrentImportService(
             TorrentImportConfig(
                 torrent_client=self.qbittorrent(),
@@ -153,6 +186,7 @@ class ServiceFactory:
 
     def sync_service(self):
         """Create a SyncService instance."""
+        self.require_ebook_workflow()
         return SyncService(self)
 
     def torrent_selector(self):
@@ -165,6 +199,7 @@ class ServiceFactory:
 
     def retry_service(self):
         """Create a RetryService instance."""
+        self.require_ebook_workflow()
         return RetryService(
             self.qbittorrent(),
             self.torrent_import(),

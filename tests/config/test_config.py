@@ -6,7 +6,7 @@ from io import StringIO
 import pytest
 import yaml
 
-from murid.config import Config, ConfigError, _defaults, env_constructor
+from murid.config import Config, ConfigError, _defaults, env_constructor, hardcover_list_settings
 
 missing = object()
 base = _defaults.copy() | {
@@ -24,6 +24,120 @@ base = _defaults.copy() | {
         "category": "murid",
     },
 }
+
+
+def audiobook_settings(**overrides):
+    return {
+        "url": "https://audio.example.com/abs/",
+        "api_key": "audio-secret",
+        "library_id": "library-id",
+        "library_path": "/mnt/audiobooks",
+        **overrides,
+    }
+
+
+def test_grouped_reading_lists_and_defaults(build_config):
+    entries = [{"api_key": "Bearer key", "reading_list": {
+        "want-to-read": {}, "audio": {"type": "audiobook"},
+        "both": {"type": ["ebook", "audiobook"]},
+    }}]
+    config = build_config(hardcover_api_keys=entries, audiobookshelf=audiobook_settings())
+    assert hardcover_list_settings(config.hardcover_api_keys) == [
+        {"api_key": "Bearer key", "list": "audio", "media_types": ["audiobook"]},
+        {"api_key": "Bearer key", "list": "both", "media_types": ["ebook", "audiobook"]},
+        {"api_key": "Bearer key", "list": "want-to-read", "media_types": ["ebook"]},
+    ]
+
+
+def test_omitting_reading_list_defaults_to_want_to_read_ebooks(build_config):
+    config = build_config(hardcover_api_keys=[{"api_key": "Bearer key"}])
+    assert hardcover_list_settings(config.hardcover_api_keys) == [
+        {"api_key": "Bearer key", "list": "want-to-read", "media_types": ["ebook"]},
+    ]
+
+
+@pytest.mark.parametrize("lists", [
+    {}, None, [], {"want to read": {}}, {"": {}}, {5: {}},
+    {"audio": None}, {"audio": {"format": "mp3"}},
+    {"audio": {"type": "audiobooks"}}, {"audio": {"type": []}},
+    {"audio": {"type": True}}, {"audio": {"type": ["video"]}},
+])
+def test_invalid_grouped_reading_lists(build_config, lists):
+    with pytest.raises(ConfigError, match="reading_list"):
+        build_config(hardcover_api_keys=[{"api_key": "Bearer key", "reading_list": lists}])
+
+
+@pytest.mark.parametrize("legacy", [{"list": "a"}, {"media_types": ["ebook"]}])
+def test_grouped_lists_reject_ambiguous_legacy_settings(build_config, legacy):
+    with pytest.raises(ConfigError, match="cannot be combined"):
+        build_config(hardcover_api_keys=[{
+            "api_key": "Bearer key", "reading_list": {"a": {}}, **legacy,
+        }])
+
+
+def test_grouped_audio_only_needs_no_calibre(build_config):
+    config = build_config(calibre=missing, audiobookshelf=audiobook_settings(),
+                          hardcover_api_keys=[{"api_key": "Bearer key", "reading_list": {
+                              "audio": {"type": "audiobook"},
+                          }}])
+    assert config.audiobookshelf["library_id"] == "library-id"
+
+
+@pytest.mark.parametrize("media_types", [[], "audiobook", ["video"], [None], [True]])
+def test_reject_invalid_media_types(build_config, media_types):
+    with pytest.raises(ConfigError, match="media_types"):
+        build_config(hardcover_api_keys=[{"api_key": "Bearer key", "media_types": media_types}])
+
+
+def test_audio_only_config_needs_no_calibre(build_config):
+    config = build_config(
+        calibre=missing,
+        hardcover_api_keys=[{"api_key": "Bearer key", "media_types": ["audiobook"]}],
+        audiobookshelf=audiobook_settings(),
+    )
+    assert config.audiobookshelf["filetypes"] == ["m4b", "mp3"]
+    assert config.audiobookshelf["url"] == "https://audio.example.com/abs"
+
+
+def test_audiobook_requests_require_backend(build_config):
+    with pytest.raises(ConfigError, match="require 'audiobookshelf'"):
+        build_config(hardcover_api_keys=[{"api_key": "Bearer key", "media_types": ["audiobook"]}])
+
+
+def test_both_media_require_both_libraries(build_config):
+    with pytest.raises(ConfigError, match="calibre.library"):
+        build_config(
+            calibre=missing,
+            hardcover_api_keys=[{"api_key": "Bearer key", "media_types": ["ebook", "audiobook"]}],
+            audiobookshelf=audiobook_settings(),
+        )
+
+
+@pytest.mark.parametrize("redact", [True, False])
+def test_audiobookshelf_secret_always_redacted(build_config, redact):
+    config = build_config(audiobookshelf=audiobook_settings(), redact_sensitive_data=redact)
+    assert "audio-secret" not in str(config)
+    assert config.audiobookshelf["api_key"] == "audio-secret"
+
+
+@pytest.mark.parametrize("key,value", [
+    ("url", "ftp://example.com"), ("url", "https://user:secret@example.com"),
+    ("url", "https://example.com?token=secret"), ("api_key", ""),
+    ("url", "https://[broken"), ("url", "https://example.com:invalid"),
+    ("library_id", ""), ("library_path", "relative/path"),
+    ("filetypes", []), ("filetypes", ["epub"]), ("filetypes", "mp3"),
+])
+def test_invalid_audiobookshelf_settings(build_config, key, value):
+    with pytest.raises(ConfigError, match="audiobookshelf"):
+        build_config(audiobookshelf=audiobook_settings(**{key: value}))
+
+
+@pytest.mark.parametrize("key", ["url", "api_key", "library_id", "library_path"])
+def test_audiobookshelf_required_fields(build_config, key):
+    settings = audiobook_settings()
+    settings.pop(key)
+    with pytest.raises(ConfigError, match=f"audiobookshelf.{key}"):
+        build_config(audiobookshelf=settings)
 
 
 @pytest.fixture

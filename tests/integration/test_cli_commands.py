@@ -14,6 +14,78 @@ def records(result, kind):
     return [record for record in result.records if record["type"] == kind]
 
 
+def configure_audio(workflow):
+    workflow.config.pop("calibre")
+    workflow.config["hardcover_api_keys"] = [
+        {"api_key": "Bearer integration-token", "media_types": ["audiobook"]},
+    ]
+    workflow.config["audiobookshelf"] = {
+        "url": "https://audio.example.com",
+        "api_key": "private-audio-key",
+        "library_id": "audio-id",
+        "library_path": "/not-mounted-yet/audiobooks",
+    }
+
+
+def test_audio_config_validates_without_calibre_or_mount(workflow):
+    configure_audio(workflow)
+    result = workflow.run("validate-config")
+    assert result.code == 0, result.errors
+
+
+def test_grouped_ebook_lists_use_every_list(workflow):
+    workflow.config["hardcover_api_keys"] = [{
+        "api_key": "Bearer integration-token", "reading_list": {"want-to-read": {}},
+    }]
+    result = workflow.run("list-missing")
+    assert result.code == 0, result.errors
+    assert records(result, "missing_summary")[0]["count"] == 1
+
+
+def test_grouped_audio_config_validates_but_execution_is_explicitly_unsupported(workflow):
+    configure_audio(workflow)
+    workflow.config["hardcover_api_keys"] = [{
+        "api_key": "Bearer integration-token",
+        "reading_list": {"audiobooks": {"type": "audiobook"}},
+    }]
+    assert workflow.run("validate-config").code == 0
+    result = workflow.run("run")
+    assert result.code == 1
+    assert "Audiobook execution is not supported yet" in str(result.errors)
+
+
+def test_audio_print_config_json_always_hides_key(workflow):
+    configure_audio(workflow)
+    workflow.config["redact_sensitive_data"] = False
+    result = workflow.run("print-config")
+    assert result.code == 0, result.errors
+    rendered = records(result, "config")[0]["config"]
+    assert rendered["audiobookshelf"]["api_key"] == "**REDACTED**"
+    assert "private-audio-key" not in str(result)
+
+
+@pytest.mark.parametrize("command", ["run", "schedule", "list-missing", "review-matches",
+                                     "retry-import", "search-book", "add-book"])
+@pytest.mark.parametrize("mixed", [False, True])
+def test_audio_workflows_report_unsupported_without_changes(workflow, command, mixed):
+    ebook_config = workflow.config["calibre"]
+    configure_audio(workflow)
+    if mixed:
+        workflow.config["calibre"] = ebook_config
+        workflow.config["hardcover_api_keys"][0]["media_types"] = ["ebook", "audiobook"]
+    args = [command]
+    if command in ("search-book", "add-book"):
+        args.append("Dune")
+    if command == "add-book":
+        args.append(str(workflow.downloads / "Dune.epub"))
+    before = workflow.database.read_text()
+    result = workflow.run(*args)
+    assert result.code == 1
+    assert "Audiobook execution is not supported yet" in str(result.errors)
+    assert workflow.database.read_text() == before
+    assert workflow.api.added_files == []
+
+
 def seed_library(workflow):
     workflow.database.write_text(
         json.dumps(

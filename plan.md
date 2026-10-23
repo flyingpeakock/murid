@@ -16,17 +16,15 @@ Audiobookshelf scan, and verify ingestion. Downloads remain intact for seeding.
 
 ## Configuration design
 
-Extend the existing per-list entries rather than introduce another list structure:
+Group reading lists under each API key (revised at the user's request):
 
 ```yaml
 hardcover_api_keys:
   - api_key: !ENV HARDCOVER_API_KEY
-    list: want-to-read
-    # media_types defaults to [ebook]
-
-  - api_key: !ENV HARDCOVER_API_KEY
-    list: audiobooks
-    media_types: [audiobook]
+    reading_list:
+      want-to-read: {} # type defaults to ebook
+      audiobooks:
+        type: audiobook
 
 calibre:
   # Existing ebook configuration
@@ -39,9 +37,12 @@ audiobookshelf:
   filetypes: [m4b, mp3]
 ```
 
-- Use `media_types: [ebook, audiobook]` to request both from one list.
+- Use `type: [ebook, audiobook]` to request both from one list.
 - Token-only entries continue to request Want to Read ebooks.
-- Omitted `list` continues to mean `want-to-read`.
+- Omitted `reading_list` continues to mean Want to Read ebooks; omitted `type`
+  defaults to ebook. An explicit list entry with no options uses `{}`.
+- Legacy `list` and `media_types` entries remain supported. Do not combine them
+  with `reading_list` in the same entry. Use URL slugs and singular `audiobook`.
 - Reject empty media type lists and unknown values.
 - Require Calibre configuration only when ebooks are requested, and
   Audiobookshelf configuration only when audiobooks are requested.
@@ -74,11 +75,53 @@ matching server source.
 
 Reference: https://api.audiobookshelf.org/
 
+**Progress (2026-10-23):** Source contract review completed against v2.37.1
+(`3563d49424d50170324de9236a24c591b6d965e9`), the version in the local nixpkgs
+checkout. Findings and implementation decisions are recorded in
+[docs/audiobookshelf-integration.md](docs/audiobookshelf-integration.md).
+The user identified nixpkgs as the deployed version source and deferred live
+access until configuration parsing accepts the URL and API key. Proceed with
+step 2 using this source-verified contract; deployed-version confirmation and
+live permission/ingestion checks remain pending before rollout.
+
+Key decisions: bearer API key with an admin/root user, paginated item listing,
+excluded-track-aware presence checks, and destination/track polling after scans
+(HTTP 200 does not establish completion). Use `metadata.json` with a namespaced
+Hardcover tag and a separate Murid import manifest; do not reuse ebook ISBNs.
+Use author/title folders with a Hardcover ID suffix. Multiple Audiobookshelf
+library roots require explicit folder mapping before import; this may add an
+optional folder setting in a later phase once live deployment needs are known.
+
 Decide the supported metadata representation and destination folder layout here.
 Preserve Hardcover work identity where supported, and do not blindly apply
 ebook-edition ISBNs as audiobook-edition identifiers.
 
 ### 2. Add configuration and media-aware requests together
+
+**Completed (2026-10-23):** Added `BookRequest` with identity based on Hardcover
+book ID and media type. `ServiceFactory.wanted_requests()` normalizes legacy
+tokens and omitted options to ebook requests and combines overlapping lists.
+At the user's request, the preferred configuration now groups lists in a
+`reading_list` mapping under each API key. Each list's `type` defaults to ebook;
+omitting `reading_list` retains Want to Read ebooks. Legacy flat entries remain
+supported. Both request collection and the current ebook sync expand all grouped
+lists. Documentation and NixOS serialization reflect the grouped form.
+The existing ebook orchestration remains in place until step 3; audiobook
+workflows fail explicitly before discovery/import instead of using Calibre or
+dropping requests. Audio-only configuration validates without Calibre.
+
+Added validated Audiobookshelf settings, format defaults, conditional backend
+requirements, and API key redaction even when general redaction is disabled.
+Updated the example, configuration reference, and NixOS options/assertions.
+Connection diagnostics skip Calibre for audio-only lists and explicitly report
+that Audiobookshelf checks are not implemented. Also corrected token extraction
+for mapping entries in existing Hardcover connection checks.
+
+Verification after grouped-list changes: the full Python suite passed (675 tests).
+Ruff and Pylint passed, and the NixOS module check passed. Live
+`config.yaml` was not changed. Credentials and live integration checks remain
+pending. Shared-folder accessibility is intentionally deferred to runtime so
+configuration can be prepared before the mount is available.
 
 Make configuration changes at the beginning of implementation, after the
 integration check establishes the required Audiobookshelf settings:
