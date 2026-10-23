@@ -6,6 +6,7 @@ import pytest
 from murid.clients.calibre import CalibreConfig, CalibreError
 from murid.config import ConfigError
 from murid.domain.book import Book
+from murid.libraries.audiobookshelf import AudiobookshelfLibrary
 from murid.services.service_factory import ServiceFactory
 
 
@@ -45,7 +46,7 @@ def test_grouped_lists_expand_to_independent_requests(args, config, monkeypatch)
     constructor.assert_any_call("Bearer key", list_slug="want-to-read")
     constructor.assert_any_call("Bearer key", list_slug="audio")
     with pytest.raises(ConfigError, match="Audiobook execution is not supported"):
-        factory.sync_service()
+        factory.sync_service().run()
 
 
 def test_grouped_ebook_lists_all_reach_legacy_workflow(args, config, monkeypatch):
@@ -60,7 +61,7 @@ def test_grouped_ebook_lists_all_reach_legacy_workflow(args, config, monkeypatch
 
 
 @pytest.mark.parametrize("operation", [
-    "hardcover", "sync_service", "retry_service", "torrent_discovery", "torrent_import",
+    "hardcover", "retry_service", "torrent_discovery", "torrent_import",
 ])
 def test_audiobook_workflows_fail_before_constructing_clients(args, config, monkeypatch, operation):
     config["hardcover_api_keys"] = [{"api_key": "Bearer key", "media_types": ["audiobook"]}]
@@ -81,6 +82,30 @@ def test_audio_only_factory_does_not_initialize_calibre(args, config, monkeypatc
     with pytest.raises(ConfigError, match="requires an ebook request"):
         ServiceFactory(args, config, initialize_notifier=False).calibre()
     client.assert_not_called()
+
+
+def test_audio_library_construction_never_initializes_calibre(args, config, monkeypatch):
+    config.pop("calibre")
+    config["audiobookshelf"] = {
+        "url": "https://audio.example.com", "api_key": "secret", "library_id": "library-id",
+    }
+    audio = Mock()
+    calibre = Mock(side_effect=AssertionError("Calibre must not be initialized"))
+    monkeypatch.setattr("murid.services.service_factory.Audiobookshelf", audio)
+    monkeypatch.setattr("murid.services.service_factory.Calibre", calibre)
+    factory = ServiceFactory(args, config, initialize_notifier=False)
+
+    backend = factory.library("audiobook")
+
+    assert isinstance(backend, AudiobookshelfLibrary)
+    assert backend.client is audio.return_value
+    audio.assert_called_once_with("https://audio.example.com", "secret", "library-id")
+    calibre.assert_not_called()
+
+
+def test_unknown_library_type_fails_explicitly(args, config):
+    with pytest.raises(ConfigError, match="Unknown media type"):
+        ServiceFactory(args, config, initialize_notifier=False).library("video")
 
 
 @pytest.fixture

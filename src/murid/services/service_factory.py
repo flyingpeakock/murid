@@ -6,14 +6,18 @@ from concurrent.futures import ThreadPoolExecutor
 import qbittorrentapi
 from croniter import croniter
 
+from ..clients.audiobookshelf import Audiobookshelf
 from ..clients.calibre import Calibre, CalibreConfig
 from ..clients.hardcover import Hardcover
 from ..clients.myanonamouse import MyAnonamouse
 from ..clients.torrent_clients.qbittorrent import Qbittorrent, QbittorrentConfig
 from ..config import Config, ConfigError, hardcover_list_settings, requested_media_types
 from ..domain.book_matcher import BookMatcher
-from ..domain.book_request import BookRequest
+from ..domain.book_request import BookRequest, MediaType
 from ..domain.torrent_selector import TorrentSelector
+from ..libraries.audiobookshelf import AudiobookshelfLibrary
+from ..libraries.calibre import CalibreLibrary
+from ..libraries.library import Library
 from ..notifications.apprise import init_apprise as apprise
 from .retry_service import RetryService
 from .sync_service import SyncService
@@ -98,6 +102,19 @@ class ServiceFactory:
             hardcover_clients = set(executor.map(self._hardcover_client, keys))
         return hardcover_clients
 
+    def library(self, media_type: MediaType) -> Library:
+        """Construct only the backend for the requested medium."""
+        if media_type == "ebook":
+            return CalibreLibrary(self.calibre(), self.config.get("filetypes"))
+        if media_type == "audiobook":
+            settings = self.config.get("audiobookshelf")
+            if not settings:
+                raise ConfigError("Audiobook requests require 'audiobookshelf' configuration")
+            return AudiobookshelfLibrary(Audiobookshelf(
+                settings["url"], settings["api_key"], settings["library_id"],
+            ))
+        raise ConfigError(f"Unknown media type: {media_type!r}")
+
     def _hardcover_client(self, entry):
         if isinstance(entry, dict):
             client = Hardcover(entry["api_key"], list_slug=entry.get("list", "want-to-read"))
@@ -125,8 +142,8 @@ class ServiceFactory:
         """Prevent incomplete audiobook support from ignoring or misrouting requests."""
         if "audiobook" in requested_media_types(self.config["hardcover_api_keys"]):
             raise ConfigError(
-                "Audiobook execution is not supported yet; configuration validation is available, "
-                "but library routing, discovery, and import are not connected"
+                "Audiobook execution is not supported yet; library inspection is available, "
+                "but discovery and import are not connected"
             )
 
     def myanonamouse(self):
@@ -171,12 +188,11 @@ class ServiceFactory:
         return TorrentImportService(
             TorrentImportConfig(
                 torrent_client=self.qbittorrent(),
-                calibre=self.calibre(),
+                library=self.library("ebook"),
                 matcher=self.matcher(),
                 notify=self.notifier(),
                 dry_run=getattr(self.args, "dry_run", False),
                 timeout=self.config["torrent_timeout_seconds"],
-                filetypes=self.config["filetypes"],
             )
         )
 
@@ -186,7 +202,6 @@ class ServiceFactory:
 
     def sync_service(self):
         """Create a SyncService instance."""
-        self.require_ebook_workflow()
         return SyncService(self)
 
     def torrent_selector(self):

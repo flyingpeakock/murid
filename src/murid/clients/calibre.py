@@ -9,11 +9,12 @@ from dataclasses import dataclass
 
 from ..domain.book import Book
 from ..domain.book_matcher import BookMatcher
+from ..libraries.library import LibraryError
 
 logger = logging.getLogger("murid")
 
 
-class CalibreError(Exception):
+class CalibreError(LibraryError):
     """Custom exception for Calibre-related errors."""
 
 

@@ -202,6 +202,8 @@ class BookMatcher:
     def normalized_identifiers(cls, book: Book) -> set[tuple[str, str]]:
         """Return comparable catalog platform and ID pairs."""
         identifiers = set()
+        if book.source == "hardcover":
+            identifiers.add(("hardcover", str(book.id)))
         for platform, values in (getattr(book, "identifiers", None) or {}).items():
             if isinstance(values, str):
                 values = [values]

@@ -10,8 +10,8 @@ command, as in the examples below.
 | --- | --- |
 | `run` | Sync once and exit |
 | `schedule` | Sync repeatedly using the configured cron schedule |
-| `list-missing` | List Hardcover books missing from Calibre |
-| `review-matches` | Inspect Hardcover to Calibre matches and scores; use `--matched` or `--unmatched` to filter |
+| `list-missing` | List Hardcover requests missing from their respective libraries, with media type and destination |
+| `review-matches` | Inspect library matches and scores for each medium; use `--matched` or `--unmatched` to filter |
 | `search-book NAME` | Preview torrent candidates for a Hardcover book; use `--add` to download and import the selected torrent |
 | `add-book NAME PATH` | Import an ebook file with metadata from Hardcover |
 | `status` | Show Murid torrents and their download and import status |
@@ -66,6 +66,14 @@ murid review-matches --unmatched --config ./config.yaml
 murid validate-config --config ./config.yaml
 ```
 
+`list-missing` and `review-matches` compare ebook requests with Calibre and
+audiobook requests with Audiobookshelf. A book requested in both formats is
+checked independently in each library. Inspection is read-only, and a library
+lookup error stops the command rather than reporting that library as empty.
+Audiobook discovery and imports remain unavailable during the current
+implementation phase; audiobook configurations can be inspected but cannot yet
+run acquisition or retries.
+
 ## Import a local ebook
 
 To import a file that Murid could not select automatically, give the book name from your
@@ -78,6 +86,9 @@ murid add-book "Children of Dune" /path/to/children-of-dune.epub --config ./conf
 Murid matches the name against your Hardcover books, including close spellings and alternate
 titles, then uses the matched title, authors, and series when adding the file to Calibre.
 It stops if the name is ambiguous or the book already exists in Calibre.
+The explicit file overrides automatic `filetypes` preferences; Calibre determines
+whether it supports the selected format. Automatic torrent imports still apply
+the configured format filter.
 
 ## Inspect downloads and retry imports
 

@@ -76,10 +76,10 @@ class MuridArgumentParser(argparse.ArgumentParser):
 
         sub_parsers["list-missing"] = command_subparsers.add_parser(
             "list-missing",
-            help="List Hardcover books missing from Calibre",
+            help="List Hardcover requests missing from their media-specific libraries",
             description=(
-                "Fetch the Hardcover reading list and Calibre library, then list Hardcover books "
-                "that the matcher considers missing from Calibre."
+                "Compare configured Hardcover requests with Calibre for ebooks and "
+                "Audiobookshelf for audiobooks, then list missing requests."
             ),
         )
 
@@ -130,9 +130,9 @@ class MuridArgumentParser(argparse.ArgumentParser):
 
         sub_parsers["review-matches"] = command_subparsers.add_parser(
             "review-matches",
-            help="Show Hardcover to Calibre matches, scores, and evidence",
+            help="Show Hardcover library matches, scores, and evidence for each medium",
             description=(
-                "Compare Hardcover books with Calibre and show match scores, supporting metadata, "
+                "Compare requests with their media-specific libraries and show scores, metadata, "
                 "and ambiguous candidates. Show all books unless a filter is selected."
             ),
         )
@@ -143,14 +143,14 @@ class MuridArgumentParser(argparse.ArgumentParser):
             const=True,
             default=None,
             dest="matched",
-            help="Show only Hardcover books with an accepted Calibre match",
+            help="Show only Hardcover requests with an accepted library match",
         )
         review_filter.add_argument(
             "--unmatched",
             action="store_const",
             const=False,
             dest="matched",
-            help="Show only Hardcover books without an accepted Calibre match",
+            help="Show only Hardcover requests without an accepted library match",
         )
 
         sub_parsers["validate-config"] = command_subparsers.add_parser(

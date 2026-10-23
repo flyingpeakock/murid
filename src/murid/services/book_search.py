@@ -120,8 +120,8 @@ def search_book(name: str, factory, *, add: bool = False) -> None:
     if not add:
         return
 
-    calibre = factory.calibre()
-    if calibre.contains_book(book, matcher):
+    library = factory.library("ebook")
+    if library.contains_book(book, matcher):
         raise BookSearchError(f"{book} is already in Calibre")
 
     torrent_file = discovery.mam.download_torrent(selected)
@@ -130,7 +130,7 @@ def search_book(name: str, factory, *, add: bool = False) -> None:
 
     output(labeled("Adding selected torrent: ", str(book), "bold cyan"))
     factory.torrent_import().import_torrents([(torrent_file, book)])
-    if not calibre.contains_book(book, matcher):
+    if not library.contains_book(book, matcher):
         raise BookSearchError(
             "Book is not yet in Calibre; run murid status, inspect qBittorrent, "
             "then run murid retry-import"
