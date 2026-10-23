@@ -257,3 +257,93 @@ def test_get_books_propagates_api_failure(hardcover, error):
         hardcover._session.post = Mock(return_value=response)
     with pytest.raises(HardcoverError):
         hardcover.get_books()
+
+
+def test_default_list_uses_want_to_read_status(hardcover):
+    hardcover.make_query = Mock(return_value={"data": {"user_books": []}})
+    hardcover.fetch_data()
+    query = hardcover.make_query.call_args.args[0]
+    assert "status_id: { _eq: 1 }" in query
+    assert hardcover.make_query.call_args.kwargs["variables"] == {"user_id": 123}
+
+
+def test_custom_list_fetches_books_and_preserves_metadata(hardcover):
+    hardcover.list_slug = "download-queue"
+    hardcover.make_query = Mock(
+        return_value={
+            "data": {
+                "lists": [
+                    {
+                        "list_books": [
+                            {
+                                "book": {
+                                    "id": 42,
+                                    "title": "Dune",
+                                    "contributions": [{"author": {"name": "Frank Herbert"}}],
+                                    "editions": [{"isbn_13": "9780441172719"}],
+                                    "book_series": [{"position": 1, "series": {"name": "Dune"}}],
+                                    "alternative_titles": ["Dune Chronicles"],
+                                },
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    )
+
+    (book,) = hardcover.get_books()
+
+    assert (book.id, book.title, book.authors) == (42, "Dune", ["Frank Herbert"])
+    assert book.isbn == ["9780441172719"]
+    assert book.series == "Dune"
+    assert "Dune Chronicles" in book.alternative_titles
+    query = hardcover.make_query.call_args.args[0]
+    assert "status_id" not in query
+    assert "user_id: {_eq: $user_id}" in query
+    assert "slug: {_eq: $slug}" in query
+    assert "book_mappings" in query
+    assert hardcover.make_query.call_args.kwargs["variables"] == {
+        "user_id": 123,
+        "slug": "download-queue",
+        "limit": 100,
+        "offset": 0,
+    }
+
+
+def test_custom_list_paginates(hardcover):
+    hardcover.list_slug = "large-list"
+    rows = [{"book": {"id": i, "title": f"Book {i}"}} for i in range(101)]
+    hardcover.make_query = Mock(
+        side_effect=[
+            {"data": {"lists": [{"list_books": rows[:100]}]}},
+            {"data": {"lists": [{"list_books": rows[100:]}]}},
+        ]
+    )
+    assert len(hardcover.get_books()) == 101
+    assert [call.kwargs["variables"]["offset"] for call in hardcover.make_query.call_args_list] == [
+        0,
+        100,
+    ]
+
+
+def test_custom_empty_list_does_not_fall_back(hardcover):
+    hardcover.list_slug = "empty"
+    hardcover.make_query = Mock(return_value={"data": {"lists": [{"list_books": []}]}})
+    assert hardcover.get_books() == set()
+    hardcover.make_query.assert_called_once()
+
+
+def test_custom_missing_list_raises(hardcover):
+    hardcover.list_slug = "missing"
+    hardcover.make_query = Mock(return_value={"data": {"lists": []}})
+    with pytest.raises(HardcoverError, match="Cannot fetch books.*List 'missing'.*not found"):
+        hardcover.get_books()
+    hardcover.make_query.assert_called_once()
+
+
+def test_custom_list_api_failure_propagates(hardcover):
+    hardcover.list_slug = "private-list"
+    hardcover.make_query = Mock(side_effect=HardcoverError("permission denied"))
+    with pytest.raises(HardcoverError, match="Cannot fetch books.*permission denied"):
+        hardcover.get_books()

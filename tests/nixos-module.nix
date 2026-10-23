@@ -33,12 +33,30 @@
     }).config;
   fromFile = evaluate {configFile = "/etc/murid.yaml";};
   fromInline = evaluate {config = inlineConfig;};
+  fromUserLists = evaluate {
+    config =
+      inlineConfig
+      // {
+        hardcover_api_keys = [
+          "!ENV HARDCOVER_API_KEY"
+          {
+            api_key = "!ENV SECOND_HARDCOVER_API_KEY";
+            list = "download-queue";
+          }
+          {api_key = "!ENV THIRD_HARDCOVER_API_KEY";}
+        ];
+      };
+  };
+  userLists = fromUserLists.services.murid.config.hardcover_api_keys;
   fileCommand = fromFile.systemd.services.murid.serviceConfig.ExecStart;
   inlineCommand = fromInline.systemd.services.murid.serviceConfig.ExecStart;
   expectedFileCommand = "${lib.getExe package} ${lib.escapeShellArgs ["schedule" "--config" "/etc/murid.yaml"]}";
   valid =
-    fileCommand
-    == expectedFileCommand
+    builtins.elemAt userLists 0
+    == "!ENV HARDCOVER_API_KEY"
+    && (builtins.elemAt userLists 1).list == "download-queue"
+    && (builtins.elemAt userLists 2).list == "want-to-read"
+    && fileCommand == expectedFileCommand
     && lib.hasPrefix "${lib.getExe package} ${lib.escapeShellArgs ["schedule" "--config"]} " inlineCommand;
 in
   if valid

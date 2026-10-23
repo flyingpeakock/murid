@@ -85,8 +85,11 @@ class ServiceFactory:
         keys = self.config["hardcover_api_keys"]
         lang_codes = self.config["lang_codes"]
 
-        def create_client(key):
-            client = Hardcover(key)
+        def create_client(entry):
+            if isinstance(entry, dict):
+                client = Hardcover(entry["api_key"], list_slug=entry.get("list", "want-to-read"))
+            else:
+                client = Hardcover(entry)
             if hasattr(client, "lang_codes"):
                 client.lang_codes = lang_codes
             return client
