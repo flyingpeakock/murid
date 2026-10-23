@@ -4,6 +4,7 @@ from rich.table import Table
 from rich.text import Text
 
 from ..clients.torrent_clients.qbittorrent import Qbittorrent
+from ..domain.book_request import MediaType
 from ..domain.torrent_request import read_request_tags
 from ..ui import interactive, labeled, output, terminal_width
 
@@ -52,9 +53,13 @@ def _request_info(torrent) -> dict:
     }
 
 
-def print_status(torrent_client: Qbittorrent) -> None:
+def print_status(torrent_client: Qbittorrent, media_type: MediaType | None = None) -> None:
     """Print downloads in Murid's category, putting torrents needing attention first."""
-    torrents = torrent_client.get_torrents()
+    torrents = [
+        torrent
+        for torrent in torrent_client.get_torrents()
+        if not media_type or _request_info(torrent)["media_type"] in {media_type, None}
+    ]
     output(
         labeled(
             "Murid torrents: ",

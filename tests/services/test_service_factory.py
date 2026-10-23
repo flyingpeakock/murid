@@ -386,3 +386,38 @@ def test_manual_audio_preferences_require_a_configured_backend(args, config):
     factory = ServiceFactory(args, config, initialize_notifier=False)
     with pytest.raises(ConfigError, match="audiobookshelf"):
         factory.torrent_selector("audiobook")
+
+
+@pytest.mark.parametrize("media", ["ebook", "audiobook"])
+def test_wanted_requests_filter_before_fetching_unrelated_lists(args, config, monkeypatch, media):
+    args.media_type = media
+    config["hardcover_api_keys"] = [
+        {
+            "api_key": "Bearer key",
+            "reading_list": {
+                "ebooks": {"type": "ebook"},
+                "audio": {"type": "audiobook"},
+                "both": {"type": ["ebook", "audiobook"]},
+            },
+        }
+    ]
+    book = Book("Title", ["Author"], 42, [], "Hardcover")
+    called = []
+
+    def create(_token, list_slug):
+        called.append(list_slug)
+        return Mock(get_books=lambda: [book])
+
+    monkeypatch.setattr("murid.services.service_factory.Hardcover", create)
+    factory = ServiceFactory(args, config, initialize_notifier=False)
+    assert {request.identity for request in factory.wanted_requests()} == {(42, media)}
+    assert set(called) == {"both", "ebooks" if media == "ebook" else "audio"}
+
+
+def test_media_filter_with_no_matching_lists_does_not_initialize_clients(args, config, monkeypatch):
+    args.media_type = "audiobook"
+    config["hardcover_api_keys"] = ["Bearer ebooks"]
+    client = Mock(side_effect=AssertionError("Unrelated list fetched"))
+    monkeypatch.setattr("murid.services.service_factory.Hardcover", client)
+    assert ServiceFactory(args, config, initialize_notifier=False).wanted_requests() == set()
+    client.assert_not_called()

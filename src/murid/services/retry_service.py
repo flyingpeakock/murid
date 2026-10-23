@@ -34,6 +34,7 @@ class RetryRecovery:
 
     importer: Callable[[MediaType], TorrentImportService]
     book: Callable[[int], Book | None]
+    media_type: MediaType | None = None
 
 
 class RetryService:
@@ -99,6 +100,9 @@ class RetryService:
             if not relevant:
                 continue
             try:
+                media, _ = read_request_tags(tags)
+                if self._recovery and self._recovery.media_type not in {None, media}:
+                    continue
                 request = self._request(torrent, tags)
             except ValueError as error:
                 logger.error(

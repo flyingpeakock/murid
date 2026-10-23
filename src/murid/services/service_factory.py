@@ -140,12 +140,17 @@ class ServiceFactory:
     def wanted_requests(self) -> set[BookRequest]:
         """Fetch lists as independent requests, combining overlapping work identities."""
         entries = hardcover_list_settings(self.config["hardcover_api_keys"])
+        selected = getattr(self.args, "media_type", None)
+        entries = [entry for entry in entries if not selected or selected in entry["media_types"]]
+        if not entries:
+            return set()
 
         def fetch(entry):
             return {
                 BookRequest(book, media)
                 for book in self._hardcover_client(entry).get_books()
                 for media in entry["media_types"]
+                if not selected or media == selected
             }
 
         with ThreadPoolExecutor(max_workers=min(10, len(entries))) as executor:
@@ -179,6 +184,7 @@ class ServiceFactory:
 
     def torrent_discovery(self, media_type: MediaType | None = None):
         """Create a TorrentDiscoveryService instance using the MyAnonamouse client."""
+        media_type = media_type or getattr(self.args, "media_type", None)
         media_types = (
             {media_type} if media_type else requested_media_types(self.config["hardcover_api_keys"])
         )
@@ -237,5 +243,7 @@ class ServiceFactory:
             None,
             self.myanonamouse(),
             lambda: (request.book for request in self.wanted_requests()),
-            recovery=RetryRecovery(self.torrent_import, self.recovery_book),
+            recovery=RetryRecovery(
+                self.torrent_import, self.recovery_book, getattr(self.args, "media_type", None)
+            ),
         )

@@ -90,6 +90,17 @@ def test_audio_only_connections_skip_calibre_and_check_import_access(monkeypatch
     audio.check_connection.assert_called_once_with()
     factory.calibre.assert_not_called()
     hardcover.assert_called_once_with("Bearer audio")
-    assert "OK Audiobookshelf: audio library prerequisites checked" in (
-        capsys.readouterr().out
+    assert "OK Audiobookshelf: audio library prerequisites checked" in (capsys.readouterr().out)
+
+
+def test_filtered_connection_skips_configured_other_library(monkeypatch):
+    factory, _ = make_factory()
+    factory.args = SimpleNamespace(media_type="ebook")
+    factory.config["audiobookshelf"] = {"url": "https://unavailable.example"}
+    factory.library = Mock(side_effect=AssertionError("Unrelated library initialized"))
+    monkeypatch.setattr(
+        "murid.services.connection_service.Hardcover",
+        lambda token: SimpleNamespace(user=SimpleNamespace(name="User")),
     )
+    assert check_connections(factory)
+    factory.library.assert_not_called()
