@@ -13,7 +13,7 @@ command, as in the examples below.
 | `list-missing` | List Hardcover requests missing from their respective libraries, with media type and destination |
 | `review-matches` | Inspect library matches and scores for each medium; use `--matched` or `--unmatched` to filter |
 | `search-book NAME` | Preview torrent candidates for a Hardcover book; use `--add` to download and import the selected torrent |
-| `add-book NAME PATH` | Import a local ebook, or an audiobook with `--media-type audiobook` |
+| `add-book NAME PATH` | Import a local ebook, or an audiobook with `--audiobooks` |
 | `status` | Show Murid torrents and their download and import status |
 | `retry-import` | Retry imports for tagged downloads |
 | `test-connection` | Check access to each configured service |
@@ -70,9 +70,32 @@ murid validate-config --config ./config.yaml
 audiobook requests with Audiobookshelf. A book requested in both formats is
 checked independently in each library. Inspection is read-only, and a library
 lookup error stops the command rather than reporting that library as empty.
-Audiobook acquisition and manual audiobook searches remain unavailable during the
-current implementation phase; audiobook configurations can be inspected but cannot
-yet run acquisition or retries.
+
+## Choose ebooks or audiobooks
+
+Use `--ebooks` or `--audiobooks` to restrict `list-missing`, `review-matches`,
+`run`, `schedule`, `retry-import`, `status`, or `test-connection` to one medium.
+Without either flag, these commands retain their existing behavior across configured
+media. The flags are mutually exclusive.
+
+```bash
+murid list-missing --audiobooks
+murid review-matches --ebooks --unmatched
+murid run --audiobooks --dry-run
+murid retry-import --audiobooks
+murid status --ebooks
+murid test-connection --audiobooks
+```
+
+Filtered sync and inspection fetch only reading lists requesting that medium and
+use only its library. Retry leaves torrents for the other medium untouched.
+Legacy torrents without media tags are ebooks. Invalid torrent identities still
+appear in status and require resolution before sync or retry can report success.
+Connection checks restrict the library check while still checking shared services.
+
+`search-book` and `add-book` also accept these flags and default to ebooks when
+neither is given. `--media-type ebook|audiobook` remains supported on these two
+commands as an alternative to the flags.
 
 ## Import a local ebook
 
@@ -186,10 +209,10 @@ automatic media setting. It defaults to `ebook`; the corresponding library must
 be configured.
 
 ```bash
-murid search-book "Book title" --media-type audiobook --config ./config.yaml
-murid search-book "Book title" --media-type audiobook --add --dry-run --config ./config.yaml
-murid add-book "Book title" "/downloads/Book title" --media-type audiobook --dry-run --config ./config.yaml
-murid add-book "Book title" "/downloads/Book title" --media-type audiobook --config ./config.yaml
+murid search-book "Book title" --audiobooks --config ./config.yaml
+murid search-book "Book title" --audiobooks --add --dry-run --config ./config.yaml
+murid add-book "Book title" "/downloads/Book title" --audiobooks --dry-run --config ./config.yaml
+murid add-book "Book title" "/downloads/Book title" --audiobooks --config ./config.yaml
 ```
 
 Use one M4B file or a complete single-book MP3/M4B folder. A complete audiobook

@@ -114,10 +114,10 @@ available options.
 | --- | --- |
 | `run` | Sync once and exit |
 | `schedule` | Sync repeatedly using the configured cron schedule |
-| `list-missing` | List Hardcover books missing from Calibre |
-| `review-matches` | Inspect Hardcover to Calibre matches and scores |
+| `list-missing` | List Hardcover requests missing from their media libraries |
+| `review-matches` | Inspect Hardcover library matches and scores |
 | `search-book NAME` | Preview torrent candidates; use `--add` to download and import |
-| `add-book NAME PATH` | Import a local book; use `--media-type audiobook` for an M4B or complete audio folder |
+| `add-book NAME PATH` | Import a local book; use `--audiobooks` for an M4B or complete audio folder |
 | `status` | Show Murid torrents and their download and import status |
 | `retry-import` | Retry imports for tagged downloads |
 | `test-connection` | Check access to each configured service |
@@ -134,6 +134,10 @@ Murid checks ISBNs and catalog IDs, then compares titles, authors, and series
 metadata. Matching tolerates alternate titles and common formatting differences
 while rejecting conflicting metadata. Adjust `matcher_threshold` (default `0.92`)
 to control sensitivity, and use `murid review-matches` to inspect results.
+
+Use `--ebooks` or `--audiobooks` on listing, search, import, sync, retry, status,
+and connection commands to select one medium. Search and manual import default to
+ebooks; other commands retain their behavior across configured media.
 
 Unmatched books are searched on MyAnonamouse; downloads must pass the configured
 language, file type, and blacklist filters as well as the matching rules. See

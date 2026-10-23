@@ -131,14 +131,6 @@ class MuridArgumentParser(argparse.ArgumentParser):
             "path", help="Path to an ebook file, M4B file, or complete audiobook folder"
         )
 
-        for command in ("search-book", "add-book"):
-            sub_parsers[command].add_argument(
-                "--media-type",
-                choices=["ebook", "audiobook"],
-                default="ebook",
-                help="Requested medium and destination library",
-            )
-
         sub_parsers["review-matches"] = command_subparsers.add_parser(
             "review-matches",
             help="Show Hardcover library matches, scores, and evidence for each medium",
@@ -175,6 +167,42 @@ class MuridArgumentParser(argparse.ArgumentParser):
             help="Print the parsed configuration",
             description="Read and print the parsed Murid configuration, then exit.",
         )
+
+        for command in (
+            "run",
+            "schedule",
+            "list-missing",
+            "review-matches",
+            "status",
+            "retry-import",
+            "test-connection",
+            "search-book",
+            "add-book",
+        ):
+            media = sub_parsers[command].add_mutually_exclusive_group()
+            media.add_argument(
+                "--ebooks",
+                dest="media_type",
+                action="store_const",
+                const="ebook",
+                help="Only process ebooks (Calibre)",
+            )
+            media.add_argument(
+                "--audiobooks",
+                dest="media_type",
+                action="store_const",
+                const="audiobook",
+                help="Only process audiobooks (Audiobookshelf)",
+            )
+            if command in ("search-book", "add-book"):
+                media.add_argument(
+                    "--media-type",
+                    choices=["ebook", "audiobook"],
+                    help="Requested medium and destination library",
+                )
+            sub_parsers[command].set_defaults(
+                media_type="ebook" if command in ("search-book", "add-book") else None
+            )
 
         config_path = str(self.default_config_path())
         for command, parser in sub_parsers.items():

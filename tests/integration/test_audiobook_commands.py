@@ -76,7 +76,7 @@ def test_manual_pending_import_recovers_after_source_removal(workflow, monkeypat
 
 def test_manual_audio_dry_run_checks_source_without_copying_or_scanning(workflow):
     source = audio_setup(workflow)
-    result = workflow.run("add-book", "Dune", str(source), "--media-type", "audiobook", "--dry-run")
+    result = workflow.run("add-book", "Dune", str(source), "--audiobooks", "--dry-run")
     assert result.code == 0, result.errors
     assert record(result, "planned")["media_type"] == "audiobook"
     assert list(workflow.audio_library_path.iterdir()) == []
@@ -89,7 +89,7 @@ def test_audio_search_preview_and_add_dry_run_use_audio_preferences(workflow):
     audio_setup(workflow)
     workflow.torrent_rows[0]["filetypes"] = "mp3"
     workflow.torrent_rows[0]["main_cat"] = 13
-    result = workflow.run("search-book", "Dune", "--media-type", "audiobook")
+    result = workflow.run("search-book", "Dune", "--audiobooks")
     assert result.code == 0, result.errors
     assert record(result, "candidate")["selected"]
     assert record(result, "candidate")["destination"] == "Audiobookshelf"
@@ -218,3 +218,76 @@ def test_audio_retry_dry_run_retains_torrent_tags_and_library(workflow):
     assert workflow.api.torrents[0].tags == tags
     assert workflow.audio_scans == 0
     assert list(workflow.audio_library_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "command,kind",
+    [
+        ("list-missing", "missing_book"),
+        ("review-matches", "match_review"),
+    ],
+)
+@pytest.mark.parametrize("media", ["ebook", "audiobook"])
+def test_filtered_inspection_ignores_unavailable_other_library(
+    workflow, monkeypatch, command, kind, media
+):
+    audio_setup(workflow)
+    workflow.config["hardcover_api_keys"][0]["reading_list"]["download-queue"] = {}
+    workflow.config["calibre"] = {
+        "calibredb_executable": sys.executable,
+        "library": str(workflow.library),
+    }
+    if media == "ebook":
+        workflow.audio_status = 503
+    else:
+        monkeypatch.setattr(
+            "murid.services.service_factory.Calibre",
+            lambda *_args, **_kwargs: pytest.fail("Unrelated ebook library initialized"),
+        )
+    flag = "--ebooks" if media == "ebook" else "--audiobooks"
+    result = workflow.run(command, flag)
+    assert result.code == 0, result.errors
+    rows = [item for item in result.records if item["type"] == kind]
+    assert len(rows) == 1 and rows[0]["media_type"] == media
+    list_queries = [
+        kwargs["json"]["variables"]["slug"]
+        for _, url, kwargs in workflow.requests
+        if url == "https://api.hardcover.app/v1/graphql"
+        and "GetListBooks" in kwargs["json"]["query"]
+    ]
+    assert set(list_queries) == {"download-queue" if media == "ebook" else "audiobooks"}
+    if media == "ebook":
+        assert not any(
+            url.startswith("https://audio.example.com/") for _, url, _ in workflow.requests
+        )
+
+
+@pytest.mark.parametrize("command", ["run", "retry-import"])
+def test_ebook_filter_preserves_pending_audio_and_avoids_audio_backend(workflow, command):
+    from types import SimpleNamespace
+
+    source = audio_setup(workflow)
+    workflow.config["hardcover_api_keys"][0]["reading_list"]["download-queue"] = {}
+    workflow.config["calibre"] = {
+        "calibredb_executable": sys.executable,
+        "library": str(workflow.library),
+    }
+    workflow.audio_status = 503
+    tags = "murid_pending,murid_media_audiobook,murid_hardcover_42"
+    workflow.api.torrents = [
+        SimpleNamespace(
+            hash="audio",
+            name="Dune audio",
+            category="murid",
+            progress=1,
+            state="uploading",
+            comment="",
+            content_path=str(source),
+            tags=tags,
+        )
+    ]
+    result = workflow.run(command, "--ebooks", "--dry-run")
+    assert result.code == 0, result.errors
+    assert workflow.api.torrents[0].tags == tags
+    assert not any(url.startswith("https://audio.example.com/") for _, url, _ in workflow.requests)
+    assert workflow.api.added_files == []

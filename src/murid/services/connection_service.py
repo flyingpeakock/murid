@@ -67,9 +67,15 @@ def check_connections(factory) -> bool:
         for index, token in enumerate(factory.config["hardcover_api_keys"], start=1)
     ]
     media_types = requested_media_types(factory.config["hardcover_api_keys"])
-    if "ebook" in media_types or (factory.config.get("calibre") or {}).get("library"):
+    selected = getattr(getattr(factory, "args", None), "media_type", None)
+    if selected == "ebook" or (
+        not selected
+        and ("ebook" in media_types or (factory.config.get("calibre") or {}).get("library"))
+    ):
         results.append(check("Calibre", calibre_detail))
-    if "audiobook" in media_types or factory.config.get("audiobookshelf"):
+    if selected == "audiobook" or (
+        not selected and ("audiobook" in media_types or factory.config.get("audiobookshelf"))
+    ):
         results.append(check("Audiobookshelf", audiobook_detail))
     results.append(check("MyAnonamouse", mam_detail))
     results.append(check("qBittorrent", qbittorrent_detail))

@@ -33,3 +33,28 @@ def test_status_empty_category(capsys):
     print_status(client)
 
     assert capsys.readouterr().out == "Murid torrents: 0 (category 'murid')\n"
+
+
+def test_filtered_status_counts_selected_media_and_keeps_unknown_identities_visible(capsys):
+    torrents = [
+        SimpleNamespace(name="Legacy", progress=1, state="uploading", tags=""),
+        SimpleNamespace(
+            name="Audio",
+            progress=1,
+            state="uploading",
+            tags="murid_media_audiobook,murid_hardcover_42",
+        ),
+        SimpleNamespace(
+            name="Invalid",
+            progress=1,
+            state="uploading",
+            tags="murid_media_audiobook,murid_media_ebook",
+        ),
+    ]
+    client = SimpleNamespace(category="murid", get_torrents=lambda: torrents)
+    print_status(client, media_type="audiobook")
+    output = capsys.readouterr().out
+    assert "Murid torrents: 2" in output
+    assert "- Legacy" not in output
+    assert "- Audio" in output
+    assert "- Invalid" in output and "invalid request identity" in output

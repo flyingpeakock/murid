@@ -190,7 +190,11 @@ def _run_other_command(args: Namespace) -> int:
                 )
                 return 1
         case "status":
-            print_status(ServiceFactory(args).qbittorrent())
+            client = ServiceFactory(args).qbittorrent()
+            if getattr(args, "media_type", None):
+                print_status(client, media_type=args.media_type)
+            else:
+                print_status(client)
         case "validate-config":
             return _validate_config(args.config_file)
         case "print-config":

@@ -9,7 +9,7 @@ from murid.domain.book_matcher import BookMatcher
 from murid.domain.book_request import BookRequest
 from murid.domain.torrent import Torrent, TorrentMetadata
 from murid.libraries.calibre import CalibreLibrary
-from murid.services.retry_service import RetryService
+from murid.services.retry_service import RetryRecovery, RetryService
 from murid.services.torrent_import import TorrentImportConfig, TorrentImportService
 
 
@@ -478,3 +478,27 @@ def test_manual_retry_handles_pending_tag(
     assert result.already_present == int(already_present)
     assert result.imported == int(not already_present)
     torrent_client.remove_tag.assert_called_once_with("torrent1", "murid_pending")
+
+
+@pytest.mark.parametrize("media", ["ebook", "audiobook"])
+def test_filtered_retry_does_not_resolve_or_modify_other_media(service, torrent_client, media):
+    other = "audiobook" if media == "ebook" else "ebook"
+    torrent_client.get_torrents.return_value = [
+        SimpleNamespace(hash="other", tags=f"murid_pending,murid_media_{other},murid_hardcover_42"),
+    ]
+    service._recovery = RetryRecovery(Mock(), Mock(), media_type=media)
+    service._request = Mock(side_effect=AssertionError("Excluded request resolved"))
+    result = service.retry_imports()
+    assert result == type(result)()
+    service._request.assert_not_called()
+    torrent_client.remove_tag.assert_not_called()
+
+
+def test_audio_retry_does_not_resolve_legacy_ebook(service, torrent_client):
+    torrent_client.get_torrents.return_value = [
+        SimpleNamespace(hash="legacy", tags="murid_pending"),
+    ]
+    service._recovery = RetryRecovery(Mock(), Mock(), media_type="audiobook")
+    service._request = Mock(side_effect=AssertionError("Legacy ebook resolved"))
+    assert service.retry_imports().skipped == 0
+    service._request.assert_not_called()
