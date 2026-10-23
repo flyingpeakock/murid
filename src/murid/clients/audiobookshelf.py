@@ -55,6 +55,13 @@ class Audiobookshelf:
             raise AudiobookshelfError("Audiobookshelf returned an invalid response object")
         return payload
 
+    def server_version(self) -> str:
+        """Read the server version without requiring library mutations."""
+        version = self._get("/status").get("serverVersion")
+        if not isinstance(version, str) or not version:
+            raise AudiobookshelfError("Audiobookshelf returned an invalid server version")
+        return version
+
     def get_library(self, *, deadline: float | None = None) -> dict:
         """Require the configured book library, rather than assuming an empty library."""
         library = self._get(f"/api/libraries/{quote(self.library_id, safe='')}", deadline=deadline)

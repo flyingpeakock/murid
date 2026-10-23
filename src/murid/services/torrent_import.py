@@ -155,7 +155,7 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
             self.library.import_book(book, path, self.matcher)
             if self.library.contains_book(book, self.matcher):
                 self.last_outcome = "imported"
-                message = f"{book}: imported into {self.library.name}"
+                message = f"{book}: imported into {self.library.name} [{self.media_type}]"
                 logger.info("%s: imported into %s", book, self.library.name)
                 self.notify(title="Book Imported", body=message)
             else:
@@ -202,7 +202,8 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
                 self.notify(
                     title="Murid - Torrent download timeout",
                     body=(
-                        f"The torrent for {book} did not complete within "
+                        f"The {self.media_type} torrent for {book} → {self.library.name} "
+                        "did not complete within "
                         f"{self.timeout} seconds. If completed it will be imported "
                         "in the next run, otherwise you may need to investigate the "
                         "torrent client for issues."

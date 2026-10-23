@@ -11,6 +11,7 @@ from murid.domain.torrent import Torrent, TorrentMetadata
 from murid.domain.torrent_selector import TorrentSelector
 from murid.services.book_lookup import BookLookupError
 from murid.services.book_search import BookSearchError, search_book
+from murid.services.torrent_import import ImportResult
 
 
 def book(id, title="Dune", source="hardcover"):
@@ -37,13 +38,15 @@ def make_factory(hardcover_books, torrents, failed_ids=None):
         mam=mam,
     )
     calibre = Mock()
+    calibre.name = "Calibre"
     torrent_import = Mock()
+    torrent_import.import_torrents.return_value = ImportResult(imported=1)
     factory = SimpleNamespace(
         matcher=lambda: matcher,
         hardcover=lambda: [SimpleNamespace(get_books=lambda: hardcover_books)],
-        torrent_discovery=lambda: discovery,
+        torrent_discovery=lambda media="ebook": discovery,
         library=lambda media: calibre,
-        torrent_import=lambda: torrent_import,
+        torrent_import=lambda media="ebook": torrent_import,
     )
     return factory, discovery
 
@@ -73,7 +76,7 @@ def test_search_book_previews_selection_and_rejections(capsys):
     assert "Reason: match score below threshold 0.920" in output
     assert output.index("SELECTED:") < output.index("REJECTED:")
     discovery.find_torrents.assert_called_once_with(BookRequest(target))
-    discovery.mam_ids_with_tag.assert_called_once_with("murid_import_failed")
+    discovery.mam_ids_with_tag.assert_called_once_with("murid_import_failed", "ebook")
     discovery.mam.download_torrent.assert_not_called()
 
 
@@ -134,7 +137,7 @@ def test_search_book_adds_selected_torrent_and_checks_calibre(capsys):
 
     discovery.mam.download_torrent.assert_called_once_with(selected)
     factory.torrent_import().import_torrents.assert_called_once_with([(b"torrent file", target)])
-    assert factory.library("ebook").contains_book.call_count == 2
+    assert factory.library("ebook").contains_book.call_count == 1
     assert "Imported Dune by Frank Herbert into Calibre" in capsys.readouterr().out
 
 
@@ -172,6 +175,7 @@ def test_search_book_add_rejects_failed_torrent_download():
 
 def test_search_book_add_reports_incomplete_import():
     factory, discovery = make_factory({book(1)}, {torrent(101)})
+    factory.torrent_import().import_torrents.return_value = ImportResult(pending=1)
     factory.library("ebook").contains_book.return_value = False
     discovery.mam.download_torrent.return_value = b"torrent file"
 

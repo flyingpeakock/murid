@@ -76,7 +76,7 @@ class ServiceFactory:
 
     def calibre(self):
         """Create a Calibre instance using the configuration file."""
-        if not self.config.get("calibre"):
+        if not (self.config.get("calibre") or {}).get("library"):
             raise ConfigError("This operation requires Calibre configuration")
         return Calibre(
             CalibreConfig(
@@ -90,7 +90,6 @@ class ServiceFactory:
 
     def hardcover(self) -> set[Hardcover]:
         """Create a list of Hardcover instances for each user specified in the configuration."""
-        self.require_ebook_workflow()
         keys = [
             settings
             for entry in self.config["hardcover_api_keys"]
@@ -152,14 +151,6 @@ class ServiceFactory:
         with ThreadPoolExecutor(max_workers=min(10, len(entries))) as executor:
             return set().union(*executor.map(fetch, entries))
 
-    def require_ebook_workflow(self):
-        """Prevent incomplete audiobook support from ignoring or misrouting requests."""
-        if "audiobook" in requested_media_types(self.config["hardcover_api_keys"]):
-            raise ConfigError(
-                "Manual audiobook commands are not supported yet; "
-                "run, schedule, and retry-import support audiobook requests"
-            )
-
     def myanonamouse(self):
         """Create a MyAnonamouse instance using the MAM ID from the configuration."""
         return MyAnonamouse(self.config["mam_id"])
@@ -186,9 +177,11 @@ class ServiceFactory:
         """Get the Apprise notify function."""
         return self.notify
 
-    def torrent_discovery(self):
+    def torrent_discovery(self, media_type: MediaType | None = None):
         """Create a TorrentDiscoveryService instance using the MyAnonamouse client."""
-        media_types = requested_media_types(self.config["hardcover_api_keys"])
+        media_types = (
+            {media_type} if media_type else requested_media_types(self.config["hardcover_api_keys"])
+        )
         return TorrentDiscoveryService(
             self.myanonamouse(),
             {media: self.torrent_selector(media) for media in media_types},
@@ -219,6 +212,8 @@ class ServiceFactory:
 
     def torrent_selector(self, media_type: MediaType = "ebook"):
         """Create a TorrentSelector instance."""
+        if media_type == "audiobook" and not self.config.get("audiobookshelf"):
+            raise ConfigError("Audiobook operations require 'audiobookshelf' configuration")
         return TorrentSelector(
             lang_codes=set(self.config["lang_codes"]),
             wanted_filetypes=(

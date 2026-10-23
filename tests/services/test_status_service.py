@@ -20,9 +20,9 @@ def test_status_reports_issues_first_and_progress(capsys):
     lines = capsys.readouterr().out.splitlines()
     assert lines == [
         "Murid torrents: 3 (category 'murid')",
-        "- Dune |  50% | downloading | timed out",
-        "- Foundation | 100% | seeding (idle) | import failed",
-        "- Ready | 100% | seeding",
+        "- Dune [ebook → Calibre] |  50% | downloading | timed out",
+        "- Foundation [ebook → Calibre] | 100% | seeding (idle) | import failed",
+        "- Ready [ebook → Calibre] | 100% | seeding",
         "Needs attention: 2. Inspect qBittorrent, then run murid retry-import.",
     ]
 

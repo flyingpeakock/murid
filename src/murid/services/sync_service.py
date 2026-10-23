@@ -23,6 +23,7 @@ class SyncService:
     def __init__(self, factory) -> None:
         """Initializes the synchronization service."""
         self.factory = factory
+        self.media_counts = {}
 
     def start_scheduler(self) -> None:
         """Start the scheduler to run the synchronization process at regular intervals."""
@@ -77,8 +78,12 @@ class SyncService:
 
     def _run(self) -> bool:
         """Retry earlier downloads, discover missing requests, and route completed downloads."""
+        self.media_counts = {}
         retry_service = self.factory.retry_service()
         incomplete_requests = retry_service.retry_torrents()
+        if isinstance(retry_service.last_result, RetryImportResult):
+            for media, counts in retry_service.last_result.by_media.items():
+                self._record_media(media, counts)
         if (
             isinstance(retry_service.last_result, RetryImportResult)
             and retry_service.last_result.skipped
@@ -91,6 +96,8 @@ class SyncService:
         matcher = self.factory.matcher()
 
         wanted_requests = self.get_wanted_requests(matcher)
+        for request in wanted_requests:
+            self._record_media(request.media_type, {"missing": 1})
         if not wanted_requests:
             logger.info("No requests missing from their destination libraries; nothing to do")
             return self._summary(0, {}, ImportResult(), retry_service)
@@ -111,11 +118,20 @@ class SyncService:
                 for data, request in wanted_torrents
                 if request.media_type == media
             )
+            self._record_media(media, asdict(imported))
             for key, count in asdict(imported).items():
                 setattr(result, key, getattr(result, key) + count)
         return self._summary(
             len(wanted_requests), torrent_discovery.last_counts, result, retry_service
         )
+
+    def _record_media(self, media, counts):
+        target = self.media_counts.setdefault(
+            media, {"destination": "Audiobookshelf" if media == "audiobook" else "Calibre"}
+        )
+        for key, count in counts.items():
+            if isinstance(count, int):
+                target[key] = target.get(key, 0) + count
 
     def _summary(self, missing, discovery, imports, retry_service) -> bool:
         """Report completed work and distinguish unresolved outcomes from success."""
@@ -169,8 +185,19 @@ class SyncService:
                 "bold green" if success else "bold yellow",
             ),
             kind="sync_summary",
-            data={**counts, "ok": success, "dry_run": dry_run},
+            data={**counts, "ok": success, "dry_run": dry_run, "by_media": self.media_counts},
         )
+        for media, detail in sorted(self.media_counts.items()):
+            output(
+                f"  {media} → {detail['destination']}: "
+                + ", ".join(
+                    f"{count} {key.replace('_', ' ')}"
+                    for key, count in detail.items()
+                    if key != "destination"
+                ),
+                kind="media_summary",
+                data={"media_type": media, **detail},
+            )
         return success
 
     def _library_groups(self):

@@ -71,23 +71,6 @@ def test_grouped_ebook_lists_all_reach_legacy_workflow(args, config, monkeypatch
     constructor.assert_any_call("Bearer key", list_slug="a")
 
 
-@pytest.mark.parametrize(
-    "operation",
-    [
-        "hardcover",
-    ],
-)
-def test_audiobook_workflows_fail_before_constructing_clients(args, config, monkeypatch, operation):
-    config["hardcover_api_keys"] = [{"api_key": "Bearer key", "media_types": ["audiobook"]}]
-    config.pop("calibre")
-    client = Mock(side_effect=AssertionError("No network calls expected"))
-    monkeypatch.setattr("murid.services.service_factory.Hardcover", client)
-    factory = ServiceFactory(args, config, initialize_notifier=False)
-    with pytest.raises(ConfigError, match="Manual audiobook commands are not supported yet"):
-        getattr(factory, operation)()
-    client.assert_not_called()
-
-
 def test_audio_only_factory_does_not_initialize_calibre(args, config, monkeypatch):
     config["hardcover_api_keys"] = [{"api_key": "Bearer key", "media_types": ["audiobook"]}]
     config.pop("calibre")
@@ -396,3 +379,10 @@ def test_audio_sync_import_and_retry_do_not_construct_calibre(args, config, monk
     assert isinstance(importer.library, AudiobookshelfLibrary)
     calibre.assert_not_called()
     hardcover.assert_not_called()
+
+
+def test_manual_audio_preferences_require_a_configured_backend(args, config):
+    config["audiobookshelf"] = None
+    factory = ServiceFactory(args, config, initialize_notifier=False)
+    with pytest.raises(ConfigError, match="audiobookshelf"):
+        factory.torrent_selector("audiobook")

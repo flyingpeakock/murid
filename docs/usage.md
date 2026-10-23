@@ -13,7 +13,7 @@ command, as in the examples below.
 | `list-missing` | List Hardcover requests missing from their respective libraries, with media type and destination |
 | `review-matches` | Inspect library matches and scores for each medium; use `--matched` or `--unmatched` to filter |
 | `search-book NAME` | Preview torrent candidates for a Hardcover book; use `--add` to download and import the selected torrent |
-| `add-book NAME PATH` | Import an ebook file with metadata from Hardcover |
+| `add-book NAME PATH` | Import a local ebook, or an audiobook with `--media-type audiobook` |
 | `status` | Show Murid torrents and their download and import status |
 | `retry-import` | Retry imports for tagged downloads |
 | `test-connection` | Check access to each configured service |
@@ -177,3 +177,41 @@ Use `add-book` to import another book from the completed download.
 | `0 */6 * * *` | Every 6 hours  |
 | `0 3 * * *`   | Daily at 03:00 |
 | `0 0 * * 0`   | Weekly         |
+
+## Audiobook commands
+
+Manual commands look up titles across your configured Hardcover lists. The media
+flag chooses the destination and torrent preferences, independently of the list's
+automatic media setting. It defaults to `ebook`; the corresponding library must
+be configured.
+
+```bash
+murid search-book "Book title" --media-type audiobook --config ./config.yaml
+murid search-book "Book title" --media-type audiobook --add --dry-run --config ./config.yaml
+murid add-book "Book title" "/downloads/Book title" --media-type audiobook --dry-run --config ./config.yaml
+murid add-book "Book title" "/downloads/Book title" --media-type audiobook --config ./config.yaml
+```
+
+Use one M4B file or a complete single-book MP3/M4B folder. A complete audiobook
+stored as one MP3 must be placed in its own title-matched folder. Track/disc
+structure is retained; supported disc folders are described in the
+[configuration reference](configuration.md). Sources stay available for seeding.
+If ingestion is delayed, `add-book` reports pending and exits with status 1;
+repeating it checks the existing journal/destination without another copy, even
+when that original source path no longer exists. The title must still resolve
+against your configured lists. Torrent recovery can resolve removed-list works
+by their saved Hardcover ID.
+
+`run`, `schedule`, `search-book`, `add-book`, and `retry-import` support `--dry-run`.
+Search and sync previews may fetch `.torrent` data but never add torrents, import
+files, scan libraries, or clear lifecycle tags. JSON search/import/status records
+include `media_type` and `destination`; status also includes the saved Hardcover ID
+and flags conflicting request tags. Sync and retry summaries include `by_media`
+counts so a pending audiobook cannot be mistaken for an ebook failure.
+
+`test-connection` checks each configured or required library. Audiobookshelf checks
+cover server version, admin/root access, usable items, folder selection, shared
+library access, staging placement, and its existing writable ancestor. These are
+read-only checks. A successful diagnostic does not prove physical bind-mount aliases
+or replace a real ingestion test. Run it with the actual service user's credentials
+and environment before enabling scheduled imports.

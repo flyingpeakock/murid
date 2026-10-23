@@ -29,7 +29,8 @@ def test_adds_book(monkeypatch, capsys):
     calls = []
     monkeypatch.setattr("murid.commands.ServiceFactory", lambda parsed: factory)
     monkeypatch.setattr(
-        "murid.commands.add_book", lambda *values: calls.append(values) or "Dune by Frank Herbert"
+        "murid.commands.add_book",
+        lambda *values, **kwargs: calls.append(values) or "Dune by Frank Herbert",
     )
 
     assert run_command(args) == 0
@@ -61,7 +62,7 @@ def test_searches_book(monkeypatch):
     )
 
     assert run_command(args) == 0
-    assert calls == [(("Dune", factory), {"add": True})]
+    assert calls == [(("Dune", factory), {"add": True, "media_type": "ebook"})]
 
 
 def test_retries_imports(monkeypatch, capsys):

@@ -103,6 +103,8 @@ class AudiobookStore:
             if ancestor.parent == ancestor:
                 raise LibraryError("The staging filesystem is not accessible")
             ancestor = ancestor.parent
+        if not os.access(ancestor, os.R_OK | os.W_OK | os.X_OK):
+            raise LibraryError("Audiobook staging_path or its existing ancestor must be writable")
         if ancestor.stat().st_dev != self.library.stat().st_dev:
             raise LibraryError("staging_path and library_path must be on the same filesystem")
 
@@ -120,6 +122,11 @@ class AudiobookStore:
 
     def _partial(self, manifest: dict) -> Path:
         return self.staging / (manifest["key"] + ".partial")
+
+    def has_state(self, book: Book) -> bool:
+        """Check for retry state without reading or mutating its contents."""
+        journal = self._journal(book)
+        return journal.exists() or journal.is_symlink()
 
     def load(self, book: Book, folder_id: str) -> dict | None:
         """Use the persisted destination even if the source or book title has changed."""

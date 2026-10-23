@@ -67,10 +67,11 @@ both independently.
 `run`, `schedule`, and `retry-import` now route ebook and audiobook requests to
 Calibre and Audiobookshelf independently. Inspection output includes media and
 destination. Ebook-only Audiobookshelf items do not satisfy audio requests, and
-library lookup failures abort the cycle. Manual audiobook search/import flags and
-full connection diagnostics remain to be implemented. Before enabling scheduled
-audiobook acquisition, finish the controlled live import and service-user mount
-verification described in [the integration notes](audiobookshelf-integration.md).
+library lookup failures abort the cycle. Manual `search-book` and `add-book` accept
+`--media-type audiobook`; omitting it retains ebook behavior. `test-connection`
+checks configured/required libraries and the API, shared-path, and staging access
+needed for imports without copying or scanning. Before scheduling, verify access
+as the actual service user; see [the integration notes](audiobookshelf-integration.md).
 
 ```yaml
 hardcover_api_keys:
@@ -115,7 +116,7 @@ The top-level `filetypes` continues to control ebook preferences only. Discovery
 uses separate audiobook preferences from `audiobookshelf.filetypes`. Main title,
 alternate title, and author fallback searches are scoped to MaM main category 14
 for ebooks or 13 for audiobooks. Automatic import and restart recovery are connected;
-manual audiobook CLI routing follows in step 7.
+manual commands select the medium with `--media-type ebook|audiobook`.
 
 Library inspection uses paginated item listing and fetches expanded details for
 audio candidates to preserve author names and verify playable tracks. It sends
@@ -150,8 +151,9 @@ folder ID, destination path, every track's relative path/size and playable durat
 and the Hardcover identity tag. Timeout or scan failure leaves the completed copy
 and durable journal available for retry. Keep staging journals, partial folders,
 and destination `.murid-import.json` markers; retries use them to resume safely.
-A delayed scan does not require another copy. Live ingestion and service-user
-mount permissions remain to be verified before rollout.
+A delayed scan does not require another copy. See the
+[integration verification record](audiobookshelf-integration.md) for live ingestion
+results and remaining service-user/deployment checks.
 
 Murid adds `murid_media_ebook` or `murid_media_audiobook` and
 `murid_hardcover_<id>` with the initial torrent add, alongside `murid_pending`.

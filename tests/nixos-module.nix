@@ -33,6 +33,11 @@
     }).config;
   fromFile = evaluate {configFile = "/etc/murid.yaml";};
   fromInline = evaluate {config = inlineConfig;};
+  sharedService = evaluate {
+    configFile = "/etc/murid.yaml";
+    supplementaryGroups = ["media" "qbittorrent"];
+    requiresMountsFor = ["/shared/audiobooks" "/shared/staging" "/downloads"];
+  };
   fromUserLists = evaluate {
     config =
       inlineConfig
@@ -164,6 +169,11 @@
     && importSettings.staging_path == "/mnt/.staging"
     && importSettings.folder_id == "folder-id"
     && importSettings.scan_timeout_seconds == 17
+    && fromInline.systemd.services.murid.serviceConfig.SupplementaryGroups == []
+    && fromInline.systemd.services.murid.unitConfig.RequiresMountsFor == []
+    && fromAudio.systemd.services.murid.unitConfig.RequiresMountsFor == ["/mnt/audiobooks" "/mnt/.murid-staging-audiobooks"]
+    && sharedService.systemd.services.murid.serviceConfig.SupplementaryGroups == ["media" "qbittorrent"]
+    && sharedService.systemd.services.murid.unitConfig.RequiresMountsFor == ["/shared/audiobooks" "/shared/staging" "/downloads"]
     && backendsValid fromAudio
     && backendsValid fromBoth
     && backendsValid fromGrouped

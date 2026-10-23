@@ -211,3 +211,14 @@ def test_review_matches_filter_is_mutually_exclusive():
     assert parser.parse_args(["review-matches", "--matched"]).matched is True
     with pytest.raises(SystemExit):
         parser.parse_args(["review-matches", "--matched", "--unmatched"])
+
+
+@pytest.mark.parametrize("command", ["search-book", "add-book"])
+def test_manual_media_type_defaults_and_audiobook_choice(command):
+    arguments = [command, "Dune"] + (["/tmp/audio"] if command == "add-book" else [])
+    parser = MuridArgumentParser()
+    assert parser.parse_args(arguments).media_type == "ebook"
+    args = parser.parse_args(arguments + ["--media-type", "audiobook", "--dry-run"])
+    assert args.media_type == "audiobook" and args.dry_run
+    with pytest.raises(SystemExit):
+        parser.parse_args(arguments + ["--media-type", "video"])

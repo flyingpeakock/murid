@@ -21,6 +21,7 @@ def book(id, title, alternative_titles=None):
 
 def factory(books):
     calibre = Mock()
+    calibre.name = "Calibre"
     calibre.contains_book.return_value = False
     return SimpleNamespace(
         matcher=lambda: BookMatcher(0.85),

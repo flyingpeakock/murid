@@ -46,6 +46,32 @@ class AudiobookshelfLibrary:
         """Reuse work matching without ebook-edition identifiers."""
         return any(matcher.is_match(book, candidate) for candidate in self.get_books())
 
+    def has_import_state(self, book: Book) -> bool:
+        """Allow manual retries to verify their journal even if general presence matches."""
+        if not self.config.library_path:
+            return False
+        store = AudiobookStore(
+            self.config.library_path, self.client.library_id, self.config.staging_path
+        )
+        return store.has_state(book)
+
+    def check_connection(self) -> str:
+        """Inspect import prerequisites without creating directories, copying, or scanning."""
+        if not self.config.library_path:
+            raise LibraryError("Audiobook import requires a configured shared library_path")
+        store = AudiobookStore(
+            self.config.library_path, self.client.library_id, self.config.staging_path
+        )
+        store.validate()
+        self.client.require_scan_access()
+        folder_id = self._folder(store)
+        version = self.client.server_version()
+        count = len(self.get_books())
+        return (
+            f"v{version}; {count} usable audio items; active admin/root; folder {folder_id}; "
+            "shared library/staging access checked (mount contents not verified)"
+        )
+
     def _folder(self, store: AudiobookStore) -> str:
         library = self.client.get_library()
         folders = library.get("folders")
