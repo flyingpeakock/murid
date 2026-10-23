@@ -523,3 +523,34 @@ def test_calibre_timeout_default_and_override(build_config):
     assert build_config().calibre["command_timeout_seconds"] == 120
     config = build_config(calibre={"library": "metadata.db", "command_timeout_seconds": 5})
     assert config.calibre["command_timeout_seconds"] == 5
+
+
+def test_hardcover_per_user_lists_and_legacy_tokens(build_config):
+    entries = [
+        "Bearer legacy",
+        {"api_key": "Bearer first", "list": "download-queue"},
+        {"api_key": "Bearer second"},
+    ]
+    config = build_config(hardcover_api_keys=entries)
+    assert config.hardcover_api_keys == entries
+    assert all(
+        token not in str(config) for token in ("Bearer legacy", "Bearer first", "Bearer second")
+    )
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"list": "books"},
+        {"api_key": "not-bearer"},
+        {"api_key": 123},
+        {"api_key": "Bearer secret", "list": None},
+        {"api_key": "Bearer secret", "list": ""},
+        {"api_key": "Bearer secret", "list": "My Books"},
+        {"api_key": "Bearer secret", "list": "https://hardcover.app/@user/lists/books"},
+        {"api_key": "Bearer secret", "list_slug": "typo"},
+    ],
+)
+def test_hardcover_invalid_per_user_settings_rejected(build_config, entry):
+    with pytest.raises(ConfigError):
+        build_config(hardcover_api_keys=[entry])

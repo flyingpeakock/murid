@@ -11,7 +11,7 @@ Defaults below apply to the YAML configuration. Required values must be supplied
 
 | Option | Description | Default |
 | --- | --- | --- |
-| `hardcover_api_keys` | List of Hardcover API tokens, each starting with `Bearer ` | required |
+| `hardcover_api_keys` | Per-user Hardcover tokens or mappings with `api_key` and optional `list` (see below) | required |
 | `qbittorrent` | qBittorrent connection settings (see below) | required connection values |
 | `calibre` | Calibre settings (see below) | library required |
 | `mam_id` | MyAnonamouse session cookie | required |
@@ -23,6 +23,30 @@ Defaults below apply to the YAML configuration. Required values must be supplied
 | `filetypes` | Accepted ebook formats, most preferred first | `["epub", "mobi", "azw3", "azw"]` |
 | `blacklisted_torrent_ids` | MyAnonamouse torrent IDs to exclude | `[]` |
 | `torrent_timeout_seconds` | Positive integer seconds to wait for a torrent to complete | `1800` |
+
+### Hardcover lists
+
+Each entry in `hardcover_api_keys` represents one user. A token alone continues to
+sync that user's **Want to Read** books. To choose a custom list, use a mapping:
+
+```yaml
+hardcover_api_keys:
+  - api_key: !ENV HARDCOVER_API_KEY
+    list: books-to-download
+  - api_key: !ENV SECOND_HARDCOVER_API_KEY
+    # list defaults to want-to-read
+```
+
+Use the last part of your list URL: for
+`https://hardcover.app/@yourname/lists/books-to-download`, set `list: books-to-download`.
+The custom list must belong to the user associated with that entry's token, which
+must have permission to read the list. All books in that list are eligible for
+sync, regardless of their reading status. The list replaces Want to Read for
+that user; it is not combined with it. Missing or inaccessible lists cause an
+error rather than falling back to Want to Read. An empty list selects no books.
+
+Omit `list` or set it to `want-to-read` to use the default reading status.
+Token-only entries and mappings can be mixed in the same configuration.
 
 ### Calibre
 

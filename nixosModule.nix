@@ -137,8 +137,20 @@ in {
         type = lib.types.nullOr (lib.types.submodule {
           options = {
             hardcover_api_keys = lib.mkOption {
-              description = "List of API keys for hardcover";
-              type = lib.types.listOf configEnvType;
+              description = "Hardcover API tokens or per-user API token and list settings";
+              type = lib.types.listOf (lib.types.either configEnvType (lib.types.submodule {
+                options = {
+                  api_key = lib.mkOption {
+                    description = "Hardcover API token, including the Bearer prefix";
+                    type = configEnvType;
+                  };
+                  list = lib.mkOption {
+                    description = "List slug from its URL, or want-to-read for the reading status";
+                    type = lib.types.str;
+                    default = "want-to-read";
+                  };
+                };
+              }));
               default = [];
             };
 

@@ -228,3 +228,19 @@ def test_torrent_import_without_dry_run_option(config, monkeypatch):
     )
 
     assert factory.torrent_import().dry_run is False
+
+
+def test_hardcover_per_user_list_settings(args, config, monkeypatch):
+    config["hardcover_api_keys"] = [
+        "Bearer legacy",
+        {"api_key": "Bearer custom", "list": "download-queue"},
+        {"api_key": "Bearer default"},
+    ]
+    constructor = Mock(side_effect=lambda *args, **kwargs: Mock())
+    monkeypatch.setattr("murid.services.service_factory.Hardcover", constructor)
+    clients = ServiceFactory(args, config, initialize_notifier=False).hardcover()
+    assert len(clients) == 3
+    constructor.assert_any_call("Bearer legacy")
+    constructor.assert_any_call("Bearer custom", list_slug="download-queue")
+    constructor.assert_any_call("Bearer default", list_slug="want-to-read")
+    assert all(client.lang_codes == ["eng"] for client in clients)

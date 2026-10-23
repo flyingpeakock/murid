@@ -120,10 +120,12 @@ class Hardcover:
         api: str,
         user: HardcoverUser | None = None,
         lang_codes: list[str] | None = None,
+        list_slug: str = "want-to-read",
     ) -> None:
         """Initialize the Hardcover class with the API token and user ID."""
         self.url = "https://api.hardcover.app/v1/graphql"
         self.lang_codes = lang_codes
+        self.list_slug = list_slug
         self._headers = {
             "Content-Type": "application/json",
             "Authorization": api,
@@ -174,17 +176,7 @@ class Hardcover:
         user = HardcoverUser(**data["data"]["me"][0])
         return user
 
-    def fetch_data(self) -> dict:
-        """Fetch book data from the Hardcover API for the specified user."""
-        logger.debug("Fetching Hardcover data...")
-
-        query = """
-        query GetUserBooks($user_id: Int!) {
-          user_books(
-              where: { user_id: { _eq: $user_id }, status_id: { _eq: 1 } }
-            distinct_on: book_id
-          ) {
-            book {
+    _BOOK_FIELDS = """
               id
               title
               subtitle
@@ -228,14 +220,66 @@ class Hardcover:
                       name
                   }
               }
+    """
+
+    def fetch_data(self) -> dict:
+        """Fetch book data from the Hardcover API for the specified user."""
+        logger.debug("Fetching Hardcover list %s for %s", self.list_slug, self.user.name)
+        if self.list_slug != "want-to-read":
+            return self._fetch_list_data()
+
+        query = """
+        query GetUserBooks($user_id: Int!) {
+          user_books(
+              where: { user_id: { _eq: $user_id }, status_id: { _eq: 1 } }
+            distinct_on: book_id
+          ) {
+            book {
+              BOOK_FIELDS
             }
           }
         }
         """
+        query = query.replace("BOOK_FIELDS", self._BOOK_FIELDS)
         variables = {"user_id": self.user.id}
         data = self.make_query(query, variables=variables)
         logger.debug("Hardcover data fetched successfully")
         return data
+
+    def _fetch_list_data(self) -> dict:
+        """Fetch every page of a custom list owned by the configured user."""
+        query = """
+        query GetListBooks($user_id: Int!, $slug: String!, $limit: Int!, $offset: Int!) {
+          lists(where: {user_id: {_eq: $user_id}, slug: {_eq: $slug}}) {
+            list_books(limit: $limit, offset: $offset, order_by: {id: asc}) {
+              book {
+                BOOK_FIELDS
+              }
+            }
+          }
+        }
+        """.replace("BOOK_FIELDS", self._BOOK_FIELDS)
+        items = []
+        page_size = 100
+        while True:
+            data = self.make_query(
+                query,
+                variables={
+                    "user_id": self.user.id,
+                    "slug": self.list_slug,
+                    "limit": page_size,
+                    "offset": len(items),
+                },
+            )
+            lists = data["data"]["lists"]
+            if not lists:
+                raise HardcoverError(
+                    f"List '{self.list_slug}' was not found or is inaccessible for {self.user.name}"
+                )
+            page = lists[0]["list_books"]
+            items.extend(page)
+            if len(page) < page_size:
+                return {"data": {"user_books": items}}
 
     @staticmethod
     def _extract_series_info(data: dict) -> tuple[str | None, float | None]:
@@ -395,10 +439,7 @@ class Hardcover:
         return dict(identifiers)
 
     def get_books(self) -> set[Book]:
-        """Fetch the user's "Want to Read" books from the Hardcover API.
-
-        Return them as a list of Book objects.
-        """
+        """Fetch the user's selected list as a set of Book objects."""
         books: set[Book] = set()
 
         try:

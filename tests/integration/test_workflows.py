@@ -104,3 +104,22 @@ def test_hardcover_failure_aborts_sync_before_downloading(workflow):
     assert workflow.api.added_files == []
     assert workflow.database.read_text() == "[]"
     assert not any(url == MyAnonamouse.SEARCH_URL for _, url, _ in workflow.requests)
+
+
+def test_sync_uses_configured_custom_list(workflow):
+    workflow.config["hardcover_api_keys"] = [
+        {
+            "api_key": "Bearer integration-token",
+            "list": "download-queue",
+        }
+    ]
+    result = workflow.run("run")
+    assert result.code == 0, result.errors
+    assert summary(result)["imported"] == 1
+    queries = [
+        kwargs["json"]["query"]
+        for _, url, kwargs in workflow.requests
+        if url == "https://api.hardcover.app/v1/graphql"
+    ]
+    assert any("GetListBooks" in query for query in queries)
+    assert all("GetUserBooks" not in query for query in queries)

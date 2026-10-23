@@ -1,9 +1,13 @@
 # Murid Configuration
 
-# One or more Hardcover API tokens.
+# One entry per Hardcover user. Token-only entries sync Want to Read.
 # Must start with "Bearer "
 hardcover_api_keys:
   - !ENV HARDCOVER_API_KEY
+  # To sync a specific list instead, use its slug (last part of its URL):
+  # - api_key: !ENV SECOND_HARDCOVER_API_KEY
+  #   list: books-to-download
+  # Omitting list defaults to want-to-read.
 
 # Redact secrets from logs and config dumps
 redact_sensitive_data: true

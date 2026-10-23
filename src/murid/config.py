@@ -176,11 +176,28 @@ class Config:
 
     @staticmethod
     def _ensure_hardcover_api_keys(keys: list) -> None:
-        """Ensure that the users config item is valid."""
+        """Validate token-only entries and per-user list settings."""
         Config._ensure_type(keys, list, "hardcover_api_keys")
         if not keys:
             raise ConfigError("Config item 'hardcover_api_keys' must be a non-empty list")
-        for key in keys:
+        for entry in keys:
+            key = entry
+            if isinstance(entry, dict):
+                unknown = entry.keys() - {"api_key", "list"}
+                if unknown:
+                    raise ConfigError(
+                        f"Unexpected Hardcover user options: {', '.join(sorted(unknown))}"
+                    )
+                if "api_key" not in entry:
+                    raise ConfigError("Hardcover user entry requires 'api_key'")
+                key = entry["api_key"]
+                slug = entry.get("list", "want-to-read")
+                Config._ensure_type(slug, str, "hardcover_api_keys item.list")
+                if not slug or any(c.isspace() or c in "/?#" for c in slug):
+                    raise ConfigError(
+                        "Config item 'hardcover_api_keys item.list' must be a non-empty list slug "
+                        "(the last part of the list URL)"
+                    )
             if not key:
                 raise ConfigError("Config item 'hardcover_api_keys' must not contain empty strings")
             Config._ensure_type(key, str, "hardcover_api_keys item")

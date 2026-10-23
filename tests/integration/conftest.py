@@ -142,6 +142,28 @@ def workflow(tmp_path, monkeypatch, capsys):
             assert kwargs["headers"]["Authorization"] == "Bearer integration-token"
             if state.hardcover_error:
                 data = {"errors": [{"message": "reading list unavailable"}]}
+            elif "GetListBooks" in kwargs["json"]["query"]:
+                assert kwargs["json"]["variables"]["slug"] == "download-queue"
+                assert kwargs["json"]["variables"]["user_id"] == 1
+                data = {
+                    "data": {
+                        "lists": [
+                            {
+                                "list_books": [
+                                    {
+                                        "book": {
+                                            "id": 42,
+                                            "title": "Dune",
+                                            "contributions": [
+                                                {"author": {"name": "Frank Herbert"}}
+                                            ],
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
             elif "GetUserBooks" in kwargs["json"]["query"]:
                 data = {
                     "data": {

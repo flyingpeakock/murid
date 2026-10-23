@@ -5,7 +5,7 @@
 
 ---
 
-Murid syncs your Hardcover “Want to Read” lists with Calibre, searches
+Murid syncs your Hardcover “Want to Read” books or a custom list per user with Calibre, searches
 MyAnonamouse for missing ebooks, downloads them through qBittorrent, and imports
 completed books into your library.
 
