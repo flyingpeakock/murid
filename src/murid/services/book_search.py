@@ -2,6 +2,7 @@
 
 from rich.text import Text
 
+from ..domain.book_request import BookRequest
 from ..ui import book_data, colored, is_json, labeled, output
 from .book_lookup import find_hardcover_book
 
@@ -13,7 +14,7 @@ class BookSearchError(Exception):
 def _print_candidates(book, torrents, matcher, discovery):
     """Print candidates in selection and score order; return the selected torrent."""
     failed_ids = discovery.mam_ids_with_tag("murid_import_failed")
-    selector = discovery.torrent_selector
+    selector = discovery.torrent_selectors["ebook"]
     available = {torrent for torrent in torrents if str(torrent.book.id) not in failed_ids}
     selected = selector.select(book, available, matcher) if available else None
 
@@ -90,7 +91,7 @@ def search_book(name: str, factory, *, add: bool = False) -> None:
     book = find_hardcover_book(name, factory)
     matcher = factory.matcher()
     discovery = factory.torrent_discovery()
-    _, torrents = discovery.find_torrents(book)
+    _, torrents = discovery.find_torrents(BookRequest(book))
     output(
         labeled("Hardcover: ", str(book), "bold cyan"),
         kind="search",

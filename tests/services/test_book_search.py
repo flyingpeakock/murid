@@ -6,6 +6,7 @@ import pytest
 
 from murid.domain.book import Book
 from murid.domain.book_matcher import BookMatcher
+from murid.domain.book_request import BookRequest
 from murid.domain.torrent import Torrent, TorrentMetadata
 from murid.domain.torrent_selector import TorrentSelector
 from murid.services.book_lookup import BookLookupError
@@ -32,7 +33,7 @@ def make_factory(hardcover_books, torrents, failed_ids=None):
     discovery = SimpleNamespace(
         find_torrents=Mock(return_value=(None, torrents)),
         mam_ids_with_tag=Mock(return_value=failed_ids or set()),
-        torrent_selector=selector,
+        torrent_selectors={"ebook": selector},
         mam=mam,
     )
     calibre = Mock()
@@ -71,7 +72,7 @@ def test_search_book_previews_selection_and_rejections(capsys):
     assert "Reason: previously failed import" in output
     assert "Reason: match score below threshold 0.920" in output
     assert output.index("SELECTED:") < output.index("REJECTED:")
-    discovery.find_torrents.assert_called_once_with(target)
+    discovery.find_torrents.assert_called_once_with(BookRequest(target))
     discovery.mam_ids_with_tag.assert_called_once_with("murid_import_failed")
     discovery.mam.download_torrent.assert_not_called()
 

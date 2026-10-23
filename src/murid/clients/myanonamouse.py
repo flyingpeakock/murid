@@ -15,6 +15,7 @@ from typing import Any
 import requests
 
 from ..domain.book import Book
+from ..domain.book_request import MediaType
 from ..domain.torrent import Torrent, TorrentMetadata
 
 logger = logging.getLogger("murid")
@@ -63,6 +64,8 @@ class MyAnonamouse:
     BASE_URL = "https://www.myanonamouse.net"
     SEARCH_URL = f"{BASE_URL}/tor/js/loadSearchJSONbasic.php"
     DOWNLOAD_URL = f"{BASE_URL}/tor/download.php"
+    # Verified against authenticated search responses: main_cat and catname.
+    MAIN_CATEGORIES = {"ebook": 14, "audiobook": 13}
     _MIN_REQUEST_INTERVAL = 0.5  # seconds
     _MAX_RATE_LIMIT_RETRIES = 3
 
@@ -274,18 +277,29 @@ class MyAnonamouse:
             language=data.get("lang_code", None),
             file_types=file_types,
             raw=data,
+            media_type={"13": "audiobook", "14": "ebook"}.get(str(data.get("main_cat"))),
         )
 
     def search_ebook(self, title: str) -> set[Torrent]:
         """Search for ebooks on MyAnonamouse matching the specified title."""
+        return self.search_title(title, "ebook")
+
+    def search_title(self, title: str, media_type: MediaType = "ebook") -> set[Torrent]:
+        """Search titles, authors, and series within one requested medium."""
         query = MyAnonamouseQuery(
-            text=title, main_categories=[14], search_fields=["title", "author", "series"]
+            text=title,
+            main_categories=[self.MAIN_CATEGORIES[media_type]],
+            search_fields=["title", "author", "series"],
         )
         return self.search(query)
 
-    def search_author(self, author: str) -> set[Torrent]:
-        """Search for ebooks whose author field matches the specified author."""
-        query = MyAnonamouseQuery(text=author, main_categories=[14], search_fields=["author"])
+    def search_author(self, author: str, media_type: MediaType = "ebook") -> set[Torrent]:
+        """Search authors within one requested medium."""
+        query = MyAnonamouseQuery(
+            text=author,
+            main_categories=[self.MAIN_CATEGORIES[media_type]],
+            search_fields=["author"],
+        )
         return self.search(query)
 
     def download_torrent(self, torrent: Torrent) -> bytes | None:

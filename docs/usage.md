@@ -70,9 +70,9 @@ murid validate-config --config ./config.yaml
 audiobook requests with Audiobookshelf. A book requested in both formats is
 checked independently in each library. Inspection is read-only, and a library
 lookup error stops the command rather than reporting that library as empty.
-Audiobook discovery and imports remain unavailable during the current
-implementation phase; audiobook configurations can be inspected but cannot yet
-run acquisition or retries.
+Audiobook acquisition and manual audiobook searches remain unavailable during the
+current implementation phase; audiobook configurations can be inspected but cannot
+yet run acquisition or retries.
 
 ## Import a local ebook
 

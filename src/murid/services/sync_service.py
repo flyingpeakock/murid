@@ -79,29 +79,31 @@ class SyncService:
         """Retry earlier downloads, discover missing books, and import available ebooks."""
         self.factory.require_ebook_workflow()
         retry_service = self.factory.retry_service()
-        incomplete_timed_out_books = retry_service.retry_torrents()
+        # Legacy retry state is ebook-only until restart routing is implemented.
+        incomplete_requests = {BookRequest(book) for book in retry_service.retry_torrents()}
 
         matcher = self.factory.matcher()
 
         wanted_requests = self.get_wanted_requests(matcher)
-        # Discovery remains ebook-only until step 4 carries request identity.
-        wanted_books = {request.book for request in wanted_requests}
-        if not wanted_books:
+        if not wanted_requests:
             logger.info("No books missing from Calibre library; nothing to do")
             return self._summary(0, {}, ImportResult(), retry_service)
 
         torrent_discovery = self.factory.torrent_discovery()
-        wanted_torrents = self.process_books(
-            wanted_books,
+        wanted_torrents = self.process_requests(
+            wanted_requests,
             torrent_discovery,
             matcher,
-            incomplete_timed_out_books,
+            incomplete_requests,
         )
 
         torrent_import = self.factory.torrent_import()
-        result = torrent_import.import_torrents(wanted_torrents)
+        # Acquisition is still guarded above; the importer remains ebook-only until step 5.
+        result = torrent_import.import_torrents(
+            (data, request.book) for data, request in wanted_torrents
+        )
         return self._summary(
-            len(wanted_books), torrent_discovery.last_counts, result, retry_service
+            len(wanted_requests), torrent_discovery.last_counts, result, retry_service
         )
 
     def _summary(self, missing, discovery, imports, retry_service) -> bool:
@@ -279,16 +281,14 @@ class SyncService:
         return "\n".join(lines)
 
     @staticmethod
-    def process_books(
-        wanted_books: Iterable[Book],
+    def process_requests(
+        wanted_requests: Iterable[BookRequest],
         torrent_discovery: TorrentDiscoveryService,
         matcher: BookMatcher,
-        incomplete_timed_out_books: Iterable[Book] = (),
-    ) -> set[tuple[bytes, Book]]:
+        incomplete_requests: Iterable[BookRequest] = (),
+    ) -> list[tuple[bytes, BookRequest]]:
         """Process the matched and unmatched books to find torrents for the missing ones."""
 
-        if not wanted_books:
-            return set()
-        return torrent_discovery.download_torrents(
-            wanted_books, matcher, incomplete_timed_out_books
-        )
+        if not wanted_requests:
+            return []
+        return torrent_discovery.download_torrents(wanted_requests, matcher, incomplete_requests)
