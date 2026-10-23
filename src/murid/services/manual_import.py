@@ -21,8 +21,8 @@ def add_book(name: str, path: str, factory) -> Book:
         book = find_hardcover_book(name, factory)
     except BookLookupError as error:
         raise ManualImportError(str(error)) from error
-    calibre = factory.calibre()
-    if calibre.contains_book(book, matcher):
+    library = factory.library("ebook")
+    if library.contains_book(book, matcher):
         raise ManualImportError(f"{book} is already in Calibre")
-    calibre.add_book(book, str(file))
+    library.import_book(book, str(file), matcher, explicit_file=True)
     return book

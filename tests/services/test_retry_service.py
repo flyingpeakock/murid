@@ -7,6 +7,7 @@ from murid.clients.myanonamouse import MAMError
 from murid.domain.book import Book
 from murid.domain.book_matcher import BookMatcher
 from murid.domain.torrent import Torrent, TorrentMetadata
+from murid.libraries.calibre import CalibreLibrary
 from murid.services.retry_service import RetryService
 from murid.services.torrent_import import TorrentImportConfig, TorrentImportService
 
@@ -154,7 +155,7 @@ def test_retry_torrents_success(
     service.get_book_by_mam_id = Mock(return_value=book)
 
     import_service.process_torrent.return_value = True
-    import_service.calibre.contains_book.side_effect = [False, True]
+    import_service.library.contains_book.side_effect = [False, True]
 
     assert service.retry_torrents() == set()
 
@@ -175,7 +176,7 @@ def test_retry_torrents_returns_book_while_torrent_is_incomplete(
     service.get_book_by_mam_id = Mock(return_value=book)
 
     import_service.process_torrent.return_value = False
-    import_service.calibre.contains_book.return_value = False
+    import_service.library.contains_book.return_value = False
 
     assert service.retry_torrents() == {book}
 
@@ -202,7 +203,7 @@ def test_retry_torrents_does_not_import_book_already_in_calibre(
 ):
     service.fetch_previous_torrents = Mock(return_value=[("torrent1", 123)])
     service.get_book_by_mam_id = Mock(return_value=book)
-    import_service.calibre.contains_book.return_value = True
+    import_service.library.contains_book.return_value = True
 
     assert service.retry_torrents() == set()
 
@@ -218,7 +219,7 @@ def test_retry_torrents_clears_timeout_after_failed_import(
 ):
     service.fetch_previous_torrents = Mock(return_value=[("torrent1", 123)])
     service.get_book_by_mam_id = Mock(return_value=book)
-    import_service.calibre.contains_book.return_value = False
+    import_service.library.contains_book.return_value = False
     import_service.process_torrent.return_value = True
 
     assert service.retry_torrents() == set()
@@ -240,7 +241,7 @@ def test_scheduled_retry_tags_completed_import_failure(
     import_service = TorrentImportService(
         TorrentImportConfig(
             torrent_client=torrent_client,
-            calibre=calibre,
+            library=CalibreLibrary(calibre),
             matcher=BookMatcher(),
             notify=Mock(),
         )
@@ -264,7 +265,7 @@ def test_retry_torrents_dry_run_does_not_import_or_change_tags(
 ):
     service.fetch_previous_torrents = Mock(return_value=[("torrent1", 123)])
     service.get_book_by_mam_id = Mock(return_value=book)
-    import_service.calibre.contains_book.return_value = False
+    import_service.library.contains_book.return_value = False
     import_service.dry_run = True
 
     assert service.retry_torrents() == {book}
@@ -280,7 +281,7 @@ def tagged_torrent(tags, comment="MID=123", hash="torrent1"):
 def test_retry_imports_imports_completed_timeout(service, torrent_client, import_service, book):
     torrent_client.get_torrents.return_value = [tagged_torrent("murid_timeout")]
     service.get_book_by_mam_id = Mock(return_value=book)
-    import_service.calibre.contains_book.side_effect = [False, True]
+    import_service.library.contains_book.side_effect = [False, True]
     import_service.process_torrent.return_value = True
 
     result = service.retry_imports()
@@ -294,7 +295,7 @@ def test_retry_imports_imports_completed_timeout(service, torrent_client, import
 def test_retry_imports_keeps_failed_tag_on_failure(service, torrent_client, import_service, book):
     torrent_client.get_torrents.return_value = [tagged_torrent("murid_import_failed")]
     service.get_book_by_mam_id = Mock(return_value=book)
-    import_service.calibre.contains_book.return_value = False
+    import_service.library.contains_book.return_value = False
     import_service.process_torrent.return_value = True
 
     result = service.retry_imports()
@@ -308,7 +309,7 @@ def test_retry_imports_leaves_incomplete_download_tagged(
 ):
     torrent_client.get_torrents.return_value = [tagged_torrent("murid_timeout")]
     service.get_book_by_mam_id = Mock(return_value=book)
-    import_service.calibre.contains_book.return_value = False
+    import_service.library.contains_book.return_value = False
     import_service.process_torrent.return_value = False
 
     result = service.retry_imports()
@@ -324,7 +325,7 @@ def test_retry_imports_clears_tags_when_already_in_calibre(
         tagged_torrent("murid_timeout, murid_import_failed")
     ]
     service.get_book_by_mam_id = Mock(return_value=book)
-    import_service.calibre.contains_book.return_value = True
+    import_service.library.contains_book.return_value = True
 
     result = service.retry_imports()
 
@@ -356,7 +357,7 @@ def test_retry_imports_replaces_timeout_with_failure_tag(
 ):
     torrent_client.get_torrents.return_value = [tagged_torrent("murid_timeout")]
     service.get_book_by_mam_id = Mock(return_value=book)
-    import_service.calibre.contains_book.return_value = False
+    import_service.library.contains_book.return_value = False
     import_service.process_torrent.return_value = True
 
     result = service.retry_imports()
@@ -396,7 +397,7 @@ def test_restart_recovers_download_interrupted_before_timeout(book, mam, complet
     assert torrents[0].tags == "murid_pending"
     importer = Mock(dry_run=False)
     importer.matcher = BookMatcher()
-    importer.calibre.contains_book.side_effect = [False, True] if completed else [False]
+    importer.library.contains_book.side_effect = [False, True] if completed else [False]
     importer.process_torrent.return_value = completed
     mam_book = Book("Dune", ["Frank Herbert"], 123, [], "myanonamouse")
     mam.search.return_value = [make_torrent(mam_book)]
@@ -433,7 +434,7 @@ def test_recovery_uses_hardcover_metadata(
     torrent_client.get_torrents_with_tag.side_effect = lambda tag: (
         [torrent] if tag == "murid_pending" else []
     )
-    import_service.calibre.contains_book.side_effect = [False, True]
+    import_service.library.contains_book.side_effect = [False, True]
     import_service.process_torrent.return_value = True
     if manual:
         assert service.retry_imports().imported == 1
@@ -478,7 +479,7 @@ def test_hardcover_books_are_loaded_once_per_retry_batch(
         SimpleNamespace(hash="second", comment="MID=124", tags="murid_timeout"),
     ]
     mam.search.return_value = [make_torrent(book)]
-    import_service.calibre.contains_book.return_value = True
+    import_service.library.contains_book.return_value = True
     assert service.retry_imports().already_present == 2
     hardcover_books.assert_called_once_with()
     hardcover_books.return_value = []
@@ -508,7 +509,7 @@ def test_manual_retry_handles_pending_tag(
 ):
     torrent_client.get_torrents.return_value = [tagged_torrent("murid_pending")]
     service.get_book_by_mam_id = Mock(return_value=book)
-    import_service.calibre.contains_book.side_effect = [True] if already_present else [False, True]
+    import_service.library.contains_book.side_effect = [True] if already_present else [False, True]
     import_service.process_torrent.return_value = True
 
     result = service.retry_imports()

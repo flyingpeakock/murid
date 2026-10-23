@@ -6,6 +6,8 @@ import pytest
 from murid.clients.hardcover import HardcoverError
 from murid.domain.book import Book
 from murid.domain.book_matcher import BookMatcher
+from murid.domain.book_request import BookRequest
+from murid.libraries.library import LibraryError
 from murid.services.sync_service import SyncService
 
 
@@ -22,8 +24,9 @@ class FakeBook:
 def factory():
     return SimpleNamespace(
         cron_iter=Mock(),
-        calibre=Mock(),
-        hardcover=Mock(),
+        library=Mock(),
+        wanted_requests=Mock(),
+        require_ebook_workflow=Mock(),
         matcher=Mock(),
         torrent_discovery=Mock(),
         torrent_import=Mock(),
@@ -31,39 +34,29 @@ def factory():
     )
 
 
-def test_fetch_calibre_books_logs_and_returns():
-    calibre = Mock()
-    calibre.get_books.return_value = ["book1", "book2"]
-
-    result = SyncService.fetch_calibre_books(calibre)
-
-    assert result == ["book1", "book2"]
-    calibre.get_books.assert_called_once()
-
-
-def test_fetch_hardcover_books_flattens_results():
-    client1 = Mock()
-    client1.get_books.return_value = ["a", "b"]
-
-    client2 = Mock()
-    client2.get_books.return_value = ["c"]
-
-    result = SyncService.fetch_hardcover_books([client1, client2])
-
-    assert sorted(result) == ["a", "b", "c"]
+@pytest.mark.parametrize("present", ["ebook", "audiobook"])
+def test_each_request_uses_only_its_own_library(factory, present):
+    book = Book("Dune", ["Frank Herbert"], 42, [], "hardcover")
+    requests = {BookRequest(book), BookRequest(book, "audiobook")}
+    factory.wanted_requests.return_value = requests
+    libraries = {
+        media: Mock(get_books=Mock(return_value={book} if media == present else set()))
+        for media in ("ebook", "audiobook")
+    }
+    factory.library.side_effect = libraries.__getitem__
+    missing = SyncService(factory).get_wanted_requests(BookMatcher())
+    assert {r.media_type for r in missing} == ({"ebook", "audiobook"} - {present})
+    for library in libraries.values():
+        library.get_books.assert_called_once_with()
 
 
-def test_match_books_calls_matcher():
-    matcher = Mock()
-    matcher.match_books.return_value = [("match")]
-
-    calibre = ["a"]
-    hardcover = ["b"]
-
-    result = SyncService.match_books(calibre, hardcover, matcher)
-
-    assert result == ["match"]
-    matcher.match_books.assert_called_once_with(calibre, hardcover)
+def test_failed_library_lookup_never_produces_missing_output(factory, capsys):
+    book = Book("Dune", [], 42, [], "hardcover")
+    factory.wanted_requests.return_value = {BookRequest(book, "audiobook")}
+    factory.library.return_value.get_books.side_effect = LibraryError("lookup unavailable")
+    with pytest.raises(LibraryError, match="lookup unavailable"):
+        SyncService(factory).list_missing(BookMatcher())
+    assert capsys.readouterr().out == ""
 
 
 def test_run_orchestrates_pipeline(factory):
@@ -72,8 +65,9 @@ def test_run_orchestrates_pipeline(factory):
     calibre = Mock()
     calibre.get_books.return_value = []
 
-    hardcover_client = Mock()
-    hardcover_client.get_books.return_value = [FakeBook(title="Book", authors=["Author"])]
+    factory.wanted_requests.return_value = {
+        BookRequest(FakeBook(title="Book", authors=["Author"]))
+    }
 
     matcher = Mock()
     matcher.match_books.return_value = []
@@ -88,8 +82,7 @@ def test_run_orchestrates_pipeline(factory):
     retry_service = Mock()
     retry_service.retry_torrents.return_value = {"incomplete-book"}
 
-    factory.calibre.return_value = calibre
-    factory.hardcover.return_value = [hardcover_client]
+    factory.library.return_value = calibre
     factory.matcher.return_value = matcher
     factory.torrent_discovery.return_value = torrent_discovery
     factory.torrent_import.return_value = torrent_import
@@ -97,8 +90,8 @@ def test_run_orchestrates_pipeline(factory):
 
     service.run()
 
-    factory.calibre.assert_called_once()
-    factory.hardcover.assert_called_once()
+    factory.library.assert_called_once_with("ebook")
+    factory.wanted_requests.assert_called_once()
     factory.matcher.assert_called_once()
     factory.torrent_discovery.assert_called_once()
     factory.torrent_import.assert_called_once()
@@ -110,8 +103,7 @@ def test_run_orchestrates_pipeline(factory):
 
 
 def test_list_missing_propagates_hardcover_initialization_failure(factory, capsys):
-    factory.calibre.return_value.get_books.return_value = []
-    factory.hardcover.side_effect = HardcoverError("API unavailable")
+    factory.wanted_requests.side_effect = HardcoverError("API unavailable")
 
     with pytest.raises(HardcoverError, match="API unavailable"):
         SyncService(factory).list_missing(factory.matcher.return_value)
@@ -125,8 +117,9 @@ def test_review_filters_follow_one_to_one_assignments(factory, capsys):
         Book(id=101, title="Dune", authors=["Frank Herbert"], isbn=[], source="hardcover"),
         Book(id=102, title="Dune", authors=["Frank Herbert"], isbn=[], source="hardcover"),
     ]
-    factory.calibre.return_value.get_books.return_value = {calibre_book}
-    factory.hardcover.return_value = [SimpleNamespace(get_books=lambda: hardcover_books)]
+    factory.library.return_value.get_books.return_value = {calibre_book}
+    factory.library.return_value.name = "Calibre"
+    factory.wanted_requests.return_value = {BookRequest(book) for book in hardcover_books}
     service = SyncService(factory)
     matcher = BookMatcher()
 

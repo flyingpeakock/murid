@@ -64,7 +64,7 @@ def test_audio_print_config_json_always_hides_key(workflow):
     assert "private-audio-key" not in str(result)
 
 
-@pytest.mark.parametrize("command", ["run", "schedule", "list-missing", "review-matches",
+@pytest.mark.parametrize("command", ["run", "schedule",
                                      "retry-import", "search-book", "add-book"])
 @pytest.mark.parametrize("mixed", [False, True])
 def test_audio_workflows_report_unsupported_without_changes(workflow, command, mixed):
@@ -99,6 +99,78 @@ def seed_library(workflow):
             ]
         )
     )
+
+
+def seed_audio(workflow, tracks=1):
+    workflow.audio_items = [{
+        "id": "item-id", "libraryId": "audio-id", "mediaType": "book",
+        "isMissing": False, "isInvalid": False,
+        "media": {"numTracks": tracks, "numAudioFiles": tracks,
+                  "metadata": {"title": "Dune", "authors": [{"name": "Frank Herbert"}]},
+                  "tags": ["murid:hardcover:42"],
+                  "tracks": [{"duration": 100}] if tracks else []},
+    }]
+
+
+@pytest.mark.parametrize(
+    "ebook_present,audio_present", [(True, False), (False, True), (True, True)],
+)
+def test_mixed_media_inspection_routes_each_request(workflow, ebook_present, audio_present):
+    ebook_config = workflow.config["calibre"]
+    configure_audio(workflow)
+    workflow.config["calibre"] = ebook_config
+    workflow.config["hardcover_api_keys"][0]["reading_list"] = {
+        "want-to-read": {"type": ["ebook", "audiobook"]},
+    }
+    workflow.config["hardcover_api_keys"][0].pop("media_types")
+    if ebook_present:
+        seed_library(workflow)
+    if audio_present:
+        seed_audio(workflow)
+    before = workflow.database.read_text()
+    result = workflow.run("list-missing")
+    assert result.code == 0, result.errors
+    assert {r["media_type"] for r in records(result, "missing_book")} == (
+        ({"ebook"} if not ebook_present else set())
+        | ({"audiobook"} if not audio_present else set())
+    )
+    review = workflow.run("review-matches")
+    assert review.code == 0, review.errors
+    assert {r["media_type"]: r["matched"] for r in records(review, "match_review")} == {
+        "ebook": ebook_present, "audiobook": audio_present,
+    }
+    assert workflow.database.read_text() == before
+    assert workflow.api.added_files == []
+    assert not any("myanonamouse" in url for _, url, _ in workflow.requests)
+
+
+def test_audio_only_inspection_needs_no_calibre_and_ignores_ebook_only_items(workflow, monkeypatch):
+    configure_audio(workflow)
+    seed_audio(workflow, tracks=0)
+
+    def no_calibre(*args, **kwargs):
+        raise AssertionError("Calibre must not be initialized for audio-only requests")
+
+    monkeypatch.setattr("murid.services.service_factory.Calibre", no_calibre)
+    result = workflow.run("list-missing")
+    assert result.code == 0, result.errors
+    missing = records(result, "missing_book")
+    assert len(missing) == 1
+    assert missing[0]["media_type"] == "audiobook"
+    assert missing[0]["destination"] == "Audiobookshelf"
+
+
+@pytest.mark.parametrize("command", ["list-missing", "review-matches"])
+def test_library_access_failure_is_not_reported_as_empty(workflow, command):
+    configure_audio(workflow)
+    workflow.audio_status = 403
+    result = workflow.run(command)
+    assert result.code == 1
+    assert "HTTP 403" in str(result.errors)
+    assert "private-audio-key" not in str(result)
+    assert not records(result, "missing_book")
+    assert not records(result, "missing_summary")
+    assert not records(result, "review_summary")
 
 
 def seed_torrent(workflow, **overrides):
@@ -227,8 +299,11 @@ def test_search_book_reports_unknown_title(workflow):
     assert workflow.api.added_files == []
 
 
-def test_add_book_imports_hardcover_metadata_and_rejects_duplicate(workflow):
-    path = str(workflow.downloads / "Dune.epub")
+@pytest.mark.parametrize("extension", ["epub", "pdf"])
+def test_add_book_imports_hardcover_metadata_and_rejects_duplicate(workflow, extension):
+    file = workflow.downloads / f"Dune.{extension}"
+    file.write_bytes(b"fixture ebook")
+    path = str(file)
 
     result = workflow.run("add-book", "Dune", path)
     duplicate = workflow.run("add-book", "Dune", path)
@@ -243,6 +318,8 @@ def test_add_book_imports_hardcover_metadata_and_rejects_duplicate(workflow):
     assert duplicate.code == 1
     assert "already in Calibre" in duplicate.errors[0]["message"]
     assert workflow.api.added_files == []
+    imports = (workflow.library / "imports.jsonl").read_text().splitlines()
+    assert json.loads(imports[0])[-1] == path
 
 
 @pytest.mark.parametrize("file_kind", ["missing", "directory"])

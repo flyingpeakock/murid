@@ -117,6 +117,8 @@ def workflow(tmp_path, monkeypatch, capsys):
         api=api,
         requests=[],
         hardcover_error=False,
+        audio_items=[],
+        audio_status=200,
         notifications=[],
         notification_status=200,
         torrent_rows=[
@@ -180,6 +182,17 @@ def workflow(tmp_path, monkeypatch, capsys):
                 }
             else:
                 data = {"data": {"me": [{"id": 1, "name": "Integration Reader"}]}}
+        elif url.startswith("https://audio.example.com/"):
+            assert method.lower() == "get"
+            assert _session.headers["Authorization"] == "Bearer private-audio-key"
+            response.status_code = state.audio_status
+            if url.endswith("/api/libraries/audio-id"):
+                data = {"id": "audio-id", "mediaType": "book"}
+            elif url.endswith("/api/libraries/audio-id/items"):
+                assert kwargs["params"]["page"] == 0
+                data = {"results": state.audio_items, "total": len(state.audio_items)}
+            else:
+                data = next(item for item in state.audio_items if url.endswith("/" + item["id"]))
         elif url == MyAnonamouse.SEARCH_URL:
             assert _session.cookies.get("mam_id") == "integration-cookie"
             data = {"data": state.torrent_rows}

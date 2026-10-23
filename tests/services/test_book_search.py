@@ -41,7 +41,7 @@ def make_factory(hardcover_books, torrents, failed_ids=None):
         matcher=lambda: matcher,
         hardcover=lambda: [SimpleNamespace(get_books=lambda: hardcover_books)],
         torrent_discovery=lambda: discovery,
-        calibre=lambda: calibre,
+        library=lambda media: calibre,
         torrent_import=lambda: torrent_import,
     )
     return factory, discovery
@@ -126,20 +126,20 @@ def test_search_book_adds_selected_torrent_and_checks_calibre(capsys):
     target.isbn = ["9780441172719"]
     selected = torrent(101)
     factory, discovery = make_factory({target}, {selected})
-    factory.calibre().contains_book.side_effect = [False, True]
+    factory.library("ebook").contains_book.side_effect = [False, True]
     discovery.mam.download_torrent.return_value = b"torrent file"
 
     search_book("Dune", factory, add=True)
 
     discovery.mam.download_torrent.assert_called_once_with(selected)
     factory.torrent_import().import_torrents.assert_called_once_with([(b"torrent file", target)])
-    assert factory.calibre().contains_book.call_count == 2
+    assert factory.library("ebook").contains_book.call_count == 2
     assert "Imported Dune by Frank Herbert into Calibre" in capsys.readouterr().out
 
 
 def test_search_book_add_rejects_existing_calibre_book():
     factory, discovery = make_factory({book(1)}, {torrent(101)})
-    factory.calibre().contains_book.return_value = True
+    factory.library("ebook").contains_book.return_value = True
 
     with pytest.raises(BookSearchError, match="already in Calibre"):
         search_book("Dune", factory, add=True)
@@ -160,7 +160,7 @@ def test_search_book_add_rejects_no_selection():
 
 def test_search_book_add_rejects_failed_torrent_download():
     factory, discovery = make_factory({book(1)}, {torrent(101)})
-    factory.calibre().contains_book.return_value = False
+    factory.library("ebook").contains_book.return_value = False
     discovery.mam.download_torrent.return_value = None
 
     with pytest.raises(BookSearchError, match="Could not download torrent"):
@@ -171,7 +171,7 @@ def test_search_book_add_rejects_failed_torrent_download():
 
 def test_search_book_add_reports_incomplete_import():
     factory, discovery = make_factory({book(1)}, {torrent(101)})
-    factory.calibre().contains_book.return_value = False
+    factory.library("ebook").contains_book.return_value = False
     discovery.mam.download_torrent.return_value = b"torrent file"
 
     with pytest.raises(BookSearchError, match="not yet in Calibre"):

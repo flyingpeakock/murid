@@ -20,7 +20,7 @@ class BookRequest:
             raise ValueError(f"Unknown media type: {self.media_type!r}")
 
     @property
-    def identity(self) -> tuple[int, MediaType]:
+    def identity(self) -> tuple[int | str, MediaType]:
         """Stable identity even when metadata differs between lists."""
         return self.book.id, self.media_type
 

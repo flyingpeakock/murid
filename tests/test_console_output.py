@@ -316,7 +316,9 @@ def test_sync_summary_includes_retry_outcomes(dry_run, capsys):
 
 def test_sync_reports_aborted_outcome_before_propagating(capsys):
     ui.setup_output(color=False, output_format="json")
-    service = SyncService(SimpleNamespace(retry_service=Mock(side_effect=MAMError("offline"))))
+    service = SyncService(SimpleNamespace(
+        require_ebook_workflow=Mock(), retry_service=Mock(side_effect=MAMError("offline")),
+    ))
     with pytest.raises(MAMError, match="offline"):
         service.run()
     result = json.loads(capsys.readouterr().out)

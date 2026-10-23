@@ -64,11 +64,15 @@ unknown media types are rejected. Overlapping users and lists represent one
 request per Hardcover book ID and media type; requesting both means acquiring
 both independently.
 
-**Audiobook execution is not yet supported.** Configuration validation and
-printing accept these settings, but sync, match inspection, search, and import
-workflows reject configurations requesting audiobooks with an explicit error.
-Audiobookshelf connection diagnostics report unsupported checks until the client
-is implemented. Keep scheduled acquisition on ebook-only lists during this phase.
+**Audiobook acquisition is not yet supported.** Configuration validation, printing,
+`list-missing`, and `review-matches` support audiobook and mixed requests. Inspection
+compares ebooks against Calibre and audiobooks against Audiobookshelf independently;
+the output includes the media type and destination. An ebook-only Audiobookshelf
+item does not satisfy an audiobook request, and lookup failures abort inspection.
+Run, schedule, manual search/import, and retry workflows still reject configurations
+requesting audiobooks with an explicit error. Audiobookshelf connection diagnostics
+remain pending until the full permission and mount checks are implemented.
+Keep scheduled acquisition on ebook-only lists during this phase.
 
 ```yaml
 hardcover_api_keys:
@@ -107,6 +111,12 @@ to exist yet. At runtime, the folder must be writable by Murid and readable by
 Audiobookshelf; mount paths can differ. The current contract targets v2.37.1;
 see [integration verification and pending live checks](audiobookshelf-integration.md).
 The top-level `filetypes` continues to control ebook preferences only.
+
+Library inspection uses paginated item listing and fetches expanded details for
+audio candidates to preserve author names and verify playable tracks. It sends
+read-only API requests and neither copies files nor requests scans. Work tags
+(`murid:hardcover:<id>`) and title/author metadata support matching; audiobook
+edition ISBNs and ASINs are excluded from matching against Hardcover ebook metadata.
 
 ### Calibre
 

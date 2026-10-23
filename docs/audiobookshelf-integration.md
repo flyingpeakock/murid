@@ -5,13 +5,16 @@
 Source review completed on 2026-10-23 against Audiobookshelf **v2.37.1**, commit
 `3563d49424d50170324de9236a24c591b6d965e9`. This is the version in the local
 `/home/philipj/Code/nixpkgs/pkgs/by-name/au/audiobookshelf/package.nix` checkout.
-The user identified nixpkgs as the deployed version source. The running server
-has not yet been queried; live checks are deferred until Murid can parse the
-Audiobookshelf URL and API key. This is a source-verified target, not a claim of
-successful live integration or compatibility with other versions.
+The user identified nixpkgs as the deployed version source. Subsequent read-only
+checks confirmed that the running server is v2.37.1 and that library inspection
+works against it. Copying, scanning, and ingestion remain unverified; compatibility
+with other versions has not been established.
 
 The [published API reference](https://api.audiobookshelf.org/) is supplementary;
 the tagged server source below determines this contract.
+
+Murid implements read-only library inspection against this contract. Automated
+tests use offline API fixtures; the live inspection results are recorded below.
 
 ## Authentication and access
 
@@ -98,11 +101,32 @@ Sources: [metadata parser](https://github.com/advplyr/audiobookshelf/blob/v2.37.
 [BookScanner.js](https://github.com/advplyr/audiobookshelf/blob/v2.37.1/server/scanner/BookScanner.js),
 [Library.js](https://github.com/advplyr/audiobookshelf/blob/v2.37.1/server/models/Library.js).
 
-## Pending live verification
+## Live inspection verification (2026-10-23)
 
-After configuration parsing supports Audiobookshelf, supply the URL, API key,
-library ID, and shared library path. Confirm the running version, authenticated
-pagination, admin scan access, library folder mapping, and filesystem permissions.
-Then use one controlled import to verify metadata/tag retention, nested track
-paths, scan completion, and idempotent recovery. Enable live audiobook acquisition
-only after the end-to-end workflow passes.
+Read-only checks using working-tree code and credentials from ignored
+`config.yaml` confirmed:
+
+- Server version v2.37.1; API key authenticates as an active admin user.
+- The configured library is accessible, has book media type and one library root.
+- All five existing items have usable audio; none have Murid Hardcover tags.
+- One-item pagination returns the same five item IDs as the normal page size.
+- The configured local library directory exists and passes read/write access
+  checks for the user running this session. Service-user access and matching
+  server/local mount contents still need import-time verification.
+- After the user created the Hardcover audiobook list, its one requested book
+  matched existing audio. Combined missing detection reported zero missing
+  audiobooks and 15 missing ebooks. Detailed match review completed successfully
+  for 455 requests across both media types.
+
+The test harness allowed only HTTP GETs and read-only Hardcover GraphQL queries;
+it disabled notifications. No downloads, library writes, or scans were performed.
+An initial plural media type and incorrect library ID were corrected in the
+ignored live configuration before verification.
+
+## Remaining live verification
+
+The admin role meets the source-defined scan requirement, but scan execution has
+not been tested. Once import is implemented, use one controlled import to verify
+server/local folder mapping, service permissions, metadata/tag retention, nested
+track paths, scan completion, and idempotent recovery. Enable live audiobook
+acquisition only after the end-to-end workflow passes.

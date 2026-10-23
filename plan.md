@@ -141,6 +141,58 @@ the live configuration only after the complete workflow passes verification.
 
 ### 3. Separate library operations from orchestration
 
+**Implemented (2026-10-23):** Added a small `Library` protocol for listing usable
+books, checking presence, and importing completed paths. Calibre's implementation
+owns ebook file selection; torrent orchestration and manual imports call the
+library instead of selecting files themselves. Retry presence checks also use
+the configured library.
+
+Added a read-only Audiobookshelf client against the source-verified v2.37.1
+contract. It validates the target library and pagination, rejects failed/malformed
+lookups, excludes missing/invalid/ebook-only items, and checks included audio
+tracks. Expanded details preserve structured authors; this currently costs one
+additional API request per audio candidate. Work tags and metadata support
+matching without reusing edition ISBNs/ASINs. `Book.id` now also accepts string
+IDs for Audiobookshelf library items; wanted request IDs remain Hardcover IDs.
+Matching recognizes the source Hardcover work ID as an identifier so that imported
+work tags can match it without relying solely on title spelling.
+
+Sync missing-request detection and match inspection compare each media type only
+against its library, retaining work/media request identity. Inspection output now
+includes media and destination (brought forward from step 7 to make mixed results
+understandable). Read-only audiobook and mixed inspection are enabled. Acquisition
+remains explicitly blocked before retry/discovery/torrent mutations until later
+phases connect media-aware discovery, import, and restart identity. Audiobookshelf's
+import method is deliberately an explicit unsupported-operation error until step 5.
+No live configuration changes, scans, or library writes were performed.
+
+Review correction: manual imports explicitly bypass automatic format preferences
+for the chosen file, preserving imports such as PDF with default preferences.
+Automatic torrent file selection retains its format filter. Regression coverage
+checks both the manual PDF CLI path and rejection of automatic PDF imports.
+
+Review correction: audiobook metadata now preserves the first series name and
+numeric sequence, consistent with the single-series `Book` model and Hardcover
+mapping. This restores rejection of different volumes sharing a title and author.
+Zero and fractional positions are preserved; absent or nonnumeric positions remain
+unknown. Regression tests cover both presence checks and missing-request detection.
+
+Verification: all 711 Python tests passed, including mixed-media CLI inspection,
+audio-only operation without Calibre, failed lookups, pagination, track filtering,
+and retained ebook import/retry behavior. Ruff and Pylint passed.
+
+**Live follow-up (2026-10-23):** Read-only checks confirmed Audiobookshelf v2.37.1,
+active admin authentication, one accessible book-library root, five usable audio
+items, and correct pagination with a one-item page size. The local shared folder
+exists and is readable/writable by the session user; service-user access and
+server/local content mapping remain to be tested during import. After the user
+created the Hardcover audiobook list with one book, missing detection found that
+audiobook already present and reported 15 missing ebooks. Match reviews completed
+for 455 media-specific requests. No downloads, scans, notifications, or library
+writes occurred. Corrected the plural media type and incorrect library ID in the
+ignored live configuration. Scan execution and end-to-end import remain pending.
+Details are in [the integration notes](docs/audiobookshelf-integration.md).
+
 - Introduce a small common interface for listing books, checking presence, and
   importing, with Calibre and Audiobookshelf implementations.
 - Keep media-specific file selection within the import implementations.

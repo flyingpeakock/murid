@@ -48,7 +48,7 @@ class RetryService:
         incomplete_books = set()
         self._hardcover_books = None
         imported = already_present = pending = failed = skipped = 0
-        calibre = self.import_service.calibre
+        library = self.import_service.library
         matcher = self.import_service.matcher
         for torrent_id, mam_id in self.fetch_previous_torrents():
             book = self.get_book_by_mam_id(mam_id) if mam_id is not None else None
@@ -56,7 +56,7 @@ class RetryService:
                 skipped += 1
                 continue
 
-            if calibre.contains_book(book, matcher):
+            if library.contains_book(book, matcher):
                 already_present += 1
                 if not self.import_service.dry_run:
                     self.torrent_client.remove_tag(torrent_id, "murid_timeout")
@@ -75,7 +75,7 @@ class RetryService:
                 pending += 1
                 continue
 
-            if calibre.contains_book(book, matcher):
+            if library.contains_book(book, matcher):
                 imported += 1
             else:
                 # process_torrent marks completed downloads with failed imports.
@@ -89,7 +89,7 @@ class RetryService:
         """Retry tagged downloads once without searching for or adding new torrents."""
         imported = already_present = pending = failed = skipped = 0
         self._hardcover_books = None
-        calibre = self.import_service.calibre
+        library = self.import_service.library
         matcher = self.import_service.matcher
 
         for torrent in self.torrent_client.get_torrents():
@@ -105,7 +105,7 @@ class RetryService:
                 skipped += 1
                 continue
 
-            if calibre.contains_book(book, matcher):
+            if library.contains_book(book, matcher):
                 logger.info("%s: already in Calibre", book)
                 for tag in relevant_tags:
                     self.torrent_client.remove_tag(torrent.hash, tag)
@@ -117,7 +117,7 @@ class RetryService:
                 pending += 1
                 continue
 
-            if calibre.contains_book(book, matcher):
+            if library.contains_book(book, matcher):
                 for tag in relevant_tags:
                     self.torrent_client.remove_tag(torrent.hash, tag)
                 imported += 1

@@ -8,6 +8,7 @@ import pytest
 from murid.clients.calibre import CalibreError
 from murid.domain.book import Book
 from murid.domain.book_matcher import BookMatcher
+from murid.libraries.calibre import CalibreLibrary
 from murid.notifications.apprise import AppriseHandler
 from murid.services.torrent_import import TorrentImportConfig, TorrentImportService
 
@@ -55,7 +56,7 @@ def notify():
 def service(torrent_client, calibre, matcher, notify):
     config = TorrentImportConfig(
         torrent_client=torrent_client,
-        calibre=calibre,
+        library=CalibreLibrary(calibre),
         matcher=matcher,
         notify=notify,
         dry_run=False,
@@ -108,6 +109,22 @@ def test_import_selects_requested_file_from_completed_pack(
     service.process_torrent("abc123", book)
 
     calibre.add_book.assert_called_once_with(book, str(selected_file))
+
+
+@pytest.mark.parametrize("directory", [False, True])
+def test_automatic_import_keeps_format_filtering(
+    service, torrent_client, calibre, book, monkeypatch, tmp_path, directory,
+):
+    pdf = tmp_path / "Dune.pdf"
+    pdf.write_bytes(b"ebook")
+    torrent_client.get_completed_path.return_value = str(tmp_path if directory else pdf)
+    monkeypatch.setattr("murid.services.torrent_import.time.sleep", lambda _: None)
+
+    assert service.process_torrent("abc123", book)
+
+    assert service.last_outcome == "failed"
+    calibre.add_book.assert_not_called()
+    torrent_client.add_tag.assert_called_once_with("abc123", "murid_import_failed")
 
 
 def test_no_suitable_file_tags_torrent_and_notifies_apprise(
