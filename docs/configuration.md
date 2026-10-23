@@ -99,6 +99,9 @@ configurations; omit Calibre for audio-only configuration validation.
 | `api_key` | API key belonging to an active admin/root user with library access | required |
 | `library_id` | Audiobookshelf book library ID | required |
 | `library_path` | Absolute shared library directory as seen by Murid | required |
+| `staging_path` | Absolute private staging/state directory on the library filesystem, outside every scanned root | sibling `.murid-staging-<library directory name>` |
+| `folder_id` | Audiobookshelf folder ID corresponding to `library_path`; required for multiple library roots | sole library folder |
+| `scan_timeout_seconds` | Positive integer limiting scan verification, separately from download timeout | `120` |
 | `filetypes` | Accepted audiobook formats in preference order; only `m4b` and `mp3` supported initially | `[m4b, mp3]` |
 
 Set `AUDIOBOOKSHELF_API_KEY` in Murid's environment and reference it with `!ENV`.
@@ -114,13 +117,44 @@ The top-level `filetypes` continues to control ebook preferences only. Discovery
 uses separate audiobook preferences from `audiobookshelf.filetypes`. Main title,
 alternate title, and author fallback searches are scoped to MaM main category 14
 for ebooks or 13 for audiobooks. Audiobook acquisition remains blocked until
-import and restart recovery are connected.
+restart recovery is connected. The import backend is implemented; manual audiobook
+CLI routing follows in step 7.
 
 Library inspection uses paginated item listing and fetches expanded details for
 audio candidates to preserve author names and verify playable tracks. It sends
 read-only API requests and neither copies files nor requests scans. Work tags
 (`murid:hardcover:<id>`) and title/author metadata support matching; audiobook
 edition ISBNs and ASINs are excluded from matching against Hardcover ebook metadata.
+
+The import backend accepts one M4B file, or a title-matched folder of numbered or
+book-named M4B/MP3 tracks. One level of disc folders named `CD1`, `Disc 2`, or
+`Disk 003` (one to three digits, case insensitive) is supported; filenames and
+repeated track basenames across discs are preserved. Underscores, hyphens, and
+nested disc folders must be reorganized before import because the target server
+does not group them into one book. Mixed encodings and ambiguous multi-book packs
+require selecting one complete book/encoding first. Sources remain intact for
+seeding; Murid copies supported sidecars and merges its identity tag into the
+copied `metadata.json` without adding ebook ISBNs.
+
+Copies are staged privately, then published atomically into
+`<library_path>/<author>/<title> [hardcover-<id>]/`. Existing unrelated destinations
+are never overwritten. The staging directory must be writable by Murid and on
+the same filesystem as the library; ensure it is physically outside **all**
+Audiobookshelf scanned roots, including bind-mount aliases. Murid checks local
+filesystem placement and visible server root paths, but cannot prove that two
+mount aliases expose the same directory. If `library_path` itself is a mount
+point, its default sibling may be on a different filesystem; set `staging_path`
+explicitly on the shared volume. Audiobookshelf needs read/traverse permissions
+on the destination and its parent directories. Keep the staging directory private
+to Murid: its journals contain source paths and book metadata.
+
+A scan acknowledgement does not confirm ingestion. Murid verifies the selected
+folder ID, destination path, every track's relative path/size and playable duration,
+and the Hardcover identity tag. Timeout or scan failure leaves the completed copy
+and durable journal available for retry. Keep staging journals, partial folders,
+and destination `.murid-import.json` markers; retries use them to resume safely.
+A delayed scan does not require another copy. Live ingestion and service-user
+mount permissions remain to be verified before rollout.
 
 ### Calibre
 

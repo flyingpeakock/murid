@@ -253,6 +253,21 @@ in {
                     description = "Absolute shared library path as seen by Murid";
                     type = lib.types.str;
                   };
+                  staging_path = lib.mkOption {
+                    description = "Private staging directory outside all scanned roots on the library filesystem; defaults to a sibling of library_path";
+                    type = lib.types.nullOr lib.types.str;
+                    default = null;
+                  };
+                  folder_id = lib.mkOption {
+                    description = "Audiobookshelf folder ID corresponding to library_path; required for multiple library roots";
+                    type = lib.types.nullOr lib.types.str;
+                    default = null;
+                  };
+                  scan_timeout_seconds = lib.mkOption {
+                    description = "Separate maximum wait for verified Audiobookshelf ingestion";
+                    type = lib.types.ints.positive;
+                    default = 120;
+                  };
                   filetypes = lib.mkOption {
                     description = "Accepted audiobook formats in preference order";
                     type = lib.types.addCheck (lib.types.listOf (lib.types.enum ["m4b" "mp3"])) (values: values != []);

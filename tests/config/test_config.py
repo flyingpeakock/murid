@@ -668,3 +668,26 @@ def test_hardcover_per_user_lists_and_legacy_tokens(build_config):
 def test_hardcover_invalid_per_user_settings_rejected(build_config, entry):
     with pytest.raises(ConfigError):
         build_config(hardcover_api_keys=[entry])
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("scan_timeout_seconds", 0),
+        ("scan_timeout_seconds", -1),
+        ("scan_timeout_seconds", True),
+        ("scan_timeout_seconds", 1.5),
+        ("staging_path", "relative/staging"),
+        ("folder_id", ""),
+        ("folder_id", 123),
+    ],
+)
+def test_invalid_audiobook_import_settings(build_config, key, value):
+    with pytest.raises(ConfigError, match="audiobookshelf"):
+        build_config(audiobookshelf=audiobook_settings(**{key: value}))
+
+
+def test_audiobook_scan_timeout_is_independent_of_download_timeout(build_config):
+    config = build_config(audiobookshelf=audiobook_settings(), torrent_timeout_seconds=1800)
+    assert config.audiobookshelf["scan_timeout_seconds"] == 120
+    config = build_config(audiobookshelf=audiobook_settings(scan_timeout_seconds=7))
+    assert config.audiobookshelf["scan_timeout_seconds"] == 7

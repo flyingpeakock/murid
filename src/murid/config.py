@@ -76,8 +76,13 @@ def hardcover_list_settings(entries: list) -> list[dict]:
         elif "reading_list" in entry:
             for slug, options in entry["reading_list"].items():
                 media = options.get("type", "ebook")
-                settings.append({"api_key": entry["api_key"], "list": slug,
-                                 "media_types": [media] if isinstance(media, str) else media})
+                settings.append(
+                    {
+                        "api_key": entry["api_key"],
+                        "list": slug,
+                        "media_types": [media] if isinstance(media, str) else media,
+                    }
+                )
         else:
             settings.append({"list": "want-to-read", "media_types": ["ebook"], **entry})
     return settings
@@ -361,7 +366,16 @@ class Config:
                 raise ConfigError("Audiobook requests require 'audiobookshelf' configuration")
             return
         self._ensure_type(settings, dict, "audiobookshelf")
-        unknown = settings.keys() - {"url", "api_key", "library_id", "library_path", "filetypes"}
+        unknown = settings.keys() - {
+            "url",
+            "api_key",
+            "library_id",
+            "library_path",
+            "filetypes",
+            "staging_path",
+            "folder_id",
+            "scan_timeout_seconds",
+        }
         if unknown:
             raise ConfigError(f"Unexpected Audiobookshelf options: {', '.join(sorted(unknown))}")
         for key in ("url", "api_key", "library_id", "library_path"):
@@ -372,7 +386,8 @@ class Config:
         try:
             parsed = urlparse(settings["url"])
             valid_url = (
-                parsed.scheme in ("http", "https") and bool(parsed.hostname)
+                parsed.scheme in ("http", "https")
+                and bool(parsed.hostname)
                 and not any((parsed.username, parsed.password, parsed.query, parsed.fragment))
             )
             # Accessing port also validates malformed and out-of-range port values.
@@ -380,16 +395,36 @@ class Config:
         except ValueError:
             valid_url = False
         if not valid_url:
-            raise ConfigError("audiobookshelf.url must be an HTTP(S) URL without credentials, "
-                              "query, or fragment")
+            raise ConfigError(
+                "audiobookshelf.url must be an HTTP(S) URL without credentials, query, or fragment"
+            )
         settings["url"] = settings["url"].rstrip("/")
         if not os.path.isabs(settings["library_path"]):
             raise ConfigError("audiobookshelf.library_path must be an absolute path")
+        self._ensure_audiobook_import_settings(settings)
         # Mount accessibility is a runtime check; configuration can precede deployment.
         formats = settings.setdefault("filetypes", ["m4b", "mp3"])
         self._ensure_type(formats, list, "audiobookshelf.filetypes")
         if not formats or any(fmt not in ("m4b", "mp3") for fmt in formats):
             raise ConfigError("audiobookshelf.filetypes must be a non-empty list of m4b or mp3")
+
+    @staticmethod
+    def _ensure_audiobook_import_settings(settings: dict) -> None:
+        """Validate filesystem overrides and the ingestion timeout."""
+        staging = settings.get("staging_path")
+        if staging is not None:
+            Config._ensure_type(staging, str, "audiobookshelf.staging_path")
+            if not os.path.isabs(staging):
+                raise ConfigError("audiobookshelf.staging_path must be an absolute path")
+        folder_id = settings.get("folder_id")
+        if folder_id is not None:
+            Config._ensure_type(folder_id, str, "audiobookshelf.folder_id")
+            if not folder_id:
+                raise ConfigError("audiobookshelf.folder_id must not be empty")
+        timeout = settings.setdefault("scan_timeout_seconds", 120)
+        Config._ensure_type(timeout, int, "audiobookshelf.scan_timeout_seconds")
+        if timeout <= 0:
+            raise ConfigError("audiobookshelf.scan_timeout_seconds must be greater than 0")
 
     @staticmethod
     def _check_extra_keys(config: dict) -> None:

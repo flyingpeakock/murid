@@ -10,6 +10,10 @@ class LibraryError(Exception):
     """A library could not be read or an import could not be completed."""
 
 
+class LibraryImportPending(LibraryError):
+    """Content was copied, but ingestion must be verified on a subsequent run."""
+
+
 class Library(Protocol):
     """List usable books, check presence, and import a completed download."""
 

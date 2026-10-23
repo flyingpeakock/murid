@@ -134,7 +134,7 @@ def test_audio_presence_uses_hardcover_work_tag_without_reusing_edition_identifi
     wanted = Book("Dune", ["Frank Herbert"], 42, ["different-ebook-isbn"], "hardcover")
     assert backend.contains_book(wanted, BookMatcher())
     client.session.get.reset_mock()
-    with pytest.raises(LibraryError, match="Audiobook import is not supported"):
+    with pytest.raises(LibraryError, match="requires a configured shared library_path"):
         backend.import_book(wanted, "/downloads/book", BookMatcher())
     client.session.get.assert_not_called()
 
@@ -196,3 +196,117 @@ def test_ebook_isbn_and_asin_cannot_match_unrelated_audio():
         library(), {"results": [audio], "total": 1}, audio,
     ))
     assert backend.contains_book(wanted, BookMatcher()) is False
+
+
+def verification_data():
+    manifest = {
+        "hardcover_id": "42",
+        "folder_id": "folder",
+        "destination": "Author/Dune",
+        "files": [
+            {"path": "CD1/01.mp3", "size": 10, "audio": True},
+            {"path": "CD2/01.mp3", "size": 20, "audio": True},
+        ],
+    }
+    audio = item(folderId="folder", relPath="Author/Dune")
+    audio["media"]["numTracks"] = 2
+    audio["media"]["tracks"] = [
+        {
+            "duration": 120,
+            "metadata": {
+                "relPath": entry["path"],
+                "size": entry["size"],
+                "path": "/different-server-mount/" + entry["path"],
+            },
+        }
+        for entry in manifest["files"]
+    ]
+    return manifest, audio
+
+
+def test_import_verifies_all_disc_relative_paths_sizes_and_identity():
+    manifest, audio = verification_data()
+    client = make_client(library(), {"results": [audio], "total": 1}, audio)
+    assert client.verify_import(manifest)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "missing-track",
+        "wrong-disc",
+        "wrong-size",
+        "bad-duration",
+        "excluded",
+        "no-tag",
+        "duplicate-track",
+        "wrong-count",
+        "ebook-only",
+    ],
+)
+def test_incomplete_or_wrong_import_is_not_verified(change):
+    manifest, audio = verification_data()
+    listed = deepcopy(audio)
+    media = audio["media"]
+    if change == "missing-track":
+        media["tracks"].pop()
+    elif change == "wrong-disc":
+        media["tracks"][0]["metadata"]["relPath"] = "01.mp3"
+    elif change == "wrong-size":
+        media["tracks"][0]["metadata"]["size"] = 999
+    elif change == "bad-duration":
+        media["tracks"][0]["duration"] = float("nan")
+    elif change == "excluded":
+        media["tracks"][0]["exclude"] = True
+    elif change == "no-tag":
+        media["tags"] = []
+    elif change == "duplicate-track":
+        media["tracks"][1] = deepcopy(media["tracks"][0])
+    elif change == "wrong-count":
+        media["numTracks"] = 1
+    else:
+        media["numTracks"] = 0
+    client = make_client(library(), {"results": [listed], "total": 1}, audio)
+    assert not client.verify_import(manifest)
+
+
+@pytest.mark.parametrize("change", [{"folderId": "other"}, {"relPath": "Other/Dune"}])
+def test_same_title_at_another_destination_cannot_verify_import(change):
+    manifest, audio = verification_data()
+    audio.update(change)
+    client = make_client(library(), {"results": [audio], "total": 1})
+    assert not client.verify_import(manifest)
+    assert client.session.get.call_count == 2
+
+
+def test_scan_acceptance_does_not_require_json_or_imply_verification():
+    client = make_client()
+    client.session.post.return_value = Mock(status_code=200)
+    client.scan_library()
+    client.session.post.assert_called_once_with(
+        "https://audio.example.com/abs/api/libraries/library/scan",
+        timeout=30,
+        allow_redirects=False,
+    )
+    client.session.post.return_value.json.assert_not_called()
+
+
+@pytest.mark.parametrize("status", [301, 401, 403, 500])
+def test_scan_failures_do_not_expose_credentials(status):
+    client = make_client()
+    client.session.post.return_value = Mock(status_code=status, text="secret")
+    with pytest.raises(AudiobookshelfError, match=f"HTTP {status}") as error:
+        client.scan_library()
+    assert "secret" not in str(error.value)
+
+
+def test_verification_deadline_bounds_each_request(monkeypatch):
+    monkeypatch.setattr("murid.clients.audiobookshelf.time.monotonic", lambda: 100)
+    manifest, audio = verification_data()
+    client = make_client(library(), {"results": [audio], "total": 1}, audio)
+    assert client.verify_import(manifest, deadline=101)
+    assert all(call.kwargs["timeout"] == 1 for call in client.session.get.call_args_list)
+    client.session.get.reset_mock()
+    with pytest.raises(AudiobookshelfError, match="deadline expired"):
+        client.verify_import(manifest, deadline=100)
+    client.session.get.assert_not_called()
