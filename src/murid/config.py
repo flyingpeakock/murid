@@ -37,6 +37,7 @@ _defaults = {
         "server_password": None,
         "command_timeout_seconds": 120,
     },
+    "audiobookshelf": None,
     "qbittorrent": {
         "host": _MISSING,
         "username": _MISSING,
@@ -64,6 +65,27 @@ _defaults = {
 
 class ConfigError(Exception):
     """Custom exception for configuration-related errors."""
+
+
+def hardcover_list_settings(entries: list) -> list[dict]:
+    """Normalize legacy tokens and omitted options without changing config output."""
+    settings = []
+    for entry in entries:
+        if isinstance(entry, str):
+            settings.append({"api_key": entry, "list": "want-to-read", "media_types": ["ebook"]})
+        elif "reading_list" in entry:
+            for slug, options in entry["reading_list"].items():
+                media = options.get("type", "ebook")
+                settings.append({"api_key": entry["api_key"], "list": slug,
+                                 "media_types": [media] if isinstance(media, str) else media})
+        else:
+            settings.append({"list": "want-to-read", "media_types": ["ebook"], **entry})
+    return settings
+
+
+def requested_media_types(entries: list) -> set[str]:
+    """Return the libraries required by the configured lists."""
+    return {media for entry in hardcover_list_settings(entries) for media in entry["media_types"]}
 
 
 def env_constructor(loader: yaml.SafeLoader, node: yaml.Node) -> str:
@@ -158,7 +180,12 @@ class Config:
         self._ensure_type(self.get("torrent_timeout_seconds"), int, "torrent_timeout_seconds")
         if self.get("torrent_timeout_seconds") <= 0:
             raise ConfigError("Config item 'torrent_timeout_seconds' must be greater than 0")
-        self._ensure_calibre(self.get("calibre"))
+        media_types = requested_media_types(self.get("hardcover_api_keys"))
+        calibre = self.get("calibre")
+        self._ensure_type(calibre, dict, "calibre")
+        if "ebook" in media_types or calibre.get("library") is not None:
+            self._ensure_calibre(calibre)
+        self._ensure_audiobookshelf("audiobook" in media_types)
 
         self._check_extra_keys(self._config)
 
@@ -183,7 +210,7 @@ class Config:
         for entry in keys:
             key = entry
             if isinstance(entry, dict):
-                unknown = entry.keys() - {"api_key", "list"}
+                unknown = entry.keys() - {"api_key", "list", "media_types", "reading_list"}
                 if unknown:
                     raise ConfigError(
                         f"Unexpected Hardcover user options: {', '.join(sorted(unknown))}"
@@ -191,6 +218,16 @@ class Config:
                 if "api_key" not in entry:
                     raise ConfigError("Hardcover user entry requires 'api_key'")
                 key = entry["api_key"]
+                if "reading_list" in entry:
+                    Config._ensure_reading_lists(entry)
+                media_types = entry.get("media_types", ["ebook"])
+                Config._ensure_type(media_types, list, "hardcover_api_keys item.media_types")
+                if not media_types or any(
+                    media not in ("ebook", "audiobook") for media in media_types
+                ):
+                    raise ConfigError(
+                        "Hardcover media_types must be a non-empty list of ebook or audiobook"
+                    )
                 slug = entry.get("list", "want-to-read")
                 Config._ensure_type(slug, str, "hardcover_api_keys item.list")
                 if not slug or any(c.isspace() or c in "/?#" for c in slug):
@@ -203,6 +240,28 @@ class Config:
             Config._ensure_type(key, str, "hardcover_api_keys item")
             if not key.startswith("Bearer "):
                 raise ConfigError("Config item 'hardcover_api_keys item' must start with 'Bearer '")
+
+    @staticmethod
+    def _ensure_reading_lists(entry: dict) -> None:
+        """Validate grouped list slugs and per-list media preferences."""
+        if "list" in entry or "media_types" in entry:
+            raise ConfigError("reading_list cannot be combined with list or media_types")
+        lists = entry["reading_list"]
+        Config._ensure_type(lists, dict, "hardcover_api_keys item.reading_list")
+        if not lists:
+            raise ConfigError("reading_list must be a non-empty mapping of list slugs to options")
+        for slug, options in lists.items():
+            Config._ensure_type(slug, str, "reading_list slug")
+            if not slug or any(c.isspace() or c in "/?#" for c in slug):
+                raise ConfigError("reading_list keys must be non-empty list slugs")
+            Config._ensure_type(options, dict, "reading_list options")
+            if options.keys() - {"type"}:
+                raise ConfigError("reading_list options only support 'type'")
+            media = options.get("type", "ebook")
+            media = [media] if isinstance(media, str) else media
+            Config._ensure_type(media, list, "reading_list type")
+            if not media or any(value not in ("ebook", "audiobook") for value in media):
+                raise ConfigError("reading_list type must contain ebook or audiobook")
 
     @staticmethod
     def _ensure_type(data: Any, expected_type: type, position: str) -> None:
@@ -294,6 +353,44 @@ class Config:
         if "server_password" in calibre and calibre["server_password"] is not None:
             Config._ensure_type(calibre["server_password"], str, "calibre.server_password")
 
+    def _ensure_audiobookshelf(self, required: bool) -> None:
+        """Validate configured Audiobookshelf access without contacting the server."""
+        settings = self.get("audiobookshelf")
+        if settings is None:
+            if required:
+                raise ConfigError("Audiobook requests require 'audiobookshelf' configuration")
+            return
+        self._ensure_type(settings, dict, "audiobookshelf")
+        unknown = settings.keys() - {"url", "api_key", "library_id", "library_path", "filetypes"}
+        if unknown:
+            raise ConfigError(f"Unexpected Audiobookshelf options: {', '.join(sorted(unknown))}")
+        for key in ("url", "api_key", "library_id", "library_path"):
+            value = settings.get(key)
+            self._ensure_type(value, str, f"audiobookshelf.{key}")
+            if not value:
+                raise ConfigError(f"Config item 'audiobookshelf.{key}' must not be empty")
+        try:
+            parsed = urlparse(settings["url"])
+            valid_url = (
+                parsed.scheme in ("http", "https") and bool(parsed.hostname)
+                and not any((parsed.username, parsed.password, parsed.query, parsed.fragment))
+            )
+            # Accessing port also validates malformed and out-of-range port values.
+            _ = parsed.port
+        except ValueError:
+            valid_url = False
+        if not valid_url:
+            raise ConfigError("audiobookshelf.url must be an HTTP(S) URL without credentials, "
+                              "query, or fragment")
+        settings["url"] = settings["url"].rstrip("/")
+        if not os.path.isabs(settings["library_path"]):
+            raise ConfigError("audiobookshelf.library_path must be an absolute path")
+        # Mount accessibility is a runtime check; configuration can precede deployment.
+        formats = settings.setdefault("filetypes", ["m4b", "mp3"])
+        self._ensure_type(formats, list, "audiobookshelf.filetypes")
+        if not formats or any(fmt not in ("m4b", "mp3") for fmt in formats):
+            raise ConfigError("audiobookshelf.filetypes must be a non-empty list of m4b or mp3")
+
     @staticmethod
     def _check_extra_keys(config: dict) -> None:
         """Check for unexpected config items in the provided config dictionary."""
@@ -357,7 +454,10 @@ class Config:
         """Return a string representation of the configuration."""
         if self.get("redact_sensitive_data"):
             return yaml.dump(self.redact(self._config), default_flow_style=False)
-        return yaml.dump(self._config, default_flow_style=False)
+        rendered = self._config.copy()
+        if isinstance(rendered.get("audiobookshelf"), dict):
+            rendered["audiobookshelf"] = {**rendered["audiobookshelf"], "api_key": "**REDACTED**"}
+        return yaml.dump(rendered, default_flow_style=False)
 
 
 def deep_merge(default, override):

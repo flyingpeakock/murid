@@ -71,3 +71,20 @@ def test_connections_handles_client_initialization_failure(monkeypatch, capsys):
     assert check_connections(factory) is False
 
     assert "FAIL qBittorrent: client initialization failed; see logs" in capsys.readouterr().out
+
+
+def test_audio_only_connections_skip_calibre_and_report_unsupported(monkeypatch, capsys):
+    factory, _ = make_factory()
+    factory.config["hardcover_api_keys"] = [
+        {"api_key": "Bearer audio", "media_types": ["audiobook"]},
+    ]
+    factory.calibre = Mock(side_effect=AssertionError("Calibre must not be initialized"))
+    hardcover = Mock(return_value=SimpleNamespace(user=SimpleNamespace(name="User")))
+    monkeypatch.setattr("murid.services.connection_service.Hardcover", hardcover)
+
+    assert check_connections(factory) is False
+    factory.calibre.assert_not_called()
+    hardcover.assert_called_once_with("Bearer audio")
+    assert "FAIL Audiobookshelf: Audiobookshelf connection checks are not supported yet" in (
+        capsys.readouterr().out
+    )

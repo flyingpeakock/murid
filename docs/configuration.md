@@ -11,9 +11,10 @@ Defaults below apply to the YAML configuration. Required values must be supplied
 
 | Option | Description | Default |
 | --- | --- | --- |
-| `hardcover_api_keys` | Per-user Hardcover tokens or mappings with `api_key` and optional `list` (see below) | required |
+| `hardcover_api_keys` | Hardcover tokens or mappings with `api_key` and optional `reading_list` (see below) | required |
 | `qbittorrent` | qBittorrent connection settings (see below) | required connection values |
-| `calibre` | Calibre settings (see below) | library required |
+| `calibre` | Calibre settings (see below) | library required for ebooks |
+| `audiobookshelf` | Audiobook library settings (see below) | required for audiobooks |
 | `mam_id` | MyAnonamouse session cookie | required |
 | `matcher_threshold` | Match confidence threshold from `0.0` to `1.0`; see [matching logic](matching.md) | `0.92` |
 | `lang_codes` | Torrent languages and language-tagged Hardcover titles used for search | `["ENG"]` |
@@ -27,26 +28,85 @@ Defaults below apply to the YAML configuration. Required values must be supplied
 ### Hardcover lists
 
 Each entry in `hardcover_api_keys` represents one user. A token alone continues to
-sync that user's **Want to Read** books. To choose a custom list, use a mapping:
+sync that user's **Want to Read** ebooks. Group lists under one API key:
 
 ```yaml
 hardcover_api_keys:
   - api_key: !ENV HARDCOVER_API_KEY
-    list: books-to-download
+    reading_list:
+      want-to-read: {} # type defaults to ebook
+      books-to-download:
+        type: ebook
+      audiobooks:
+        type: audiobook
   - api_key: !ENV SECOND_HARDCOVER_API_KEY
-    # list defaults to want-to-read
+    # reading_list omitted: Want to Read ebooks
 ```
 
 Use the last part of your list URL: for
-`https://hardcover.app/@yourname/lists/books-to-download`, set `list: books-to-download`.
+`https://hardcover.app/@yourname/lists/books-to-download`, use `books-to-download`
+as the key under `reading_list`. Use the slug `want-to-read`, not `want to read`.
 The custom list must belong to the user associated with that entry's token, which
 must have permission to read the list. All books in that list are eligible for
 sync, regardless of their reading status. The list replaces Want to Read for
-that user; it is not combined with it. Missing or inaccessible lists cause an
+that user unless `want-to-read` is also included. Missing or inaccessible lists cause an
 error rather than falling back to Want to Read. An empty list selects no books.
 
-Omit `list` or set it to `want-to-read` to use the default reading status.
-Token-only entries and mappings can be mixed in the same configuration.
+Omit `reading_list` to request Want to Read ebooks. In a `reading_list` mapping,
+omit `type` (use `{}` for an entry with no options) to default to ebook.
+Token-only entries and mappings can be mixed. Legacy `list` and `media_types`
+settings remain supported; do not combine them with `reading_list` in one entry.
+
+Set each list's `type` to `ebook` (the default), `audiobook`, or
+`[ebook, audiobook]`. Use singular `audiobook`, not `audiobooks`. Empty mappings,
+empty type lists, and
+unknown media types are rejected. Overlapping users and lists represent one
+request per Hardcover book ID and media type; requesting both means acquiring
+both independently.
+
+**Audiobook execution is not yet supported.** Configuration validation and
+printing accept these settings, but sync, match inspection, search, and import
+workflows reject configurations requesting audiobooks with an explicit error.
+Audiobookshelf connection diagnostics report unsupported checks until the client
+is implemented. Keep scheduled acquisition on ebook-only lists during this phase.
+
+```yaml
+hardcover_api_keys:
+  - api_key: !ENV HARDCOVER_API_KEY
+    reading_list:
+      audiobooks:
+        type: audiobook
+audiobookshelf:
+  url: https://audiobooks.example.com
+  api_key: !ENV AUDIOBOOKSHELF_API_KEY
+  library_id: your-library-id
+  library_path: /mnt/audiobooks
+  filetypes: [m4b, mp3]
+```
+
+### Audiobookshelf
+
+These options belong under `audiobookshelf`. Omit this section for ebook-only
+configurations; omit Calibre for audio-only configuration validation.
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `url` | HTTP(S) base URL, optionally including a base path, without credentials, query or fragment | required |
+| `api_key` | API key belonging to an active admin/root user with library access | required |
+| `library_id` | Audiobookshelf book library ID | required |
+| `library_path` | Absolute shared library directory as seen by Murid | required |
+| `filetypes` | Accepted audiobook formats in preference order; only `m4b` and `mp3` supported initially | `[m4b, mp3]` |
+
+Set `AUDIOBOOKSHELF_API_KEY` in Murid's environment and reference it with `!ENV`.
+Supply the key itself; Murid will supply the Authorization Bearer prefix.
+The Audiobookshelf key is always redacted by `print-config`, including JSON output,
+even when `redact_sensitive_data` is false. Other secrets follow that flag.
+
+Configuration validation does not contact the server or require the shared mount
+to exist yet. At runtime, the folder must be writable by Murid and readable by
+Audiobookshelf; mount paths can differ. The current contract targets v2.37.1;
+see [integration verification and pending live checks](audiobookshelf-integration.md).
+The top-level `filetypes` continues to control ebook preferences only.
 
 ### Calibre
 

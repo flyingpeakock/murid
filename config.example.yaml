@@ -4,10 +4,17 @@
 # Must start with "Bearer "
 hardcover_api_keys:
   - !ENV HARDCOVER_API_KEY
-  # To sync a specific list instead, use its slug (last part of its URL):
+  # Group lists under one token using their URL slugs:
   # - api_key: !ENV SECOND_HARDCOVER_API_KEY
-  #   list: books-to-download
-  # Omitting list defaults to want-to-read.
+  #   reading_list:
+  #     want-to-read: {} # type defaults to ebook
+  #     books-to-download:
+  #       type: ebook
+  #     audiobooks:
+  #       type: audiobook
+  # Omitting reading_list defaults to Want to Read ebooks.
+  # type: [ebook, audiobook] requests both independently.
+  # Audiobook configuration is accepted, but execution is not yet supported.
 
 # Redact secrets from logs and config dumps
 redact_sensitive_data: true
@@ -22,13 +29,21 @@ mam_id: !ENV MAM_ID
 lang_codes:
   - "ENG"
 
-# Calibre settings
+# Calibre settings (required only when ebooks are requested)
 calibre:
   calibredb_executable: "calibredb"
   command_timeout_seconds: 120 # Maximum runtime for each calibredb command
   library: "http://localhost:8080/#books" # Or a local library path
   server_username: "user"
   server_password: !ENV CALIBRE_PASSWORD
+
+# Required only when audiobooks are requested. API key is always redacted in output.
+# audiobookshelf:
+#   url: https://audiobooks.example.com
+#   api_key: !ENV AUDIOBOOKSHELF_API_KEY
+#   library_id: your-library-id
+#   library_path: /mnt/audiobooks # Absolute path as seen by Murid
+#   filetypes: [m4b, mp3]
 
 # qBittorrent connection settings
 qbittorrent:

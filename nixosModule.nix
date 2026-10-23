@@ -8,6 +8,22 @@ in {
     ...
   }: let
     cfg = config.services.murid;
+    mediaTypes =
+      if cfg.config == null
+      then []
+      else
+        lib.concatMap (entry:
+          if builtins.isString entry
+          then ["ebook"]
+          else if entry ? reading_list
+          then
+            lib.concatMap (options:
+              if builtins.isString options.type
+              then [options.type]
+              else options.type)
+            (builtins.attrValues entry.reading_list)
+          else entry.media_types)
+        cfg.config.hardcover_api_keys;
 
     yaml = pkgs.formats.yaml {};
     createYAMLConfig = config: yaml.generate "murid.yaml" config;
@@ -137,7 +153,17 @@ in {
         type = lib.types.nullOr (lib.types.submodule {
           options = {
             hardcover_api_keys = lib.mkOption {
-              description = "Hardcover API tokens or per-user API token and list settings";
+              description = "Hardcover API tokens or per-user API token and grouped reading lists";
+              apply = entries:
+                map (entry:
+                  if builtins.isString entry
+                  then entry
+                  else if entry.reading_list == null
+                  then builtins.removeAttrs entry ["reading_list"]
+                  else if entry.list != "want-to-read" || entry.media_types != ["ebook"]
+                  then throw "reading_list cannot be combined with custom list or media_types"
+                  else builtins.removeAttrs entry ["list" "media_types"])
+                entries;
               type = lib.types.listOf (lib.types.either configEnvType (lib.types.submodule {
                 options = {
                   api_key = lib.mkOption {
@@ -148,6 +174,24 @@ in {
                     description = "List slug from its URL, or want-to-read for the reading status";
                     type = lib.types.str;
                     default = "want-to-read";
+                  };
+                  media_types = lib.mkOption {
+                    description = "Media requested from this list; audiobook execution is not yet supported";
+                    type = lib.types.addCheck (lib.types.listOf (lib.types.enum ["ebook" "audiobook"])) (values: values != []);
+                    default = ["ebook"];
+                  };
+                  reading_list = lib.mkOption {
+                    description = "List slugs mapped to options; type defaults to ebook";
+                    default = null;
+                    type = lib.types.nullOr (lib.types.addCheck (lib.types.attrsOf (lib.types.submodule {
+                      options.type = lib.mkOption {
+                        description = "Requested medium, or a list requesting both media";
+                        default = "ebook";
+                        type =
+                          lib.types.either (lib.types.enum ["ebook" "audiobook"])
+                          (lib.types.addCheck (lib.types.listOf (lib.types.enum ["ebook" "audiobook"])) (values: values != []));
+                      };
+                    })) (values: values != {}));
                   };
                 };
               }));
@@ -184,7 +228,38 @@ in {
 
             calibre = lib.mkOption {
               description = "Calibre configuration";
-              type = configCalibreType;
+              type = lib.types.nullOr configCalibreType;
+              default = null;
+            };
+
+            audiobookshelf = lib.mkOption {
+              description = "Audiobookshelf configuration; required for audiobook requests";
+              default = null;
+              type = lib.types.nullOr (lib.types.submodule {
+                options = {
+                  url = lib.mkOption {
+                    description = "Audiobookshelf HTTP(S) base URL";
+                    type = lib.types.str;
+                  };
+                  api_key = lib.mkOption {
+                    description = "API key for an active admin/root user with library access";
+                    type = configEnvType;
+                  };
+                  library_id = lib.mkOption {
+                    description = "Audiobookshelf book library ID";
+                    type = lib.types.str;
+                  };
+                  library_path = lib.mkOption {
+                    description = "Absolute shared library path as seen by Murid";
+                    type = lib.types.str;
+                  };
+                  filetypes = lib.mkOption {
+                    description = "Accepted audiobook formats in preference order";
+                    type = lib.types.addCheck (lib.types.listOf (lib.types.enum ["m4b" "mp3"])) (values: values != []);
+                    default = ["m4b" "mp3"];
+                  };
+                };
+              });
             };
 
             schedule = lib.mkOption {
@@ -240,6 +315,14 @@ in {
         {
           assertion = (cfg.config != null) != (cfg.configFile != null);
           message = "Set exactly one of services.murid.config or services.murid.configFile";
+        }
+        {
+          assertion = !(builtins.elem "ebook" mediaTypes) || cfg.config.calibre != null;
+          message = "Ebook requests require services.murid.config.calibre";
+        }
+        {
+          assertion = !(builtins.elem "audiobook" mediaTypes) || cfg.config.audiobookshelf != null;
+          message = "Audiobook requests require services.murid.config.audiobookshelf";
         }
       ];
 
