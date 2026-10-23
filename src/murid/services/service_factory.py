@@ -95,7 +95,8 @@ class ServiceFactory:
             for entry in self.config["hardcover_api_keys"]
             for settings in (
                 hardcover_list_settings([entry])
-                if isinstance(entry, dict) and "reading_list" in entry else [entry]
+                if isinstance(entry, dict) and "reading_list" in entry
+                else [entry]
             )
         ]
         with ThreadPoolExecutor(max_workers=min(10, len(keys))) as executor:
@@ -110,9 +111,13 @@ class ServiceFactory:
             settings = self.config.get("audiobookshelf")
             if not settings:
                 raise ConfigError("Audiobook requests require 'audiobookshelf' configuration")
-            return AudiobookshelfLibrary(Audiobookshelf(
-                settings["url"], settings["api_key"], settings["library_id"],
-            ))
+            return AudiobookshelfLibrary(
+                Audiobookshelf(
+                    settings["url"],
+                    settings["api_key"],
+                    settings["library_id"],
+                )
+            )
         raise ConfigError(f"Unknown media type: {media_type!r}")
 
     def _hardcover_client(self, entry):
@@ -143,7 +148,7 @@ class ServiceFactory:
         if "audiobook" in requested_media_types(self.config["hardcover_api_keys"]):
             raise ConfigError(
                 "Audiobook execution is not supported yet; library inspection is available, "
-                "but discovery and import are not connected"
+                "but audiobook import and restart recovery are not connected"
             )
 
     def myanonamouse(self):
@@ -174,11 +179,10 @@ class ServiceFactory:
 
     def torrent_discovery(self):
         """Create a TorrentDiscoveryService instance using the MyAnonamouse client."""
-        self.require_ebook_workflow()
+        media_types = requested_media_types(self.config["hardcover_api_keys"])
         return TorrentDiscoveryService(
             self.myanonamouse(),
-            self.config["lang_codes"],
-            self.torrent_selector(),
+            {media: self.torrent_selector(media) for media in media_types},
             self.qbittorrent(),
         )
 
@@ -204,12 +208,17 @@ class ServiceFactory:
         """Create a SyncService instance."""
         return SyncService(self)
 
-    def torrent_selector(self):
+    def torrent_selector(self, media_type: MediaType = "ebook"):
         """Create a TorrentSelector instance."""
         return TorrentSelector(
             lang_codes=set(self.config["lang_codes"]),
-            wanted_filetypes=self.config["filetypes"],
+            wanted_filetypes=(
+                self.config["audiobookshelf"]["filetypes"]
+                if media_type == "audiobook"
+                else self.config["filetypes"]
+            ),
             blacklist=set(self.config["blacklisted_torrent_ids"]),
+            media_type=media_type,
         )
 
     def retry_service(self):

@@ -202,6 +202,36 @@ Details are in [the integration notes](docs/audiobookshelf-integration.md).
 
 ### 4. Make MaM discovery media-aware
 
+**Implemented (2026-10-23):** Verified MaM main categories against authenticated
+API results: `13` returns Audiobooks categories and `14` returns Ebooks categories.
+Main title, alternate title, and author fallback queries all use the requested
+medium. Parsed candidates retain their media type when the API supplies it, and
+selection rejects a known media mismatch even if a sidecar has a preferred format.
+Separate selectors use top-level ebook `filetypes` and Audiobookshelf `filetypes`
+respectively. Existing MaM series metadata is retained so differing volumes can
+be rejected; Hardcover metadata fills missing series information only.
+
+Discovery now carries `BookRequest` through search futures, selection, and torrent
+file download results. Overlapping work/media requests deduplicate by identity.
+Incomplete requests suppress only the identical Hardcover work and medium, rather
+than suppressing similarly named books across formats. Failed-torrent filtering
+is scoped by MaM torrent ID and medium; untagged legacy torrents are ebooks and
+the `murid_media_audiobook` marker identifies audiobook state. Step 6 will persist
+that marker and the work identity when adding torrents.
+
+The ebook sync bridge wraps legacy retry results as ebook requests and unwraps
+requests only at the existing ebook importer boundary. Acquisition commands remain
+guarded for audiobook configurations until import and restart recovery are ready.
+Manual media flags remain in step 7; this phase does not enable audiobook downloads
+through the CLI or change the live configuration.
+
+Verification: four live read-only searches (title and author for each medium)
+returned only the requested main category, with 20 parsed results per query.
+No torrent files were downloaded and no libraries were modified. Unit/integration
+coverage includes media scoping, separate format preference, retained request
+identity, overlap deduplication, and independent incomplete/failed suppression.
+All 748 Python tests passed, as did Ruff, Pylint, and whitespace checks.
+
 - Scope title searches, alternate-title searches, and author fallbacks to the
   requested media category. Verify audiobook category values before using them.
 - Apply separate ebook and audiobook format preferences.

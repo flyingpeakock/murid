@@ -33,15 +33,22 @@ def test_wanted_requests_normalize_and_combine_lists(args, config, monkeypatch):
 
 
 def test_grouped_lists_expand_to_independent_requests(args, config, monkeypatch):
-    config["hardcover_api_keys"] = [{"api_key": "Bearer key", "reading_list": {
-        "want-to-read": {}, "audio": {"type": "audiobook"},
-    }}]
+    config["hardcover_api_keys"] = [
+        {
+            "api_key": "Bearer key",
+            "reading_list": {
+                "want-to-read": {},
+                "audio": {"type": "audiobook"},
+            },
+        }
+    ]
     book = Book("Title", ["Author"], 42, [], "Hardcover")
     constructor = Mock(side_effect=lambda *args, **kwargs: Mock(get_books=lambda: [book]))
     monkeypatch.setattr("murid.services.service_factory.Hardcover", constructor)
     factory = ServiceFactory(args, config, initialize_notifier=False)
     assert {request.identity for request in factory.wanted_requests()} == {
-        (42, "ebook"), (42, "audiobook"),
+        (42, "ebook"),
+        (42, "audiobook"),
     }
     constructor.assert_any_call("Bearer key", list_slug="want-to-read")
     constructor.assert_any_call("Bearer key", list_slug="audio")
@@ -50,9 +57,15 @@ def test_grouped_lists_expand_to_independent_requests(args, config, monkeypatch)
 
 
 def test_grouped_ebook_lists_all_reach_legacy_workflow(args, config, monkeypatch):
-    config["hardcover_api_keys"] = [{"api_key": "Bearer key", "reading_list": {
-        "want-to-read": {}, "a": {},
-    }}]
+    config["hardcover_api_keys"] = [
+        {
+            "api_key": "Bearer key",
+            "reading_list": {
+                "want-to-read": {},
+                "a": {},
+            },
+        }
+    ]
     constructor = Mock(side_effect=lambda *args, **kwargs: Mock())
     monkeypatch.setattr("murid.services.service_factory.Hardcover", constructor)
     assert len(ServiceFactory(args, config, initialize_notifier=False).hardcover()) == 2
@@ -60,9 +73,14 @@ def test_grouped_ebook_lists_all_reach_legacy_workflow(args, config, monkeypatch
     constructor.assert_any_call("Bearer key", list_slug="a")
 
 
-@pytest.mark.parametrize("operation", [
-    "hardcover", "retry_service", "torrent_discovery", "torrent_import",
-])
+@pytest.mark.parametrize(
+    "operation",
+    [
+        "hardcover",
+        "retry_service",
+        "torrent_import",
+    ],
+)
 def test_audiobook_workflows_fail_before_constructing_clients(args, config, monkeypatch, operation):
     config["hardcover_api_keys"] = [{"api_key": "Bearer key", "media_types": ["audiobook"]}]
     config.pop("calibre")
@@ -87,7 +105,9 @@ def test_audio_only_factory_does_not_initialize_calibre(args, config, monkeypatc
 def test_audio_library_construction_never_initializes_calibre(args, config, monkeypatch):
     config.pop("calibre")
     config["audiobookshelf"] = {
-        "url": "https://audio.example.com", "api_key": "secret", "library_id": "library-id",
+        "url": "https://audio.example.com",
+        "api_key": "secret",
+        "library_id": "library-id",
     }
     audio = Mock()
     calibre = Mock(side_effect=AssertionError("Calibre must not be initialized"))
@@ -106,6 +126,23 @@ def test_audio_library_construction_never_initializes_calibre(args, config, monk
 def test_unknown_library_type_fails_explicitly(args, config):
     with pytest.raises(ConfigError, match="Unknown media type"):
         ServiceFactory(args, config, initialize_notifier=False).library("video")
+
+
+def test_discovery_uses_independent_media_format_preferences(args, config, monkeypatch):
+    config.update(
+        filetypes=["epub", "mobi"],
+        blacklisted_torrent_ids=[],
+        audiobookshelf={"filetypes": ["mp3", "m4b"]},
+    )
+    config["hardcover_api_keys"] = [
+        {"api_key": "Bearer key", "media_types": ["ebook", "audiobook"]},
+    ]
+    factory = ServiceFactory(args, config, initialize_notifier=False)
+    monkeypatch.setattr(factory, "myanonamouse", Mock())
+    monkeypatch.setattr(factory, "qbittorrent", Mock())
+    discovery = factory.torrent_discovery()
+    assert list(discovery.torrent_selectors["ebook"].filetype_priority) == ["epub", "mobi"]
+    assert list(discovery.torrent_selectors["audiobook"].filetype_priority) == ["mp3", "m4b"]
 
 
 @pytest.fixture

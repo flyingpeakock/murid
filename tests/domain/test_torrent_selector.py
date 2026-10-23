@@ -1,6 +1,33 @@
+import pytest
+
 from murid.domain.book import Book
+from murid.domain.book_matcher import BookMatcher
 from murid.domain.torrent import Torrent, TorrentMetadata
 from murid.domain.torrent_selector import TorrentSelector
+
+
+@pytest.mark.parametrize("formats,expected", [(["m4b", "mp3"], 1), (["mp3", "m4b"], 2)])
+def test_audio_formats_use_their_own_preference_order(formats, expected):
+    m4b = make_torrent(file_types=["m4b"], id=1)
+    mp3 = make_torrent(file_types=["mp3"], id=2)
+    m4b.media_type = mp3.media_type = "audiobook"
+    selector = TorrentSelector({"en"}, formats, media_type="audiobook")
+    assert selector.select(make_book(), [mp3, m4b], BookMatcher()).book.id == expected
+
+
+@pytest.mark.parametrize(
+    "medium,other,format_",
+    [
+        ("audiobook", "ebook", "m4b"),
+        ("ebook", "audiobook", "epub"),
+    ],
+)
+def test_wrong_media_rejected_even_with_a_preferred_filetype(medium, other, format_):
+    torrent = make_torrent(file_types=[format_])
+    torrent.media_type = other
+    selector = TorrentSelector({"en"}, media_type=medium)
+    assert selector.rejection_reasons(torrent) == ["media type"]
+    assert selector.select(make_book(), [torrent], BookMatcher()) is None
 
 
 class DummyMatcher:

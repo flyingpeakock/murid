@@ -110,7 +110,11 @@ Configuration validation does not contact the server or require the shared mount
 to exist yet. At runtime, the folder must be writable by Murid and readable by
 Audiobookshelf; mount paths can differ. The current contract targets v2.37.1;
 see [integration verification and pending live checks](audiobookshelf-integration.md).
-The top-level `filetypes` continues to control ebook preferences only.
+The top-level `filetypes` continues to control ebook preferences only. Discovery
+uses separate audiobook preferences from `audiobookshelf.filetypes`. Main title,
+alternate title, and author fallback searches are scoped to MaM main category 14
+for ebooks or 13 for audiobooks. Audiobook acquisition remains blocked until
+import and restart recovery are connected.
 
 Library inspection uses paginated item listing and fetches expanded details for
 audio candidates to preserve author names and verify playable tracks. It sends

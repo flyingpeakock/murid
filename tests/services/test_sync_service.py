@@ -73,14 +73,15 @@ def test_run_orchestrates_pipeline(factory):
     matcher.match_books.return_value = []
 
     torrent_discovery = Mock()
-    torrent_discovery.find_torrents.return_value = []
+    torrent_discovery.download_torrents.return_value = []
     torrent_discovery.submit_downloads.return_value = {}
     torrent_discovery.collect_downloads.return_value = []
 
     torrent_import = Mock()
 
     retry_service = Mock()
-    retry_service.retry_torrents.return_value = {"incomplete-book"}
+    incomplete = FakeBook("Incomplete")
+    retry_service.retry_torrents.return_value = {incomplete}
 
     factory.library.return_value = calibre
     factory.matcher.return_value = matcher
@@ -99,7 +100,7 @@ def test_run_orchestrates_pipeline(factory):
 
     torrent_import.import_torrents.assert_called_once()
     torrent_discovery.download_torrents.assert_called_once()
-    assert torrent_discovery.download_torrents.call_args.args[2] == {"incomplete-book"}
+    assert torrent_discovery.download_torrents.call_args.args[2] == {BookRequest(incomplete)}
 
 
 def test_list_missing_propagates_hardcover_initialization_failure(factory, capsys):
