@@ -15,7 +15,7 @@ from ..config import Config, ConfigError, hardcover_list_settings, requested_med
 from ..domain.book_matcher import BookMatcher
 from ..domain.book_request import BookRequest, MediaType
 from ..domain.torrent_selector import TorrentSelector
-from ..libraries.audiobookshelf import AudiobookshelfLibrary
+from ..libraries.audiobookshelf import AudiobookLibraryConfig, AudiobookshelfLibrary
 from ..libraries.calibre import CalibreLibrary
 from ..libraries.library import Library
 from ..notifications.apprise import init_apprise as apprise
@@ -116,7 +116,15 @@ class ServiceFactory:
                     settings["url"],
                     settings["api_key"],
                     settings["library_id"],
-                )
+                ),
+                AudiobookLibraryConfig(
+                    library_path=settings.get("library_path"),
+                    staging_path=settings.get("staging_path"),
+                    folder_id=settings.get("folder_id"),
+                    filetypes=settings.get("filetypes", ["m4b", "mp3"]),
+                    scan_timeout_seconds=settings.get("scan_timeout_seconds", 120),
+                    dry_run=getattr(self.args, "dry_run", False),
+                ),
             )
         raise ConfigError(f"Unknown media type: {media_type!r}")
 

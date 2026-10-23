@@ -13,8 +13,10 @@ with other versions has not been established.
 The [published API reference](https://api.audiobookshelf.org/) is supplementary;
 the tagged server source below determines this contract.
 
-Murid implements read-only library inspection against this contract. Automated
-tests use offline API fixtures; the live inspection results are recorded below.
+Murid implements library inspection and a shared-folder import backend against this
+contract. Automated tests cover copying, crash recovery, scans, and API verification
+with offline fixtures; live checks so far are read-only. Acquisition remains guarded
+until torrent restart recovery is connected.
 
 ## Authentication and access
 
@@ -122,6 +124,25 @@ The test harness allowed only HTTP GETs and read-only Hardcover GraphQL queries;
 it disabled notifications. No downloads, library writes, or scans were performed.
 An initial plural media type and incorrect library ID were corrected in the
 ignored live configuration before verification.
+
+## Import backend verification (step 5)
+
+Offline tests exercise all-track copies, repeated filenames across disc folders,
+metadata/tag merging, source preservation, interrupted-copy recovery, a crash after
+publication, concurrent import locking, existing destination collisions (including
+empty folders), changed destination audio, scan failures, and delayed scans without
+recopying even when the original source is gone. API fixtures require exact folder
+and item-relative paths, expected track counts, track-relative filenames and sizes,
+positive finite durations, and the work tag. An existing title elsewhere cannot
+satisfy verification. Each polling request is bounded by the remaining scan timeout.
+
+The journal records source fingerprints and the original destination before copying.
+Staging remains on the destination filesystem outside scanned roots. Publication
+uses an atomic non-replacing rename; unsupported platforms/filesystems fail rather
+than falling back to a replacing operation. Filesystem behavior was tested on Linux;
+macOS/Windows branches have not been exercised here. Server root path checks cannot
+prove physical bind-mount alias placement; deployment must ensure staging is truly
+outside every scanned root. Source files are never moved, linked, or modified.
 
 ## Remaining live verification
 

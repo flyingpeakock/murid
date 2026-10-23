@@ -240,6 +240,79 @@ All 748 Python tests passed, as did Ruff, Pylint, and whitespace checks.
 
 ### 5. Import complete audiobooks into the shared folder
 
+**Implemented (2026-10-23):** Added complete audiobook selection and a shared-folder
+import backend. It accepts a single M4B or one clearly named book folder of
+M4B/MP3 tracks, preserving CD/disc directories and supported sidecars. Ambiguous
+packs, mixed encodings, unsupported audio, empty tracks, and symlinks fail before
+publication. Source downloads remain intact for seeding.
+
+A durable per-work/library journal records the chosen author/title/Hardcover-ID
+path, source fingerprints, metadata, and expected tracks before copying. Copies
+resume in private staging on the library filesystem, outside scanned roots.
+An OS lock serializes each work; publication uses atomic non-replacing rename,
+including protection against an existing empty directory. Destination ownership
+markers and audio fingerprints distinguish safe retries from unrelated or changed
+content. Existing audio is never overwritten. Recovery covers interrupted copies,
+a crash after publication, missing original sources after copying, and changed
+Hardcover titles without creating another destination.
+
+Metadata merges supplied tags with the Hardcover work tag and fills missing work
+fields, preserving supplied audiobook edition metadata without injecting ebook
+ISBNs/ASINs. Scan access is checked before copying. Verification requires the exact
+library folder/destination, all expected track-relative paths and sizes, playable
+durations, and the identity tag. Scan acknowledgement alone is insufficient;
+timeouts and API failures retain copied state for retry without another copy.
+
+Added optional `staging_path`, `folder_id` (required for multiple roots), and
+`scan_timeout_seconds` (default 120, separate from download timeout), including
+configuration validation, factory construction, examples, documentation, and NixOS
+options/tests. Checks cover local filesystem placement and visible server roots;
+physical bind-mount aliases remain a deployment responsibility. Filesystem tests
+ran on Linux; macOS/Windows publication branches remain untested here.
+
+Review corrections: retry cleanup now removes interrupted metadata/marker JSON
+write temporaries before checking the staged inventory, preserving selected source
+sidecars even when their names begin with `.murid-`. Title validation follows the
+server's legacy nested `metadata.title` override, including for single M4B imports;
+a matching flat title cannot conceal a different effective book title.
+Regression tests cover crashes during both JSON writes, retries without recopying
+tracks, and conflicting or nested-only titles for both source layouts.
+
+Further review corrections: disc layouts now allow only root tracks or one level
+of server-supported CD/disc directories (one to three digits, optional spaces;
+no underscores, hyphens, or nested discs). Unsupported layouts fail before any
+copy. Root `metadata.json` is regenerated from the durable manifest, separately
+from immutable source files, so retries after metadata generation do not need an
+unchanged or still-present source sidecar. Tests cover both marker-write and
+publication interruptions with missing or changed source metadata.
+
+Durability review correction: staging ancestors and author directories now have
+their containing directory entries synced before journals or publications depend
+on them. A retry also syncs the nearest existing ancestor's parent, covering an
+interrupted attempt that created the directory but failed to sync its entry.
+Regression tests check ordering for default/nested staging paths and inject parent
+sync failures to verify that imports stop and retry safely.
+
+Permission recovery review correction: new author directories are now initialized
+with mode 0755 in private staging and atomically published without replacement.
+An interruption before chmod leaves only private, retryable state; an interruption
+after publication leaves an author directory with the intended permissions. Existing
+author directories are never chmodded, including when another work creates one
+concurrently. Regression tests use umask 077, interrupt permission setup and parent
+sync, and check preservation of existing permissions and unrelated files.
+
+Publication recovery review correction: an existing owned destination now has
+its containing author directory synced before the journal advances to copied or
+verified. A regression test interrupts the post-rename sync, removes the original
+source, fails the recovery sync again, and verifies a subsequent retry succeeds
+without copying and without advancing the journal before a successful sync.
+
+Verification: all 837 Python tests passed; Ruff, Pylint, and whitespace checks passed.
+The NixOS module check passed before these Python-only review corrections. Live copying/scanning/ingestion remains unverified;
+no live library writes, scans, or configuration changes were performed. Automatic
+acquisition remains guarded until step 6 connects torrent identity and restart
+recovery; manual audiobook CLI routing remains in step 7.
+
 - Initially support a single M4B or a clearly identified single-book folder of
   M4B/MP3 tracks. Do not reuse the ebook selector to choose one audio track.
 - Preserve filenames, track structure, and relevant sidecars.

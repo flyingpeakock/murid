@@ -44,6 +44,9 @@ calibre:
 #   library_id: your-library-id
 #   library_path: /mnt/audiobooks # Absolute path as seen by Murid
 #   filetypes: [m4b, mp3]
+#   scan_timeout_seconds: 120 # Separate from torrent download timeout
+#   staging_path: /mnt/.murid-staging-audiobooks # Optional; same filesystem, outside scanned roots
+#   folder_id: your-folder-id # Required only if the library has multiple roots
 
 # qBittorrent connection settings
 qbittorrent:

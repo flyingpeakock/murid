@@ -1,6 +1,7 @@
-"""Read Audiobookshelf v2.37.1 book libraries without hiding lookup failures."""
+"""Inspect Audiobookshelf v2.37.1 libraries and verify shared-folder imports."""
 
 import math
+import time
 from urllib.parse import quote
 
 import requests
@@ -14,7 +15,7 @@ class AudiobookshelfError(LibraryError):
 
 
 class Audiobookshelf:
-    """Authenticated read-only API access; no files, scans, or library mutations."""
+    """Authenticated library inspection and scan requests; files use the shared mount."""
 
     PAGE_SIZE = 100
 
@@ -24,12 +25,19 @@ class Audiobookshelf:
         self.session = session if session is not None else requests.Session()
         self.session.headers.update({"Authorization": f"Bearer {api_key}"})
 
-    def _get(self, path: str, **params) -> dict:
+    @staticmethod
+    def _timeout(deadline: float | None) -> float:
+        remaining = 30 if deadline is None else min(30, deadline - time.monotonic())
+        if remaining <= 0:
+            raise AudiobookshelfError("Audiobookshelf verification deadline expired")
+        return remaining
+
+    def _get(self, path: str, *, deadline: float | None = None, **params) -> dict:
         try:
             response = self.session.get(
                 f"{self.url}{path}",
                 params=params,
-                timeout=30,
+                timeout=self._timeout(deadline),
                 allow_redirects=False,
             )
         except requests.RequestException:
@@ -47,15 +55,15 @@ class Audiobookshelf:
             raise AudiobookshelfError("Audiobookshelf returned an invalid response object")
         return payload
 
-    def get_library(self) -> dict:
+    def get_library(self, *, deadline: float | None = None) -> dict:
         """Require the configured book library, rather than assuming an empty library."""
-        library = self._get(f"/api/libraries/{quote(self.library_id, safe='')}")
+        library = self._get(f"/api/libraries/{quote(self.library_id, safe='')}", deadline=deadline)
         if library.get("id") != self.library_id or library.get("mediaType") != "book":
             raise AudiobookshelfError("Audiobookshelf target must be the configured book library")
         return library
 
-    def _items(self) -> list[dict]:
-        self.get_library()
+    def _items(self, *, deadline: float | None = None) -> list[dict]:
+        self.get_library(deadline=deadline)
         items = []
         seen = set()
         total = None
@@ -67,6 +75,7 @@ class Audiobookshelf:
                 page=page,
                 sort="addedAt",
                 collapseseries=0,
+                deadline=deadline,
             )
             results, count = payload.get("results"), payload.get("total")
             valid_count = isinstance(count, int) and not isinstance(count, bool) and count >= 0
@@ -138,6 +147,103 @@ class Audiobookshelf:
                 continue
             books.add(self._book(detail))
         return books
+
+    def require_scan_access(self) -> None:
+        """Reject insufficient permissions before copying into the shared library."""
+        user = self._get("/api/me")
+        if user.get("type") not in {"admin", "root"} or user.get("isActive") is not True:
+            raise AudiobookshelfError("Audiobook import requires an active admin/root API user")
+
+    def get_libraries(self) -> list[dict]:
+        """Read visible library roots so staging can remain outside scanned directories."""
+        libraries = self._get("/api/libraries").get("libraries")
+        if not isinstance(libraries, list) or not all(isinstance(lib, dict) for lib in libraries):
+            raise AudiobookshelfError("Audiobookshelf returned invalid library roots")
+        return libraries
+
+    def scan_library(self, *, deadline: float | None = None) -> None:
+        """Request a scan; HTTP 200 means accepted, never verified ingestion."""
+        try:
+            response = self.session.post(
+                f"{self.url}/api/libraries/{quote(self.library_id, safe='')}/scan",
+                timeout=self._timeout(deadline),
+                allow_redirects=False,
+            )
+        except requests.RequestException:
+            raise AudiobookshelfError(
+                "Audiobookshelf scan request failed; retry verification"
+            ) from None
+        if response.status_code != 200:
+            raise AudiobookshelfError(f"Audiobookshelf scan returned HTTP {response.status_code}")
+
+    def verify_import(self, manifest: dict, *, deadline: float | None = None) -> bool:
+        """Verify the exact destination, included tracks, sizes, and work identity tag."""
+        candidates = [
+            item
+            for item in self._items(deadline=deadline)
+            if item.get("folderId") == manifest["folder_id"]
+            and item.get("relPath") == manifest["destination"]
+        ]
+        if len(candidates) > 1:
+            raise AudiobookshelfError("Multiple Audiobookshelf items occupy the import destination")
+        if not candidates or not self._usable_item(candidates[0]):
+            return False
+        item_id = candidates[0]["id"]
+        detail = self._get(f"/api/items/{quote(item_id, safe='')}", expanded=1, deadline=deadline)
+        if (
+            detail.get("id") != item_id
+            or detail.get("folderId") != manifest["folder_id"]
+            or detail.get("relPath") != manifest["destination"]
+        ):
+            raise AudiobookshelfError(
+                "Audiobookshelf destination identity changed during verification"
+            )
+        if not self._usable_item(detail):
+            return False
+        media = detail["media"]
+        tracks = media.get("tracks")
+        expected = {entry["path"]: entry["size"] for entry in manifest["files"] if entry["audio"]}
+        if (
+            not isinstance(tracks, list)
+            or len(tracks) != len(expected)
+            or media["numTracks"] != len(expected)
+        ):
+            return False
+        observed = self._track_inventory(tracks)
+        tags = media.get("tags")
+        return (
+            observed == expected
+            and isinstance(tags, list)
+            and f"murid:hardcover:{manifest['hardcover_id']}" in tags
+        )
+
+    @staticmethod
+    def _track_inventory(tracks: list) -> dict | None:
+        """Keep included, playable track paths and sizes; reject duplicates."""
+        observed = {}
+        for track in tracks:
+            if (
+                not isinstance(track, dict)
+                or not isinstance(track.get("duration"), (int, float))
+                or isinstance(track["duration"], bool)
+                or not math.isfinite(track["duration"])
+                or track["duration"] <= 0
+            ):
+                return None
+            if track.get("exclude"):
+                return None
+            metadata = track.get("metadata")
+            if not isinstance(metadata, dict) or not isinstance(metadata.get("relPath"), str):
+                return None
+            relative = metadata["relPath"]
+            if (
+                relative in observed
+                or not isinstance(metadata.get("size"), int)
+                or isinstance(metadata["size"], bool)
+            ):
+                return None
+            observed[relative] = metadata.get("size")
+        return observed
 
     @staticmethod
     def _book(item: dict) -> Book:

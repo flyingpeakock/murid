@@ -66,6 +66,20 @@
       };
     };
   fromAudio = evaluate {config = audioConfig;};
+  importSettings =
+    (evaluate {
+      config =
+        audioConfig
+        // {
+          audiobookshelf =
+            audioConfig.audiobookshelf
+            // {
+              staging_path = "/mnt/.staging";
+              folder_id = "folder-id";
+              scan_timeout_seconds = 17;
+            };
+        };
+    }).services.murid.config.audiobookshelf;
   fromGrouped = evaluate {
     config =
       audioConfig
@@ -144,6 +158,12 @@
     && (builtins.elemAt userLists 2).media_types == ["ebook"]
     && fromAudio.services.murid.config.calibre == null
     && fromAudio.services.murid.config.audiobookshelf.filetypes == ["m4b" "mp3"]
+    && fromAudio.services.murid.config.audiobookshelf.staging_path == null
+    && fromAudio.services.murid.config.audiobookshelf.folder_id == null
+    && fromAudio.services.murid.config.audiobookshelf.scan_timeout_seconds == 120
+    && importSettings.staging_path == "/mnt/.staging"
+    && importSettings.folder_id == "folder-id"
+    && importSettings.scan_timeout_seconds == 17
     && backendsValid fromAudio
     && backendsValid fromBoth
     && backendsValid fromGrouped
