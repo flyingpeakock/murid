@@ -372,6 +372,51 @@ and whitespace checks passed. No NixOS options changed in this phase.
 
 ### 7. Update commands and operational support
 
+**Implemented (2026-10-23):** Manual search/import now accept
+`--media-type ebook|audiobook`, defaulting to ebook. Audio search uses audio MaM
+categories/preferences and the chosen library; manual imports accept complete
+folders or an M4B and can resume their own journal despite general library presence
+or removal of the original source. Explicit ebook-file format overrides remain.
+Dry-run flags now cover manual search/import and one-pass retries; outputs identify
+planned work rather than claiming an import. Status, search/import records, sync
+and retry summaries, and notifications identify the medium/destination. Conflicting
+request tags appear as an actionable status issue.
+
+Read-only Audiobookshelf diagnostics check server version, active admin/root access,
+usable tracks, library/folder selection, shared-path access, same-filesystem staging
+placement, and the staging directory's existing writable ancestor. Only configured
+or required libraries are initialized; audio-only defaults do not initialize Calibre.
+The NixOS module now supports supplementary service groups and mount dependencies,
+with automatic library/staging mount paths for inline configuration. Documentation
+covers source layouts, service permissions, private state, and container-visible
+paths/bind mounts. No existing media directories are chowned or chmodded by the module.
+
+**Live ingestion verified:** Using the existing completed Queen of Shadows MP3,
+embedded title/artist and Hardcover work 153090 identified Sarah J. Maas's book,
+which was missing from Audiobookshelf. A temporary title-named source folder let
+the supported folder selector handle the single complete MP3 without altering the
+original download. Preflight and a dry run passed; 153 existing track paths/sizes
+confirmed the server/local mount mapping. The real import copied 583,005,580 bytes,
+requested one scan, and verified one playable track (72,869.688 seconds), exact
+relative paths/size, and the work tag. Retrying with an unavailable source and copying
+disabled made no additional copy or scan. Original hash, size, and timestamp were
+unchanged; one imported destination remains and the temporary source was removed.
+No torrents were added, Hardcover lists/config changed, or notifications sent.
+
+**Deployment boundary:** Murid runs as calibre:multimedia in the server NixOS
+container, whose deployed YAML currently has no Audiobookshelf section. This phase
+does not deploy or restart it. Container service-user diagnostics remain pending:
+noninteractive sudo requires authentication. Host-side qBittorrent was unreachable;
+container API access and a live torrent acquisition/recovery cycle remain unverified.
+Use container paths and separate service-owned staging state when deploying; host
+journals contain private, account/path-specific state. Non-Linux behavior remains
+untested. Full details are in the integration notes.
+
+Verification: all 866 Python tests passed. Ruff, Pylint, whitespace checks, and the
+NixOS module check passed. Offline integration coverage includes folder imports,
+retry after source removal, dry runs without writes/scans/tag changes, selected
+media routing, JSON summaries/status, notification destination, and diagnostics.
+
 - Include media type and destination in missing-book results, match reviews,
   status, summaries, notifications, and JSON output.
 - Add `--media-type ebook|audiobook` to manual search and import commands, defaulting

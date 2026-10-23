@@ -1,7 +1,7 @@
 """Check access to Murid's configured external services."""
 
 from ..clients.hardcover import Hardcover
-from ..config import ConfigError, requested_media_types
+from ..config import requested_media_types
 from ..ui import interactive, labeled, output
 
 
@@ -12,7 +12,7 @@ def check_connections(factory) -> bool:
         f"Hardcover account {index}"
         for index in range(1, len(factory.config["hardcover_api_keys"]) + 1)
     ]
-    width = max(map(len, [*labels, "Calibre", "MyAnonamouse", "qBittorrent"]))
+    width = max(map(len, [*labels, "Calibre", "Audiobookshelf", "MyAnonamouse", "qBittorrent"]))
 
     def check(label, action) -> bool:
         display = f"{label:<{width}}" if interactive() else label
@@ -55,7 +55,7 @@ def check_connections(factory) -> bool:
         return f"category '{client.category}' readable ({count} torrent{'s' if count != 1 else ''})"
 
     def audiobook_detail() -> str:
-        raise ConfigError("Audiobookshelf connection checks are not supported yet")
+        return factory.library("audiobook").check_connection()
 
     results = [
         check(
@@ -67,9 +67,9 @@ def check_connections(factory) -> bool:
         for index, token in enumerate(factory.config["hardcover_api_keys"], start=1)
     ]
     media_types = requested_media_types(factory.config["hardcover_api_keys"])
-    if "ebook" in media_types:
+    if "ebook" in media_types or (factory.config.get("calibre") or {}).get("library"):
         results.append(check("Calibre", calibre_detail))
-    if "audiobook" in media_types:
+    if "audiobook" in media_types or factory.config.get("audiobookshelf"):
         results.append(check("Audiobookshelf", audiobook_detail))
     results.append(check("MyAnonamouse", mam_detail))
     results.append(check("qBittorrent", qbittorrent_detail))

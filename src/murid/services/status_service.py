@@ -4,6 +4,7 @@ from rich.table import Table
 from rich.text import Text
 
 from ..clients.torrent_clients.qbittorrent import Qbittorrent
+from ..domain.torrent_request import read_request_tags
 from ..ui import interactive, labeled, output, terminal_width
 
 _STATES = {
@@ -32,6 +33,25 @@ _STATES = {
 }
 
 
+def _request_info(torrent) -> dict:
+    tags = {tag.strip() for tag in (torrent.tags or "").split(",")}
+    try:
+        media, work_id = read_request_tags(tags)
+    except ValueError as error:
+        return {
+            "media_type": None,
+            "destination": None,
+            "hardcover_id": None,
+            "identity_error": str(error),
+        }
+    return {
+        "media_type": media,
+        "destination": "Audiobookshelf" if media == "audiobook" else "Calibre",
+        "hardcover_id": work_id,
+        "identity_error": None,
+    }
+
+
 def print_status(torrent_client: Qbittorrent) -> None:
     """Print downloads in Murid's category, putting torrents needing attention first."""
     torrents = torrent_client.get_torrents()
@@ -49,7 +69,7 @@ def print_status(torrent_client: Qbittorrent) -> None:
 
     def issues(torrent) -> list[str]:
         tags = {tag.strip() for tag in (torrent.tags or "").split(",")}
-        result = []
+        result = ["invalid request identity"] if _request_info(torrent)["identity_error"] else []
         if "murid_import_failed" in tags:
             result.append("import failed")
         if "murid_timeout" in tags:
@@ -62,17 +82,27 @@ def print_status(torrent_client: Qbittorrent) -> None:
 
     table = Table(box=None, padding=(0, 1), expand=True)
     table.add_column("Book / torrent", ratio=3)
+    table.add_column("Media / library", ratio=2)
     table.add_column("Done", justify="right", no_wrap=True)
     table.add_column("State", width=17)
     table.add_column("Attention", width=14)
     attention = 0
     for torrent in sorted(torrents, key=lambda item: (not issues(item), item.name.casefold())):
         problems = issues(torrent)
+        request = _request_info(torrent)
+        routing = (
+            f"{request['media_type']} → {request['destination']}"
+            if request["media_type"]
+            else "unknown request"
+        )
         attention += bool(problems)
         issue_text = ", ".join(problems)
         issue_style = (
             "bold red"
-            if any(problem in {"import failed", "error", "files missing"} for problem in problems)
+            if any(
+                problem in {"import failed", "error", "files missing", "invalid request identity"}
+                for problem in problems
+            )
             else "bold yellow"
         )
         state = _STATES.get(torrent.state, torrent.state)
@@ -80,7 +110,7 @@ def print_status(torrent_client: Qbittorrent) -> None:
             title = Table.grid(expand=True)
             title.add_column(width=2, no_wrap=True)
             title.add_column(ratio=1)
-            title.add_row("- ", Text(torrent.name))
+            title.add_row("- ", Text(f"{torrent.name} [{routing}]"))
             output(title)
             output(
                 Text.assemble(
@@ -91,6 +121,7 @@ def print_status(torrent_client: Qbittorrent) -> None:
         elif interactive():
             table.add_row(
                 Text(torrent.name),
+                Text(routing),
                 f"{torrent.progress:.0%}",
                 Text(state),
                 Text(issue_text or "—", style=issue_style if problems else "dim"),
@@ -98,11 +129,12 @@ def print_status(torrent_client: Qbittorrent) -> None:
         else:
             output(
                 Text(
-                    f"- {torrent.name} | {torrent.progress:4.0%} | {state}"
+                    f"- {torrent.name} [{routing}] | {torrent.progress:4.0%} | {state}"
                     + (f" | {issue_text}" if problems else "")
                 ),
                 kind="torrent",
                 data={
+                    **request,
                     "name": torrent.name,
                     "progress": torrent.progress,
                     "state": torrent.state,

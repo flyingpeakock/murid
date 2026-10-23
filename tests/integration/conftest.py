@@ -118,6 +118,9 @@ def workflow(tmp_path, monkeypatch, capsys):
         requests=[],
         hardcover_error=False,
         audio_items=[],
+        audio_library_path=tmp_path / "audio-library",
+        audio_auto_scan=True,
+        audio_scans=0,
         audio_status=200,
         notifications=[],
         notification_status=200,
@@ -195,16 +198,69 @@ def workflow(tmp_path, monkeypatch, capsys):
             else:
                 data = {"data": {"me": [{"id": 1, "name": "Integration Reader"}]}}
         elif url.startswith("https://audio.example.com/"):
-            assert method.lower() == "get"
             assert _session.headers["Authorization"] == "Bearer private-audio-key"
             response.status_code = state.audio_status
-            if url.endswith("/api/libraries/audio-id"):
-                data = {"id": "audio-id", "mediaType": "book"}
-            elif url.endswith("/api/libraries/audio-id/items"):
-                assert kwargs["params"]["page"] == 0
-                data = {"results": state.audio_items, "total": len(state.audio_items)}
+            library_data = {
+                "id": "audio-id",
+                "mediaType": "book",
+                "folders": [{"id": "folder", "fullPath": "/server/books"}],
+            }
+            if url.endswith("/api/libraries/audio-id/scan"):
+                assert method.lower() == "post"
+                state.audio_scans += 1
+                if state.audio_auto_scan and state.audio_status == 200:
+                    state.audio_items = []
+                    for marker in state.audio_library_path.rglob(".murid-import.json"):
+                        folder = marker.parent
+                        metadata = json.loads((folder / "metadata.json").read_text())
+                        tracks = [
+                            {
+                                "duration": 120,
+                                "metadata": {
+                                    "relPath": entry["path"],
+                                    "size": entry["size"],
+                                },
+                            }
+                            for entry in json.loads(marker.read_text())["audio_files"]
+                        ]
+                        state.audio_items.append(
+                            {
+                                "id": "imported-item",
+                                "libraryId": "audio-id",
+                                "folderId": "folder",
+                                "relPath": folder.relative_to(state.audio_library_path).as_posix(),
+                                "mediaType": "book",
+                                "isMissing": False,
+                                "isInvalid": False,
+                                "media": {
+                                    "numTracks": len(tracks),
+                                    "tracks": tracks,
+                                    "tags": metadata["tags"],
+                                    "metadata": {
+                                        "title": metadata["title"],
+                                        "authors": [{"name": name} for name in metadata["authors"]],
+                                    },
+                                },
+                            }
+                        )
+                data = {}
             else:
-                data = next(item for item in state.audio_items if url.endswith("/" + item["id"]))
+                assert method.lower() == "get"
+                if url.endswith("/status"):
+                    data = {"serverVersion": "2.37.1"}
+                elif url.endswith("/api/me"):
+                    data = {"type": "admin", "isActive": True}
+                elif url.endswith("/api/libraries"):
+                    data = {"libraries": [library_data]}
+                elif url.endswith("/api/libraries/audio-id"):
+                    data = library_data
+                elif url.endswith("/api/libraries/audio-id/items"):
+                    assert kwargs["params"]["page"] == 0
+                    data = {"results": state.audio_items, "total": len(state.audio_items)}
+                else:
+                    data = next(
+                        item for item in state.audio_items if url.endswith("/" + item["id"])
+                    )
         elif url == MyAnonamouse.SEARCH_URL:
             assert _session.cookies.get("mam_id") == "integration-cookie"
             data = {"data": state.torrent_rows}

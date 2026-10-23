@@ -5,27 +5,30 @@
 
 ---
 
-Murid syncs your Hardcover “Want to Read” books or a custom list per user with Calibre, searches
-MyAnonamouse for missing ebooks, downloads them through qBittorrent, and imports
-completed books into your library.
+Murid syncs Hardcover reading lists with Calibre for ebooks and Audiobookshelf for
+audiobooks. It searches MyAnonamouse for missing books, downloads them through
+qBittorrent, and imports each completed download into its media-specific library.
 
-Hardcover → Fetch reading lists  
-    ↓  
-Calibre → Check existing library  
-    ↓  
-MyAnonamouse → Search missing books  
-    ↓  
-qBittorrent → Download torrents  
-    ↓  
-Calibre → Import completed books
+```text
+Hardcover → Reading lists and requested formats
+    ↓
+Calibre / Audiobookshelf → Check existing books
+    ↓
+MyAnonamouse → Search the requested format
+    ↓
+qBittorrent → Download and retain sources for seeding
+    ↓
+Calibre / Audiobookshelf → Import and verify
+```
 
-It supports multiple Hardcover accounts, configurable book matching and format
-preferences, scheduled syncs, notifications, and dry runs.
+It supports multiple Hardcover accounts, separate list and format preferences,
+scheduled syncs, notifications, dry runs, and recovery after interrupted imports.
 
 ## Requirements
 
 - Python 3.12+
-- Calibre, with `calibredb` available
+- Calibre with `calibredb` for ebooks
+- Audiobookshelf with an admin/root API key and a shared writable library for audiobooks
 - qBittorrent with its Web UI enabled
 - A Hardcover API key
 - A MyAnonamouse account
@@ -87,7 +90,7 @@ murid run --config ./config.yaml --dry-run
 ```
 
 A dry run searches for matches and fetches selected `.torrent` files. It does not
-add torrents to qBittorrent or download ebooks. Review the results before running
+add torrents, copy books, request scans, or change import tags. Review the results before running
 your first sync.
 
 ## Everyday usage
@@ -114,7 +117,7 @@ available options.
 | `list-missing` | List Hardcover books missing from Calibre |
 | `review-matches` | Inspect Hardcover to Calibre matches and scores |
 | `search-book NAME` | Preview torrent candidates; use `--add` to download and import |
-| `add-book NAME PATH` | Import an ebook file with metadata from Hardcover |
+| `add-book NAME PATH` | Import a local book; use `--media-type audiobook` for an M4B or complete audio folder |
 | `status` | Show Murid torrents and their download and import status |
 | `retry-import` | Retry imports for tagged downloads |
 | `test-connection` | Check access to each configured service |

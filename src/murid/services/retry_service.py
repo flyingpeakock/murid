@@ -3,7 +3,7 @@
 import logging
 import re
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field
 
 from ..clients.myanonamouse import MAMError, MyAnonamouse, MyAnonamouseQuery
 from ..clients.torrent_clients import TorrentClient
@@ -25,6 +25,7 @@ class RetryImportResult:
     pending: int = 0
     failed: int = 0
     skipped: int = 0
+    by_media: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -90,7 +91,8 @@ class RetryService:
     def _retry(self) -> set[BookRequest]:
         self._hardcover_books = None
         incomplete = set()
-        counts = {field.name: 0 for field in fields(RetryImportResult)}
+        counts = dict.fromkeys(("imported", "already_present", "pending", "failed", "skipped"), 0)
+        by_media = {}
         for torrent in self.torrent_client.get_torrents():
             tags = {tag.strip() for tag in (torrent.tags or "").split(",")}
             relevant = tags & _IMPORT_TAGS
@@ -110,13 +112,24 @@ class RetryService:
             importer = self._importer(request.media_type)
             outcome = self._retry_request(torrent.hash, request, importer)
             counts[outcome] += 1
+            media_counts = by_media.setdefault(
+                request.media_type, {"destination": importer.library.name}
+            )
+            media_counts[outcome] = media_counts.get(outcome, 0) + 1
+            logger.info(
+                "%s [%s → %s]: %s",
+                request.book,
+                request.media_type,
+                importer.library.name,
+                outcome.replace("_", " "),
+            )
             if outcome in {"pending", "failed"}:
                 incomplete.add(request)
             elif not importer.dry_run:
                 for tag in IMPORT_TAGS:
                     if tag in relevant:
                         self.torrent_client.remove_tag(torrent.hash, tag)
-        self.last_result = RetryImportResult(**counts)
+        self.last_result = RetryImportResult(**counts, by_media=by_media)
         return incomplete
 
     @staticmethod

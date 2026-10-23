@@ -26,7 +26,6 @@ def factory():
         cron_iter=Mock(),
         library=Mock(),
         wanted_requests=Mock(),
-        require_ebook_workflow=Mock(),
         matcher=Mock(),
         torrent_discovery=Mock(),
         torrent_import=Mock(),

@@ -717,3 +717,24 @@ def test_recovered_publication_syncs_parent_before_advancing_journal(work, monke
     assert parent_synced
     assert manifest(work)["phase"] == "verified"
     work[2].client.scan_library.assert_called_once()
+
+
+def test_import_connection_check_is_read_only(work):
+    backend = work[2]
+    backend.client.server_version.return_value = "2.37.1"
+    backend.client.get_books.return_value = set()
+    assert "v2.37.1" in backend.check_connection()
+    assert list(work[3].library.iterdir()) == []
+    assert not work[3].staging.exists()
+    backend.client.scan_library.assert_not_called()
+
+
+def test_unwritable_staging_ancestor_fails_preflight_without_creating_state(work, monkeypatch):
+    access = os.access
+    monkeypatch.setattr(
+        os, "access", lambda path, mode: path == work[3].library and access(path, mode)
+    )
+    with pytest.raises(LibraryError, match="staging_path.*writable"):
+        work[2].check_connection()
+    assert not work[3].staging.exists()
+    work[2].client.scan_library.assert_not_called()

@@ -41,9 +41,10 @@ class MuridArgumentParser(argparse.ArgumentParser):
         sub_parsers = {}
         sub_parsers["run"] = command_subparsers.add_parser(
             "run",
-            help="Sync the Hardcover reading list with Calibre once",
+            help="Sync Hardcover reading lists with their libraries once",
             description=(
-                "Compare Hardcover books with Calibre, search MyAnonamouse for missing books, "
+                "Compare Hardcover requests with Calibre and Audiobookshelf, "
+                "search for missing books, "
                 "and import available downloads. Run once, then exit."
             ),
         )
@@ -67,7 +68,7 @@ class MuridArgumentParser(argparse.ArgumentParser):
 
         sub_parsers["test-connection"] = command_subparsers.add_parser(
             "test-connection",
-            help="Check access to Hardcover, Calibre, MyAnonamouse, and qBittorrent",
+            help="Check configured libraries, Hardcover, MyAnonamouse, and qBittorrent",
             description=(
                 "Test each configured service independently and report connection or "
                 "authentication failures."
@@ -94,10 +95,10 @@ class MuridArgumentParser(argparse.ArgumentParser):
 
         sub_parsers["retry-import"] = command_subparsers.add_parser(
             "retry-import",
-            help="Retry Calibre imports for Murid downloads needing attention",
+            help="Retry imports for Murid downloads needing attention",
             description=(
                 "Check timed-out and failed-import torrents in Murid's qBittorrent category, "
-                "and retry importing completed downloads into Calibre."
+                "and retry importing completed downloads into the correct library."
             ),
         )
 
@@ -107,26 +108,36 @@ class MuridArgumentParser(argparse.ArgumentParser):
             description=(
                 "Find a book on the Hardcover reading list, search MyAnonamouse, "
                 "and explain which torrent Murid would select. Use --add to download "
-                "the selected torrent and import its completed ebook into Calibre."
+                "the selected torrent and import it into the selected media library."
             ),
         )
         sub_parsers["search-book"].add_argument("name", help="Name of the book on Hardcover")
         sub_parsers["search-book"].add_argument(
             "--add",
             action="store_true",
-            help="Add the selected torrent to qBittorrent and import its ebook into Calibre",
+            help="Download and import the selected torrent into its media library",
         )
 
         sub_parsers["add-book"] = command_subparsers.add_parser(
             "add-book",
-            help="Add an ebook file using metadata from your Hardcover reading list",
+            help="Import a local ebook or audiobook using Hardcover metadata",
             description=(
                 "Match a book name against your Hardcover reading list and add the given "
-                "ebook file to Calibre with the matched book's metadata."
+                "ebook file or audiobook folder with the matched book's metadata."
             ),
         )
         sub_parsers["add-book"].add_argument("name", help="Name of the book on Hardcover")
-        sub_parsers["add-book"].add_argument("path", help="Path to an individual ebook file")
+        sub_parsers["add-book"].add_argument(
+            "path", help="Path to an ebook file, M4B file, or complete audiobook folder"
+        )
+
+        for command in ("search-book", "add-book"):
+            sub_parsers[command].add_argument(
+                "--media-type",
+                choices=["ebook", "audiobook"],
+                default="ebook",
+                help="Requested medium and destination library",
+            )
 
         sub_parsers["review-matches"] = command_subparsers.add_parser(
             "review-matches",
@@ -201,11 +212,11 @@ class MuridArgumentParser(argparse.ArgumentParser):
                     type=str.upper,
                     choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                 )
-            if command in ("run", "schedule"):
+            if command in ("run", "schedule", "search-book", "add-book", "retry-import"):
                 parser.add_argument(
                     "--dry-run",
                     "-d",
-                    help="Find books and torrents without adding them to qBittorrent or Calibre",
+                    help="Preview without adding torrents, copying, scanning, or tag changes",
                     action="store_true",
                     dest="dry_run",
                 )

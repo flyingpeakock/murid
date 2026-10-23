@@ -64,26 +64,6 @@ def test_audio_print_config_json_always_hides_key(workflow):
     assert "private-audio-key" not in str(result)
 
 
-@pytest.mark.parametrize("command", ["search-book", "add-book"])
-@pytest.mark.parametrize("mixed", [False, True])
-def test_audio_workflows_report_unsupported_without_changes(workflow, command, mixed):
-    ebook_config = workflow.config["calibre"]
-    configure_audio(workflow)
-    if mixed:
-        workflow.config["calibre"] = ebook_config
-        workflow.config["hardcover_api_keys"][0]["media_types"] = ["ebook", "audiobook"]
-    args = [command]
-    if command in ("search-book", "add-book"):
-        args.append("Dune")
-    if command == "add-book":
-        args.append(str(workflow.downloads / "Dune.epub"))
-    before = workflow.database.read_text()
-    result = workflow.run(*args)
-    assert result.code == 1
-    assert "Manual audiobook commands are not supported yet" in str(result.errors)
-    assert workflow.database.read_text() == before
-    assert workflow.api.added_files == []
-
 
 def seed_library(workflow):
     workflow.database.write_text(

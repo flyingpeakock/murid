@@ -124,6 +124,17 @@ in {
         default = "murid";
       };
 
+      supplementaryGroups = lib.mkOption {
+        description = "Additional service groups for reading downloads and writing shared libraries";
+        type = lib.types.listOf lib.types.str;
+        default = [];
+      };
+      requiresMountsFor = lib.mkOption {
+        description = "Additional absolute paths whose mounts must be available before Murid starts; use for configFile deployments and download mounts";
+        type = lib.types.listOf (lib.types.addCheck lib.types.str (lib.hasPrefix "/"));
+        default = [];
+      };
+
       configFile = lib.mkOption {
         description = ''
           Path to the murid configuration file.
@@ -176,7 +187,7 @@ in {
                     default = "want-to-read";
                   };
                   media_types = lib.mkOption {
-                    description = "Media requested from this list; audiobook execution is not yet supported";
+                    description = "Media requested from this list";
                     type = lib.types.addCheck (lib.types.listOf (lib.types.enum ["ebook" "audiobook"])) (values: values != []);
                     default = ["ebook"];
                   };
@@ -354,12 +365,25 @@ in {
       };
 
       systemd.services.murid = {
-        description = "Murid automatically keeps your Calibre library in sync";
+        description = "Murid syncs Hardcover ebook and audiobook requests with their libraries";
         enable = true;
         after = ["network.target"];
         wantedBy = ["multi-user.target"];
+        unitConfig.RequiresMountsFor = lib.unique (cfg.requiresMountsFor
+          ++ (
+            if cfg.config != null && cfg.config.audiobookshelf != null
+            then let
+              audio = cfg.config.audiobookshelf;
+              staging =
+                if audio.staging_path != null
+                then audio.staging_path
+                else "${builtins.dirOf audio.library_path}/.murid-staging-${builtins.baseNameOf audio.library_path}";
+            in [audio.library_path staging]
+            else []
+          ));
         serviceConfig = {
           Type = "simple";
+          SupplementaryGroups = cfg.supplementaryGroups;
           User = cfg.user;
           Group = cfg.group;
           EnvironmentFile = lib.optionalString (cfg.environmentFile != null) cfg.environmentFile;

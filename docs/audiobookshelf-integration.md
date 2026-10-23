@@ -7,16 +7,18 @@ Source review completed on 2026-10-23 against Audiobookshelf **v2.37.1**, commit
 `/home/philipj/Code/nixpkgs/pkgs/by-name/au/audiobookshelf/package.nix` checkout.
 The user identified nixpkgs as the deployed version source. Subsequent read-only
 checks confirmed that the running server is v2.37.1 and that library inspection
-works against it. Copying, scanning, and ingestion remain unverified; compatibility
-with other versions has not been established.
+works against it. A controlled import subsequently verified copying, scan/ingestion,
+metadata identity, and idempotent recovery. Compatibility with other versions has
+not been established.
 
 The [published API reference](https://api.audiobookshelf.org/) is supplementary;
 the tagged server source below determines this contract.
 
 Murid implements library inspection and a shared-folder import backend against this
 contract. Automated tests cover copying, crash recovery, scans, and API verification
-with offline fixtures; live checks so far are read-only. Automatic sync and torrent
-restart recovery are connected; controlled ingestion remains required before rollout.
+with offline fixtures. Automatic sync, torrent restart recovery, manual commands,
+and read-only diagnostics are connected. Live verification and deployment boundaries
+are recorded below.
 
 ## Authentication and access
 
@@ -160,10 +162,53 @@ The work ID, title, and authors matched the audiobook-list entry. The harness
 permitted only read-only Hardcover GraphQL requests and blocked all other HTTP
 operations. No torrent additions, library copies, or scans were performed.
 
-## Remaining live verification
+## Controlled live import (step 7, 2026-10-23)
 
-The admin role meets the source-defined scan requirement, but scan execution has
-not been tested. Once import is implemented, use one controlled import to verify
-server/local folder mapping, service permissions, metadata/tag retention, nested
-track paths, scan completion, and idempotent recovery. Enable live audiobook
-acquisition only after the end-to-end workflow passes.
+The user authorized choosing an existing source using the configured credentials.
+Read-only inventory found a completed `Queen of Shadows.mp3` outside the library.
+Embedded ID3 title/artist matched **Queen of Shadows by Sarah J. Maas**, Hardcover
+work **153090**. That work was absent from Audiobookshelf and was not on the current
+configured lists; the harness resolved it directly from Hardcover without changing
+list membership. Since standalone MP3 paths are outside the initial selector
+contract, a temporary title-named folder held a byte-identical copy of the complete
+book. The original download remained intact for seeding.
+
+Before publication, read-only preflight confirmed v2.37.1, active admin/root access,
+and writable library/staging placement. Every one of 153 existing included tracks
+was checked through the server's item/track-relative paths against the local shared
+mount, including exact sizes. The importer dry run passed without library writes
+or scans.
+
+The controlled backend import then published
+`Sarah J. Maas/Queen of Shadows [hardcover-153090]/`, requested one normal scan, and
+verified item `9de5dc73-a571-4c6f-9e58-f47bd842c6d5`: one included playable track,
+72,869.688 seconds (about 20h 14m), the expected relative path and byte size, and
+the Hardcover identity tag. SHA-256 checks confirmed the published audio equals
+the original 583,005,580-byte download. A repeat import with an unavailable source
+path succeeded with copying disabled and no additional scan; one destination
+remained. The source's hash, size, and timestamp were unchanged. The temporary
+source copy was removed; the real imported book remains in the library.
+
+No torrents were added, Hardcover lists/configuration changed, or notifications
+sent. Offline CLI integration tests separately exercise manual folder imports,
+scan-pending results, source removal/retry, preview/search/add dry runs, media-aware
+status/summaries, notifications, and diagnostics.
+
+## Container deployment and remaining verification
+
+The deployment is the `server` NixOS container with private networking. Read-only
+inspection of its declared unit found `User=calibre`, `Group=multimedia`, and
+`EnvironmentFile=/secrets/murid`. Its currently deployed YAML has no Audiobookshelf
+section. No container configuration, package, or service was changed or restarted.
+The host's qBittorrent connection failed, which does not establish access from the
+container's network namespace; no live torrent add/recovery cycle was attempted.
+
+The controlled import ran as the interactive host user. Running diagnostics as the
+actual container service user remains necessary after deployment; noninteractive
+sudo could not enter the container because interactive authentication is required.
+Use container-visible paths and a separate service-owned staging directory, as in
+[the container deployment guide](installation.md#nixos-containers). Host-created
+private journals should not be treated as portable service state across account
+or mount-path changes. The actual container's API/filesystem access and live
+scheduled torrent acquisition remain unverified. Linux filesystem behavior was
+exercised here; non-Linux publication branches remain unverified.
