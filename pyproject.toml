@@ -25,6 +25,7 @@ dependencies = [
   "qbittorrent-api",
   "croniter",
   "apprise",
+  "pydantic>=2,<3",
 ]
 
 dynamic = [ "version" ]

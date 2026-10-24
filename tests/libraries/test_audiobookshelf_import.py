@@ -344,6 +344,86 @@ def test_corrupt_journal_cannot_redirect_a_retry(work, key, value):
         run(work)
 
 
+@pytest.mark.parametrize("field,value", [
+    ("size", True), ("size", "12"), ("size", -1),
+    ("sha256", "0" * 63), ("sha256", "G" * 64), ("sha256", "0" * 64 + "\n"),
+    ("audio", 1), ("audio", "true"),
+    ("path", "../outside.mp3"), ("path", "CD1/../01.mp3"),
+    ("path", "CD1\\01.mp3"), ("path", "C:/01.mp3"), ("path", "./01.mp3"),
+])
+def test_journal_file_validation_rejects_coercion_and_unsafe_paths(work, field, value):
+    run(work)
+    pending = manifest(work)
+    pending["files"][0][field] = value
+    work[3].save(pending)
+    with pytest.raises(LibraryError, match="journal"):
+        run(work)
+
+
+@pytest.mark.parametrize("change", ["empty", "no-audio", "duplicates", "unknown-phase"])
+def test_journal_requires_a_valid_audio_inventory_and_phase(work, change):
+    run(work)
+    pending = manifest(work)
+    if change == "empty":
+        pending["files"] = []
+    elif change == "no-audio":
+        for entry in pending["files"]:
+            entry["audio"] = False
+    elif change == "duplicates":
+        pending["files"].append(pending["files"][0].copy())
+    else:
+        pending["phase"] = "unknown"
+    work[3].save(pending)
+    with pytest.raises(LibraryError, match="journal"):
+        run(work)
+
+
+def test_loading_journal_preserves_informational_and_unknown_fields(work):
+    book, _, _, store, _ = work
+    run(work)
+    pending = manifest(work)
+    pending["future_field"] = {"keep": True}
+    pending["files"][0]["future_field"] = "keep"
+    store.save(pending)
+    assert store.load(book, "folder") == pending
+
+
+@pytest.mark.parametrize("failure", ["write", "fsync", "replace"])
+def test_atomic_write_failure_preserves_target_and_removes_temporary_file(
+    tmp_path, monkeypatch, failure
+):
+    from murid.libraries import import_filesystem
+
+    target = tmp_path / "existing.json"
+    target.write_text("original")
+    if failure != "write":
+        monkeypatch.setattr(
+            import_filesystem.os, failure, Mock(side_effect=OSError("interrupted write"))
+        )
+    with pytest.raises(OSError, match="interrupted write"):
+        with import_filesystem.atomic_write(target) as stream:
+            stream.write("replacement")
+            assert target.read_text() == "original"
+            if failure == "write":
+                raise OSError("interrupted write")
+    assert target.read_text() == "original"
+    assert list(tmp_path.iterdir()) == [target]
+
+
+def test_changed_source_is_not_published_and_temporary_copy_is_removed(work):
+    book, source, _, store, _ = work
+    pending = store.plan(book, str(source), BookMatcher(), ["mp3"], "folder")
+    entry = next(entry for entry in pending["files"] if entry["audio"])
+    original = source / entry["path"]
+    original.write_bytes(b"x" * entry["size"])
+    target = store.library / "existing.mp3"
+    target.write_bytes(b"keep me")
+    with pytest.raises(LibraryError, match="source changed"):
+        store._copy(original, target, entry)
+    assert target.read_bytes() == b"keep me"
+    assert list(store.library.iterdir()) == [target]
+
+
 def test_scan_failure_keeps_a_complete_recoverable_copy(work):
     work[2].client.scan_library.side_effect = AudiobookshelfError("scan unavailable")
     with pytest.raises(AudiobookshelfError, match="scan unavailable"):

@@ -39,15 +39,28 @@ def import_lock(path: Path):
                 module.flock(stream.fileno(), module.LOCK_UN)
 
 
-def write_json(path: Path, payload: dict, *, mode: int = 0o600) -> None:
-    """Replace our own journal/metadata atomically, after flushing its contents."""
+@contextmanager
+def atomic_write(
+    path: Path,
+    *,
+    mode: int = 0o600,
+    binary: bool = False,
+    prefix: str = ".murid-",
+    suffix: str = "",
+):
+    """Publish a flushed temporary file only after its writer finishes successfully."""
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=path.parent, prefix=".murid-", delete=False
+            mode="w+b" if binary else "w",
+            encoding=None if binary else "utf-8",
+            dir=path.parent,
+            prefix=prefix,
+            suffix=suffix,
+            delete=False,
         ) as stream:
             temporary = Path(stream.name)
-            json.dump(payload, stream, ensure_ascii=False, indent=2)
+            yield stream
             stream.flush()
             os.chmod(temporary, mode)
             os.fsync(stream.fileno())
@@ -56,6 +69,12 @@ def write_json(path: Path, payload: dict, *, mode: int = 0o600) -> None:
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
+
+
+def write_json(path: Path, payload: dict, *, mode: int = 0o600) -> None:
+    """Replace our own journal/metadata atomically, after flushing its contents."""
+    with atomic_write(path, mode=mode) as stream:
+        json.dump(payload, stream, ensure_ascii=False, indent=2)
 
 
 def sync_directory(path: Path) -> None:
