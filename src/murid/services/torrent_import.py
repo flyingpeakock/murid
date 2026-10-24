@@ -7,11 +7,12 @@ from typing import Callable, Iterable
 
 import apprise
 
-from ..clients.calibre import Calibre, CalibreError
 from ..clients.torrent_clients.torrent_client import TorrentClient
 from ..domain.book import Book
-from ..domain.book_file_selector import BookFileSelector
 from ..domain.book_matcher import BookMatcher
+from ..domain.book_request import MediaType
+from ..domain.torrent_request import IMPORT_TAGS
+from ..libraries.library import Library, LibraryError, LibraryImportPending
 
 logger = logging.getLogger("murid")
 
@@ -32,12 +33,12 @@ class TorrentImportConfig:
     """Configuration for the TorrentImportService"""
 
     torrent_client: TorrentClient
-    calibre: Calibre
+    library: Library
     matcher: BookMatcher
     notify: Callable[[str, str, apprise.NotifyType], None]
     dry_run: bool = False
     timeout: int = 1800  # 30 minutes
-    filetypes: list[str] | None = None
+    media_type: MediaType = "ebook"
 
 
 class TorrentImportService:  # pylint: disable=too-many-instance-attributes
@@ -47,11 +48,11 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
         """Initialize the TorrentImportService"""
         self.torrent_client = config.torrent_client
         self.notify = config.notify
-        self.calibre = config.calibre
+        self.library = config.library
         self.dry_run = config.dry_run
         self.matcher = config.matcher
         self.timeout = config.timeout
-        self.book_file_selector = BookFileSelector(config.filetypes)
+        self.media_type = config.media_type
         self.last_outcome = "pending"
 
     def import_torrents(self, torrent_files: Iterable[tuple[bytes, Book]]) -> ImportResult:
@@ -78,7 +79,9 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
         pending = {}  # torrent_id -> book
 
         for torrent_file, book in torrent_files:
-            torrent_id = self.torrent_client.add_torrent(torrent_file, book)
+            torrent_id = self.torrent_client.add_torrent(
+                torrent_file, book, media_type=self.media_type
+            )
             if torrent_id:
                 if torrent_id in pending:
                     logger.error(
@@ -109,10 +112,12 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
 
             for torrent_id, book in pending.items():
                 if self.process_torrent(torrent_id, book):
-                    self.torrent_client.remove_tag(torrent_id, "murid_pending")
                     completed.append(torrent_id)
                     if self.last_outcome == "imported":
+                        self.clear_import_tags(torrent_id)
                         result.imported += 1
+                    elif self.last_outcome == "pending":
+                        result.pending += 1
                     else:
                         result.failed += 1
 
@@ -125,53 +130,50 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
 
             if self._is_timeout(start_time, pending):
                 break
-        result.pending = len(pending)
+        result.pending += len(pending)
         return result
 
     def process_torrent(self, torrent_id: str, book: Book) -> bool:
-        """Check if the torrent with the given ID is completed and import it into Calibre."""
+        """Resume published content or import a completed path through its library."""
         self.last_outcome = "pending"
-        path = self.torrent_client.get_completed_path(torrent_id)
-        if not path:
-            return False
-
         if self.dry_run:
-            logger.info("%s: dry run enabled, not importing into Calibre", book)
+            if not self.torrent_client.get_completed_path(torrent_id):
+                return False
+            logger.info("%s: dry run enabled, not importing into %s", book, self.library.name)
             self.last_outcome = "planned"
             return True
 
         try:
-            time.sleep(0.5)  # Give the torrent client a moment to move the files
-            path = self.torrent_client.get_completed_path(torrent_id)
-            if not path:
-                return False
-
-            book_file = self.book_file_selector.select(book, path, self.matcher)
+            if not self.library.resume_import(book, self.matcher):
+                path = self.torrent_client.get_completed_path(torrent_id)
+                if not path:
+                    return False
+                time.sleep(0.5)  # Give the torrent client a moment to move the files
+                path = self.torrent_client.get_completed_path(torrent_id)
+                if not path:
+                    return False
+                self.library.import_book(book, path, self.matcher)
             self.last_outcome = "failed"
-            if book_file is None:
-                logger.error(
-                    "%s: could not select a unique ebook file; import an individual ebook "
-                    "with murid add-book <Hardcover-title> <ebook-file-path>. "
-                    "After importing, murid retry-import can clear the failed-import tag",
-                    book,
-                )
-                self.torrent_client.add_tag(torrent_id, "murid_import_failed")
-                return True
-
-            self.calibre.add_book(book, str(book_file))
-            if self.calibre.contains_book(book, self.matcher):
+            # Audio import/resume returns only after exact destination/track verification.
+            # Calibre still needs a presence check after its import command returns.
+            if self.media_type == "audiobook" or self.library.contains_book(book, self.matcher):
                 self.last_outcome = "imported"
-                message = f"{book}: imported into Calibre"
-                logger.info("%s: imported into Calibre", book)
+                message = f"{book}: imported into {self.library.name} [{self.media_type}]"
+                logger.info("%s: imported into %s", book, self.library.name)
                 self.notify(title="Book Imported", body=message)
             else:
                 logger.error(
-                    "%s: failed to verify import into Calibre; run murid status, "
-                    "inspect the Calibre library, then run murid retry-import",
+                    "%s: failed to verify import into %s; run murid status, "
+                    "inspect the library, then run murid retry-import",
                     book,
+                    self.library.name,
                 )
-                self.torrent_client.add_tag(torrent_id, "murid_import_failed")
-        except CalibreError as error:
+                self.torrent_client.add_tag(torrent_id, "murid-import-failed")
+        except LibraryImportPending as error:
+            self.last_outcome = "pending"
+            self.torrent_client.add_tag(torrent_id, "murid")
+            logger.warning("%s: %s; ingestion will be checked next run", book, error)
+        except LibraryError as error:
             self.last_outcome = "failed"
             logger.error(
                 "%s: import failed: %s; run murid status, fix the cause, "
@@ -179,9 +181,15 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
                 book,
                 error,
             )
-            self.torrent_client.add_tag(torrent_id, "murid_import_failed")
+            self.torrent_client.add_tag(torrent_id, "murid-import-failed")
 
         return True
+
+    def clear_import_tags(self, torrent_id: str) -> None:
+        """Clear lifecycle state only after the destination library confirms success."""
+        if not self.dry_run:
+            for tag in IMPORT_TAGS:
+                self.torrent_client.remove_tag(torrent_id, tag)
 
     def _is_timeout(self, start_time: float, pending: dict) -> bool:
         """Check if the timeout has been reached since the given start time."""
@@ -197,12 +205,13 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
                 self.notify(
                     title="Murid - Torrent download timeout",
                     body=(
-                        f"The torrent for {book} did not complete within "
+                        f"The {self.media_type} torrent for {book} → {self.library.name} "
+                        "did not complete within "
                         f"{self.timeout} seconds. If completed it will be imported "
                         "in the next run, otherwise you may need to investigate the "
                         "torrent client for issues."
                     ),
                 )
-                self.torrent_client.add_tag(tid, "murid_timeout")
+                self.torrent_client.add_tag(tid, "murid-timeout")
             return True
         return False

@@ -5,6 +5,7 @@ from typing import Iterable
 
 from .book import Book
 from .book_matcher import BookMatcher
+from .book_request import MediaType
 from .torrent import Torrent
 
 logger = logging.getLogger("murid")
@@ -18,14 +19,17 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
         lang_codes: set[str],
         wanted_filetypes: Iterable[str] | None = None,
         blacklist: set[str] | None = None,
+        media_type: MediaType = "ebook",
     ):
         self.lang_codes = lang_codes
+        self.media_type = media_type
 
         if not blacklist:
             blacklist = set()
         self.blacklist = blacklist
 
-        formats = wanted_filetypes if wanted_filetypes is not None else ("epub", "mobi", "azw3")
+        defaults = ("m4b", "mp3") if media_type == "audiobook" else ("epub", "mobi", "azw3")
+        formats = wanted_filetypes if wanted_filetypes is not None else defaults
         # Sets remain supported for callers without an explicit format preference.
         if isinstance(formats, (set, frozenset)):
             formats = sorted(formats)
@@ -129,6 +133,8 @@ class TorrentSelector:  # pylint: disable=too-few-public-methods
     def rejection_reasons(self, torrent: Torrent) -> list[str]:
         """Return the configured filters that reject a torrent before book matching."""
         reasons = []
+        if torrent.media_type is not None and torrent.media_type != self.media_type:
+            reasons.append("media type")
         if torrent.language is not None and torrent.language not in self.lang_codes:
             reasons.append("language")
         if not self.wanted_filetypes.intersection(torrent.file_types or []):

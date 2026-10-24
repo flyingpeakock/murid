@@ -1,6 +1,7 @@
 """Check access to Murid's configured external services."""
 
 from ..clients.hardcover import Hardcover
+from ..config import requested_media_types
 from ..ui import interactive, labeled, output
 
 
@@ -11,7 +12,7 @@ def check_connections(factory) -> bool:
         f"Hardcover account {index}"
         for index in range(1, len(factory.config["hardcover_api_keys"]) + 1)
     ]
-    width = max(map(len, [*labels, "Calibre", "MyAnonamouse", "qBittorrent"]))
+    width = max(map(len, [*labels, "Calibre", "Audiobookshelf", "MyAnonamouse", "qBittorrent"]))
 
     def check(label, action) -> bool:
         display = f"{label:<{width}}" if interactive() else label
@@ -53,14 +54,27 @@ def check_connections(factory) -> bool:
         count = len(client.get_torrents())
         return f"category '{client.category}' readable ({count} torrent{'s' if count != 1 else ''})"
 
+    def audiobook_detail() -> str:
+        return factory.library("audiobook").check_connection()
+
     results = [
         check(
             f"Hardcover account {index}",
-            lambda token=token: hardcover_detail(token),
+            lambda token=token: hardcover_detail(token["api_key"]),
         )
         for index, token in enumerate(factory.config["hardcover_api_keys"], start=1)
     ]
-    results.append(check("Calibre", calibre_detail))
+    media_types = requested_media_types(factory.hardcover_lists)
+    selected = getattr(getattr(factory, "args", None), "media_type", None)
+    if selected == "ebook" or (
+        not selected
+        and ("ebook" in media_types or (factory.config.get("calibre") or {}).get("library"))
+    ):
+        results.append(check("Calibre", calibre_detail))
+    if selected == "audiobook" or (
+        not selected and ("audiobook" in media_types or factory.config.get("audiobookshelf"))
+    ):
+        results.append(check("Audiobookshelf", audiobook_detail))
     results.append(check("MyAnonamouse", mam_detail))
     results.append(check("qBittorrent", qbittorrent_detail))
     output(

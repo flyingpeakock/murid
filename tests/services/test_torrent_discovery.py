@@ -5,6 +5,7 @@ from unittest.mock import Mock, call
 import pytest
 
 from murid.clients.myanonamouse import MAMError, MAMSearchError
+from murid.domain.book_request import BookRequest
 from murid.services.torrent_discovery import TorrentDiscoveryService
 
 
@@ -17,16 +18,16 @@ def test_rejected_title_does_not_discard_alternate_title_results(mam, caplog):
         series_number=None,
     )
     torrent = Mock()
-    mam.search_ebook.side_effect = [MAMSearchError("negative-only query"), {torrent}]
+    mam.search_title.side_effect = [MAMSearchError("negative-only query"), {torrent}]
     mam.search_author.return_value = []
-    _, results = TorrentDiscoveryService(mam, [], None).find_torrents(book)
+    _, results = TorrentDiscoveryService(mam, {"ebook": None}).find_torrents(BookRequest(book))
     assert results == {torrent}
     assert "-Rejected" in caplog.text
-    assert "Alternate" == mam.search_ebook.call_args.args[0]
+    assert "Alternate" == mam.search_title.call_args.args[0]
 
 
 def test_rejected_search_does_not_abort_other_book_downloads(mam, matcher, caplog):
-    service = TorrentDiscoveryService(mam, [], SimpleNamespace(select=lambda *args: torrent))
+    service = TorrentDiscoveryService(mam, {"ebook": SimpleNamespace(select=lambda *args: torrent)})
     rejected, accepted = Future(), Future()
     book = FakeBook("Rejected", ["Author"])
     other = FakeBook("Working", ["Author"])
@@ -35,8 +36,10 @@ def test_rejected_search_does_not_abort_other_book_downloads(mam, matcher, caplo
     accepted.set_result((other, {torrent}))
     mam.download_torrent.return_value = b"torrent"
     with ThreadPoolExecutor(max_workers=1) as executor:
-        downloads = service.submit_downloads(executor, {rejected: book, accepted: other}, matcher)
-        assert service.collect_downloads(downloads) == [(b"torrent", other)]
+        downloads = service.submit_downloads(
+            executor, {rejected: BookRequest(book), accepted: BookRequest(other)}, matcher
+        )
+        assert service.collect_downloads(downloads) == [(b"torrent", BookRequest(other))]
     assert service.last_counts["search_failed"] == 1
     assert service.last_counts["failed"] == 1
     assert "continuing with other books" in caplog.text
@@ -45,14 +48,15 @@ def test_rejected_search_does_not_abort_other_book_downloads(mam, matcher, caplo
 def test_service_errors_still_abort_discovery(mam):
     future = Future()
     future.set_exception(MAMError("invalid session"))
-    service = TorrentDiscoveryService(mam, [], None)
+    service = TorrentDiscoveryService(mam, {"ebook": None})
     with ThreadPoolExecutor(max_workers=1) as executor:
         with pytest.raises(MAMError, match="invalid session"):
-            service.submit_downloads(executor, {future: FakeBook("Book")}, Mock())
+            service.submit_downloads(executor, {future: BookRequest(FakeBook("Book"))}, Mock())
 
 
 class FakeBook:
     def __init__(self, title, authors=None, series=None, series_number=None):
+        self.id = id(self)
         self.title = title
         self.authors = authors or []
         self.series = series
@@ -76,6 +80,7 @@ def matcher():
 
 def test_find_torrents_sets_series_and_returns(mam):
     book = SimpleNamespace(
+        id=42,
         title="Dune",
         authors=["Frank Herbert"],
         series="Dune Saga",
@@ -86,16 +91,16 @@ def test_find_torrents_sets_series_and_returns(mam):
     torrent = Mock()
     torrent.book = torrent_book
 
-    mam.search_ebook.return_value = [torrent]
+    mam.search_title.return_value = [torrent]
 
-    service = TorrentDiscoveryService(mam, ["eng"], None)
+    service = TorrentDiscoveryService(mam, {"ebook": None})
 
-    result_book, torrents = service.find_torrents(book)
+    result_book, torrents = service.find_torrents(BookRequest(book))
 
-    assert result_book == book
+    assert result_book == BookRequest(book)
     assert torrents == {torrent}
 
-    mam.search_ebook.assert_called_once_with("Dune")
+    mam.search_title.assert_called_once_with("Dune", "ebook")
 
     assert torrent.book.series == "Dune Saga"
     assert torrent.book.series_number == 1
@@ -111,16 +116,16 @@ def test_find_torrents_searches_main_and_alternate_titles_without_author(mam):
     )
     torrent = Mock()
     torrent.book = SimpleNamespace(series=None, series_number=None)
-    mam.search_ebook.side_effect = [[torrent], []]
+    mam.search_title.side_effect = [[torrent], []]
 
-    service = TorrentDiscoveryService(mam, ["eng"], None)
+    service = TorrentDiscoveryService(mam, {"ebook": None})
 
-    _, torrents = service.find_torrents(book)
+    _, torrents = service.find_torrents(BookRequest(book))
 
     assert torrents == {torrent}
-    assert mam.search_ebook.call_args_list == [
-        call("Main title"),
-        call("Alternate title"),
+    assert mam.search_title.call_args_list == [
+        call("Main title", "ebook"),
+        call("Alternate title", "ebook"),
     ]
     mam.search_author.assert_not_called()
 
@@ -135,18 +140,21 @@ def test_find_torrents_searches_author_before_alternate_title_on_title_miss(mam)
     )
     torrent = Mock()
     torrent.book = SimpleNamespace(series=None, series_number=None)
-    mam.search_ebook.side_effect = [[], []]
+    mam.search_title.side_effect = [[], []]
     mam.search_author.return_value = [torrent]
 
-    _, torrents = TorrentDiscoveryService(mam, ["eng"], None).find_torrents(book)
+    _, torrents = TorrentDiscoveryService(mam, {"ebook": None}).find_torrents(BookRequest(book))
 
     assert torrents == {torrent}
-    assert mam.search_ebook.call_args_list == [call("Main title"), call("Alternate title")]
-    mam.search_author.assert_called_once_with("Author")
+    assert mam.search_title.call_args_list == [
+        call("Main title", "ebook"),
+        call("Alternate title", "ebook"),
+    ]
+    mam.search_author.assert_called_once_with("Author", "ebook")
 
 
 def test_collect_downloads_filters_none():
-    service = TorrentDiscoveryService(Mock(), [], None)
+    service = TorrentDiscoveryService(Mock(), {"ebook": None})
 
     future1 = Future()
     future1.set_result(b"file1")
@@ -158,34 +166,37 @@ def test_collect_downloads_filters_none():
     book2 = FakeBook(title="B")
 
     download_futures = {
-        future1: book1,
-        future2: book2,
+        future1: BookRequest(book1),
+        future2: BookRequest(book2),
     }
 
     result = service.collect_downloads(download_futures)
 
-    assert result == [(b"file1", book1)]
+    assert result == [(b"file1", BookRequest(book1))]
 
 
 def test_collect_downloads_deduplicates_without_reordering():
-    service = TorrentDiscoveryService(Mock(), [], None)
+    service = TorrentDiscoveryService(Mock(), {"ebook": None})
     first_book, second_book = FakeBook("First"), FakeBook("Second")
     futures = {}
     for data, book in [(b"first", first_book), (b"second", second_book), (b"first", first_book)]:
         future = Future()
         future.set_result(data)
-        futures[future] = book
-    assert service.collect_downloads(futures) == [(b"first", first_book), (b"second", second_book)]
+        futures[future] = BookRequest(book)
+    assert service.collect_downloads(futures) == [
+        (b"first", BookRequest(first_book)),
+        (b"second", BookRequest(second_book)),
+    ]
 
 
 def test_submit_downloads_uses_submission_order_not_completion_order(mam, matcher):
-    service = TorrentDiscoveryService(mam, ["eng"], None)
+    service = TorrentDiscoveryService(mam, {"ebook": None})
     first_book = FakeBook(title="A", authors=["Author"])
     second_book = FakeBook(title="B", authors=["Author"])
     first_torrent = FakeTorrent(first_book)
     second_torrent = FakeTorrent(second_book)
     torrents_by_book = {first_book: first_torrent, second_book: second_torrent}
-    service.torrent_selector = SimpleNamespace(
+    service.torrent_selectors["ebook"] = SimpleNamespace(
         select=lambda book, *_: torrents_by_book[book],
     )
     mam.download_torrent = Mock(return_value=b"torrent-file")
@@ -199,7 +210,7 @@ def test_submit_downloads_uses_submission_order_not_completion_order(mam, matche
     with ThreadPoolExecutor(max_workers=1) as executor:
         service.submit_downloads(
             executor,
-            {first_future: first_book, second_future: second_book},
+            {first_future: BookRequest(first_book), second_future: BookRequest(second_book)},
             matcher,
         )
 
@@ -207,8 +218,8 @@ def test_submit_downloads_uses_submission_order_not_completion_order(mam, matche
 
 
 def test_submit_downloads_happy_path(mam, matcher):
-    service = TorrentDiscoveryService(mam, ["eng"], None)
-    service.torrent_selector = SimpleNamespace(select=lambda *a, **k: torrent)
+    service = TorrentDiscoveryService(mam, {"ebook": None})
+    service.torrent_selectors["ebook"] = SimpleNamespace(select=lambda *a, **k: torrent)
 
     book = SimpleNamespace(title="Dune", authors=["Frank"])
     torrent_book = SimpleNamespace()
@@ -217,7 +228,7 @@ def test_submit_downloads_happy_path(mam, matcher):
     search_future = Future()
     search_future.set_result((book, [torrent]))
 
-    search_futures = {search_future: book}
+    search_futures = {search_future: BookRequest(book)}
 
     executor = ThreadPoolExecutor(max_workers=1)
 
@@ -227,7 +238,7 @@ def test_submit_downloads_happy_path(mam, matcher):
 
     assert len(result) == 1
     future = list(result.keys())[0]
-    assert result[future] is book
+    assert result[future].book is book
 
 
 def test_submit_downloads_skips_torrent_tagged_import_failed(mam, matcher):
@@ -238,10 +249,12 @@ def test_submit_downloads_skips_torrent_tagged_import_failed(mam, matcher):
 
     torrent_client = Mock()
     torrent_client.get_torrents_with_tag.side_effect = lambda tag: (
-        [SimpleNamespace(comment="MyAnonamouse MID=123")] if tag == "murid_import_failed" else []
+        [SimpleNamespace(comment="MyAnonamouse MID=123")] if tag == "murid-import-failed" else []
     )
-    service = TorrentDiscoveryService(mam, ["eng"], None, torrent_client)
-    service.torrent_selector = SimpleNamespace(select=Mock(return_value=available_torrent))
+    service = TorrentDiscoveryService(mam, {"ebook": None}, torrent_client)
+    service.torrent_selectors["ebook"] = SimpleNamespace(
+        select=Mock(return_value=available_torrent)
+    )
     mam.download_torrent.return_value = b"torrent-file"
 
     book = SimpleNamespace(title="Dune", authors=["Frank"])
@@ -249,29 +262,31 @@ def test_submit_downloads_skips_torrent_tagged_import_failed(mam, matcher):
     search_future.set_result((book, {failed_torrent, available_torrent}))
 
     with ThreadPoolExecutor(max_workers=1) as executor:
-        result = service.submit_downloads(executor, {search_future: book}, matcher)
+        result = service.submit_downloads(executor, {search_future: BookRequest(book)}, matcher)
 
-    torrent_client.get_torrents_with_tag.assert_called_once_with("murid_import_failed")
-    service.torrent_selector.select.assert_called_once_with(book, {available_torrent}, matcher)
+    torrent_client.get_torrents_with_tag.assert_called_once_with("murid-import-failed")
+    service.torrent_selectors["ebook"].select.assert_called_once_with(
+        book, {available_torrent}, matcher
+    )
     assert len(result) == 1
     mam.download_torrent.assert_called_once_with(available_torrent)
 
 
 def test_download_torrents_skips_books_with_incomplete_timed_out_torrent(mam, matcher):
-    service = TorrentDiscoveryService(mam, ["eng"], None)
+    service = TorrentDiscoveryService(mam, {"ebook": None})
     service.find_torrents = Mock()
     matcher.threshold = 0.9
     matcher.similarity.return_value = 0.99
 
     book = SimpleNamespace(id=456, title="Dune", authors=["Frank"])
-    timed_out_book = SimpleNamespace(id=123, title="Dune", authors=["Frank"])
+    timed_out_book = SimpleNamespace(id=456, title="Dune", authors=["Frank"])
 
-    result = service.download_torrents([book], matcher, [timed_out_book])
+    result = service.download_torrents([BookRequest(book)], matcher, [BookRequest(timed_out_book)])
 
     assert result == []
     service.find_torrents.assert_not_called()
-    mam.search_ebook.assert_not_called()
-    matcher.similarity.assert_called_once_with(book, timed_out_book)
+    mam.search_title.assert_not_called()
+    matcher.similarity.assert_not_called()
     mam.download_torrent.assert_not_called()
 
 
@@ -279,25 +294,27 @@ def test_submit_downloads_does_not_retry_after_selector_rejects(mam, matcher):
     original_torrent = Mock()
     original_torrent.book.id = 111
 
-    service = TorrentDiscoveryService(mam, ["eng"], None)
-    service.torrent_selector = SimpleNamespace(select=Mock(return_value=None))
+    service = TorrentDiscoveryService(mam, {"ebook": None})
+    service.torrent_selectors["ebook"] = SimpleNamespace(select=Mock(return_value=None))
     book = SimpleNamespace(title="Dune", authors=["Frank"])
     search_future = Future()
     search_future.set_result((book, {original_torrent}))
 
     with ThreadPoolExecutor(max_workers=1) as executor:
-        result = service.submit_downloads(executor, {search_future: book}, matcher)
+        result = service.submit_downloads(executor, {search_future: BookRequest(book)}, matcher)
 
     assert result == {}
-    service.torrent_selector.select.assert_called_once_with(book, {original_torrent}, matcher)
-    mam.search_ebook.assert_not_called()
+    service.torrent_selectors["ebook"].select.assert_called_once_with(
+        book, {original_torrent}, matcher
+    )
+    mam.search_title.assert_not_called()
     mam.download_torrent.assert_not_called()
 
 
 def test_submit_downloads_does_not_repeat_title_searches_when_matcher_rejects(mam, matcher):
-    service = TorrentDiscoveryService(mam, ["eng"], None)
+    service = TorrentDiscoveryService(mam, {"ebook": None})
     original_torrent = Mock()
-    service.torrent_selector = SimpleNamespace(select=Mock(return_value=None))
+    service.torrent_selectors["ebook"] = SimpleNamespace(select=Mock(return_value=None))
 
     book = SimpleNamespace(
         title="Main title",
@@ -308,15 +325,17 @@ def test_submit_downloads_does_not_repeat_title_searches_when_matcher_rejects(ma
     search_future.set_result((book, [original_torrent]))
 
     with ThreadPoolExecutor(max_workers=1) as executor:
-        result = service.submit_downloads(executor, {search_future: book}, matcher)
+        result = service.submit_downloads(executor, {search_future: BookRequest(book)}, matcher)
         assert result == {}
 
-    service.torrent_selector.select.assert_called_once_with(book, [original_torrent], matcher)
-    mam.search_ebook.assert_not_called()
+    service.torrent_selectors["ebook"].select.assert_called_once_with(
+        book, [original_torrent], matcher
+    )
+    mam.search_title.assert_not_called()
 
 
 def test_submit_downloads_skips_empty():
-    service = TorrentDiscoveryService(Mock(), [], None)
+    service = TorrentDiscoveryService(Mock(), {"ebook": None})
 
     book = SimpleNamespace(title="Dune")
 
@@ -325,15 +344,15 @@ def test_submit_downloads_skips_empty():
 
     executor = ThreadPoolExecutor(max_workers=1)
 
-    result = service.submit_downloads(executor, {search_future: book}, Mock())
+    result = service.submit_downloads(executor, {search_future: BookRequest(book)}, Mock())
 
     assert result == {}
 
 
 def test_submit_downloads_rejected_by_selector(mam):
-    service = TorrentDiscoveryService(mam, ["eng"], None)
-    service.torrent_selector = SimpleNamespace(select=lambda *a, **k: None)
-    mam.search_ebook.return_value = []
+    service = TorrentDiscoveryService(mam, {"ebook": None})
+    service.torrent_selectors["ebook"] = SimpleNamespace(select=lambda *a, **k: None)
+    mam.search_title.return_value = []
 
     book = FakeBook(title="Dune")
     torrent = SimpleNamespace(book=SimpleNamespace())
@@ -343,20 +362,20 @@ def test_submit_downloads_rejected_by_selector(mam):
 
     executor = ThreadPoolExecutor(max_workers=1)
 
-    result = service.submit_downloads(executor, {search_future: book}, Mock())
+    result = service.submit_downloads(executor, {search_future: BookRequest(book)}, Mock())
 
     assert result == {}
 
 
 def test_download_torrents_happy_path(mam, matcher):
-    service = TorrentDiscoveryService(mam, ["eng"], None)
+    service = TorrentDiscoveryService(mam, {"ebook": None})
     service.find_torrents = Mock(return_value=(SimpleNamespace(), ["torrent"]))
     service.submit_downloads = Mock(return_value={"future": "torrent"})
     service.collect_downloads = Mock(return_value=[(b"file", SimpleNamespace())])
 
     books = [SimpleNamespace(id=42, title="Dune")]
 
-    result = service.download_torrents(books, matcher)
+    result = service.download_torrents([BookRequest(book) for book in books], matcher)
 
     assert result == [(b"file", SimpleNamespace())]
 
@@ -381,10 +400,161 @@ def test_downloads_keep_requested_hardcover_metadata(mam):
         language="ENG",
         file_types=["epub"],
     )
-    mam.search_ebook.return_value = {candidate}
+    mam.search_title.return_value = {candidate}
     mam.download_torrent.return_value = b"torrent"
-    service = TorrentDiscoveryService(mam, ["ENG"], TorrentSelector({"ENG"}))
-    downloads = service.download_torrents([requested], BookMatcher())
-    assert downloads == [(b"torrent", requested)]
-    assert downloads[0][1] is requested
+    service = TorrentDiscoveryService(mam, {"ebook": TorrentSelector({"ENG"})})
+    downloads = service.download_torrents([BookRequest(requested)], BookMatcher())
+    assert downloads == [(b"torrent", BookRequest(requested))]
+    assert downloads[0][1].book is requested
     mam.download_torrent.assert_called_once_with(candidate)
+
+
+@pytest.mark.parametrize("medium", ["ebook", "audiobook"])
+def test_title_author_and_alternate_searches_keep_medium(mam, medium):
+    from murid.domain.book import Book
+
+    book = Book("Main", ["Author"], 42, [], "hardcover", alternative_titles=["Alternate"])
+    mam.search_title.return_value = set()
+    mam.search_author.return_value = set()
+    request = BookRequest(book, medium)
+    result, torrents = TorrentDiscoveryService(mam, {}).find_torrents(request)
+    assert result is request
+    assert torrents == set()
+    assert mam.search_title.call_args_list == [call("Main", medium), call("Alternate", medium)]
+    mam.search_author.assert_called_once_with("Author", medium)
+
+
+def test_discovery_keeps_series_evidence_for_a_different_audio_volume(mam):
+    from murid.domain.book import Book
+    from murid.domain.book_matcher import BookMatcher
+    from murid.domain.torrent import Torrent, TorrentMetadata
+    from murid.domain.torrent_selector import TorrentSelector
+
+    book = Book(
+        "Collected Stories", ["Author"], 42, [], "hardcover", series="Stories", series_number=1
+    )
+    candidate = Torrent(
+        Book(book.title, book.authors, 100, [], "myanonamouse", series="Stories", series_number=2),
+        TorrentMetadata(0, 100, 10, 0, False, False),
+        language="ENG",
+        file_types=["m4b"],
+        media_type="audiobook",
+    )
+    mam.search_title.return_value = {candidate}
+    selector = TorrentSelector({"ENG"}, media_type="audiobook")
+    service = TorrentDiscoveryService(mam, {"audiobook": selector})
+    _, results = service.find_torrents(BookRequest(book, "audiobook"))
+    assert candidate.book.series_number == 2
+    assert selector.select(book, results, BookMatcher()) is None
+
+
+@pytest.mark.parametrize("incomplete_medium", ["ebook", "audiobook"])
+def test_incomplete_work_suppresses_only_the_same_medium(mam, incomplete_medium):
+    from murid.domain.book import Book
+    from murid.domain.book_matcher import BookMatcher
+
+    book = Book("Dune", ["Author"], 42, [], "hardcover")
+    requests = {BookRequest(book, medium) for medium in ("ebook", "audiobook")}
+    incomplete = BookRequest(book, incomplete_medium)
+    service = TorrentDiscoveryService(mam, {})
+    service.find_torrents = Mock(side_effect=lambda request: (request, set()))
+    assert service.download_torrents(requests, BookMatcher(), [incomplete]) == []
+    searched = service.find_torrents.call_args.args[0]
+    assert searched.book is book
+    assert searched.media_type != incomplete_medium
+    assert service.last_counts["searched"] == 1
+    assert service.last_counts["skipped"] == 1
+
+
+def test_overlapping_requests_deduplicate_by_work_and_medium(mam):
+    from dataclasses import replace
+
+    from murid.domain.book import Book
+    from murid.domain.book_matcher import BookMatcher
+    from murid.domain.torrent import Torrent, TorrentMetadata
+    from murid.domain.torrent_selector import TorrentSelector
+
+    book = Book("Dune", ["Frank Herbert"], 42, [], "hardcover")
+    selectors = {
+        medium: TorrentSelector({"ENG"}, media_type=medium) for medium in ("ebook", "audiobook")
+    }
+    candidates = {
+        medium: Torrent(
+            Book("Dune", book.authors, index, [], "myanonamouse"),
+            TorrentMetadata(0, 100, 10, 0, False, False),
+            language="ENG",
+            file_types=[fmt],
+            media_type=medium,
+        )
+        for index, (medium, fmt) in enumerate([("ebook", "epub"), ("audiobook", "m4b")], 100)
+    }
+    mam.search_title.side_effect = lambda title, medium: {candidates[medium]}
+    mam.download_torrent.return_value = b"torrent"
+    requests = [
+        BookRequest(book),
+        BookRequest(replace(book, alternative_titles=["Dune!"])),
+        BookRequest(book, "audiobook"),
+    ]
+    service = TorrentDiscoveryService(mam, selectors)
+    downloads = service.download_torrents(requests, BookMatcher())
+    assert {request.identity for _, request in downloads} == {(42, "ebook"), (42, "audiobook")}
+    assert len(downloads) == 2
+    assert service.last_counts["searched"] == service.last_counts["selected"] == 2
+    assert mam.search_title.call_count == 2
+    assert mam.download_torrent.call_count == 2
+
+
+@pytest.mark.parametrize("medium", ["ebook", "audiobook"])
+def test_failed_import_filter_is_scoped_to_media(mam, medium):
+    from murid.domain.book import Book
+
+    tagged = [
+        SimpleNamespace(
+            comment="MID=100", tags="murid_media_audiobook,murid_hardcover_42,murid-import-failed"
+        ),
+        SimpleNamespace(comment="MID=200", tags="murid-import-failed"),
+    ]
+    torrent_client = Mock()
+    torrent_client.get_torrents_with_tag.return_value = tagged
+    candidates = {Mock(book=SimpleNamespace(id=100)), Mock(book=SimpleNamespace(id=200))}
+    selector = Mock(select=Mock(return_value=None))
+    request = BookRequest(Book("Dune", ["Author"], 42, [], "hardcover"), medium)
+    search = Future()
+    search.set_result((request, candidates))
+    service = TorrentDiscoveryService(mam, {medium: selector}, torrent_client)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        assert service.submit_downloads(executor, {search: request}, Mock()) == {}
+    selected_ids = {torrent.book.id for torrent in selector.select.call_args.args[1]}
+    assert selected_ids == ({200} if medium == "audiobook" else {100})
+
+
+@pytest.mark.parametrize("medium,expected_ids", [("ebook", {"200"}), ("audiobook", {"300"})])
+@pytest.mark.parametrize(
+    "tags,comment",
+    [
+        ("murid-import-failed,murid_media_audiobook", "MID=100"),
+        ("murid-import-failed", "MID=100\n[murid:1]invalid-json"),
+    ],
+)
+def test_failed_import_filter_reports_invalid_identity_and_keeps_valid_ids(
+    mam, caplog, medium, expected_ids, tags, comment
+):
+    invalid = SimpleNamespace(hash="invalid-torrent", tags=tags, comment=comment)
+    original = vars(invalid).copy()
+    client = Mock()
+    client.get_torrents_with_tag.return_value = [
+        invalid,
+        SimpleNamespace(tags="murid-import-failed", comment="MID=200"),
+        SimpleNamespace(
+            tags="murid-import-failed,murid_media_audiobook,murid_hardcover_42", comment="MID=300"
+        ),
+    ]
+    service = TorrentDiscoveryService(mam, {}, client)
+
+    assert service.mam_ids_with_tag("murid-import-failed", medium) == expected_ids
+
+    assert "invalid-torrent" in caplog.text
+    assert "invalid" in caplog.text.lower()
+    assert vars(invalid) == original
+    client.add_tag.assert_not_called()
+    client.remove_tag.assert_not_called()

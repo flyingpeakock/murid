@@ -9,7 +9,7 @@ class Book:  # pylint: disable=too-many-instance-attributes
 
     title: str
     authors: list[str]
-    id: int
+    id: int | str
     isbn: list[str | None]
     source: str
     series: str | None = None

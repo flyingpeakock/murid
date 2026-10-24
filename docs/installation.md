@@ -112,7 +112,10 @@ inputs.murid.url = "github:flyingpeakock/murid";
       enable = true;
       environmentFile = "/etc/murid.env";
       config = {
-        hardcover_api_keys = [ "!ENV HARDCOVER_API_KEY" ];
+        hardcover_api_keys = [{
+          api_key = "!ENV HARDCOVER_API_KEY";
+          reading_list.want-to-read = {};
+        }];
         mam_id = "!ENV MAM_ID";
         calibre.library = "http://localhost:8080/#books";
         qbittorrent = {
@@ -129,6 +132,85 @@ Put `HARDCOVER_API_KEY` (including the `Bearer ` prefix), `MAM_ID`, and `QBITTOR
 The module starts `murid schedule` and accepts either an inline `services.murid.config`
 or a path in `services.murid.configFile`. Set `environmentFile` when the selected
 configuration uses `!ENV` secrets.
+
+## Shared audiobook libraries on NixOS
+
+Murid needs read access to completed downloads and read/write/traverse access to
+both the shared library and staging directories (including the existing parent
+when staging has not been created). Audiobookshelf needs read/traverse access to
+the published library and its ancestors. The two processes may use different mount
+paths, but they must expose the same library root. Staging must be on that same
+filesystem and physically outside all scanned roots, including bind-mount aliases.
+See [Audiobookshelf configuration](configuration.md#audiobookshelf).
+
+The NixOS module accepts extra service groups and mount dependencies:
+
+```nix
+services.murid = {
+  enable = true;
+  configFile = "/etc/murid.yaml";
+  environmentFile = "/etc/murid.env";
+  supplementaryGroups = [ "media" "qbittorrent" ];
+  requiresMountsFor = [ "/shared/audiobooks" "/shared/staging" "/downloads" ];
+};
+```
+
+Use existing groups appropriate to your deployment and grant directory access
+explicitly. The module does not chown or chmod your existing media directories.
+For inline `config`, it automatically adds mount dependencies for
+`audiobookshelf.library_path` and the explicit/default staging path. With
+`configFile`, specify these paths through `requiresMountsFor`; also include the
+completed-download mount when needed. Mount dependencies order startup but do not
+create directories or grant access.
+
+Run connection diagnostics with the actual service user and service environment
+before enabling the schedule. An interactive user's successful import does not
+establish that the service user can read the same downloads or write the mount.
+The module does not change Audiobookshelf's mount configuration or API permissions.
+
+### NixOS containers
+
+Apply the service configuration inside `containers.<name>.config`, and use paths
+as seen inside that container. The host must bind-mount a common parent containing
+both the library and its private staging directory, and expose the completed
+downloads as well. Mounting only the scanned library root cannot supply an
+outside staging directory on the same filesystem.
+
+For a container exposing the host's media volume as `/data`, an illustrative setup is:
+
+```nix
+containers.server = {
+  bindMounts."/data" = {
+    hostPath = "/opt/container/data";
+    isReadOnly = false;
+  };
+  config = { ... }: {
+    services.murid = {
+      enable = true;
+      user = "calibre";
+      group = "multimedia";
+      configFile = "/etc/murid.yaml";
+      environmentFile = "/secrets/murid";
+      requiresMountsFor = [ "/data" ];
+    };
+    systemd.tmpfiles.rules = [
+      "d /data/.murid-staging-audiobooks 0700 calibre multimedia -"
+    ];
+  };
+};
+```
+
+In that container's YAML, use `library_path: /data/media/audiobooks` and
+`staging_path: /data/.murid-staging-audiobooks`; adapt paths and accounts to the
+actual deployment. Keep `qbittorrent.mapping` consistent with the container's
+view of completed downloads. A host-side localhost API check does not test access
+from a container with private networking.
+
+Keep staging owned by the account that runs imports. Journals are private files
+and contain absolute source/library paths. A journal created by a host user is
+not portable to a different container path or service account; use a separate
+service-owned staging directory or explicitly migrate verified state during a
+planned deployment. Completed library items remain discoverable by their work tags.
 
 ## Shell completion
 

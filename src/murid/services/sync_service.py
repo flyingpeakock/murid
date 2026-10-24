@@ -2,17 +2,15 @@
 
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime
-from itertools import chain
 from typing import Iterable
 
-from ..clients.calibre import Calibre
-from ..clients.hardcover import Hardcover
 from ..domain.book import Book
 from ..domain.book_matcher import BookMatcher, MatchReview
+from ..domain.book_request import BookRequest
 from ..ui import book_data, colored, labeled, match_review, output
+from .retry_service import RetryImportResult
 from .torrent_discovery import TorrentDiscoveryService
 from .torrent_import import ImportResult
 
@@ -25,6 +23,7 @@ class SyncService:
     def __init__(self, factory) -> None:
         """Initializes the synchronization service."""
         self.factory = factory
+        self.media_counts = {}
 
     def start_scheduler(self) -> None:
         """Start the scheduler to run the synchronization process at regular intervals."""
@@ -78,30 +77,61 @@ class SyncService:
             raise
 
     def _run(self) -> bool:
-        """Retry earlier downloads, discover missing books, and import available ebooks."""
+        """Retry earlier downloads, discover missing requests, and route completed downloads."""
+        self.media_counts = {}
         retry_service = self.factory.retry_service()
-        incomplete_timed_out_books = retry_service.retry_torrents()
+        incomplete_requests = retry_service.retry_torrents()
+        if isinstance(retry_service.last_result, RetryImportResult):
+            for media, counts in retry_service.last_result.by_media.items():
+                self._record_media(media, counts)
+        if (
+            isinstance(retry_service.last_result, RetryImportResult)
+            and retry_service.last_result.skipped
+        ):
+            logger.error(
+                "Request recovery is incomplete; resolve skipped torrents before discovery"
+            )
+            return self._summary(0, {}, ImportResult(), retry_service)
 
         matcher = self.factory.matcher()
 
-        wanted_books = self.get_wanted_books(matcher)
-        if not wanted_books:
-            logger.info("No books missing from Calibre library; nothing to do")
+        wanted_requests = self.get_wanted_requests(matcher)
+        for request in wanted_requests:
+            self._record_media(request.media_type, {"missing": 1})
+        if not wanted_requests:
+            logger.info("No requests missing from their destination libraries; nothing to do")
             return self._summary(0, {}, ImportResult(), retry_service)
 
         torrent_discovery = self.factory.torrent_discovery()
-        wanted_torrents = self.process_books(
-            wanted_books,
+        wanted_torrents = self.process_requests(
+            wanted_requests,
             torrent_discovery,
             matcher,
-            incomplete_timed_out_books,
+            incomplete_requests,
         )
 
-        torrent_import = self.factory.torrent_import()
-        result = torrent_import.import_torrents(wanted_torrents)
+        result = ImportResult()
+        for media in sorted({request.media_type for _, request in wanted_torrents}):
+            torrent_import = self.factory.torrent_import(media)
+            imported = torrent_import.import_torrents(
+                (data, request.book)
+                for data, request in wanted_torrents
+                if request.media_type == media
+            )
+            self._record_media(media, asdict(imported))
+            for key, count in asdict(imported).items():
+                setattr(result, key, getattr(result, key) + count)
         return self._summary(
-            len(wanted_books), torrent_discovery.last_counts, result, retry_service
+            len(wanted_requests), torrent_discovery.last_counts, result, retry_service
         )
+
+    def _record_media(self, media, counts):
+        target = self.media_counts.setdefault(
+            media, {"destination": "Audiobookshelf" if media == "audiobook" else "Calibre"}
+        )
+        for key, count in counts.items():
+            if isinstance(count, int):
+                target[key] = target.get(key, 0) + count
 
     def _summary(self, missing, discovery, imports, retry_service) -> bool:
         """Report completed work and distinguish unresolved outcomes from success."""
@@ -155,55 +185,77 @@ class SyncService:
                 "bold green" if success else "bold yellow",
             ),
             kind="sync_summary",
-            data={**counts, "ok": success, "dry_run": dry_run},
+            data={**counts, "ok": success, "dry_run": dry_run, "by_media": self.media_counts},
         )
+        for media, detail in sorted(self.media_counts.items()):
+            output(
+                f"  {media} → {detail['destination']}: "
+                + ", ".join(
+                    f"{count} {key.replace('_', ' ')}"
+                    for key, count in detail.items()
+                    if key != "destination"
+                ),
+                kind="media_summary",
+                data={"media_type": media, **detail},
+            )
         return success
 
-    def get_wanted_books(self, matcher: BookMatcher) -> set[Book]:
-        """Get the list of books that are wanted (i.e., not present in Calibre)."""
-        calibre = self.factory.calibre()
-        calibre_books = self.fetch_calibre_books(calibre)
+    def _library_groups(self):
+        requests = self.factory.wanted_requests()
+        for media in sorted({request.media_type for request in requests}):
+            group = {request for request in requests if request.media_type == media}
+            yield media, group, self.factory.library(media)
 
-        hardcover = self.factory.hardcover()
-        hardcover_books = self.fetch_hardcover_books(hardcover)
-
-        assigned_matches = self.match_books(calibre_books, hardcover_books, matcher)
-
-        matched_ids = {hardcover.id for _, hardcover, _ in assigned_matches}
-        wanted_books = {book for book in hardcover_books if book.id not in matched_ids}
-
-        return wanted_books
+    def get_wanted_requests(self, matcher: BookMatcher) -> set[BookRequest]:
+        """Compare each request only with its own library, preserving work/media identity."""
+        missing = set()
+        for _, requests, library in self._library_groups():
+            books = library.get_books()
+            matches = matcher.match_books(books, [request.book for request in requests])
+            present = {book.id for _, book, _ in matches}
+            missing.update(request for request in requests if request.book.id not in present)
+        return missing
 
     def list_missing(self, matcher: BookMatcher) -> None:
-        """Print Hardcover books missing from the Calibre library."""
-        missing_books = self.get_wanted_books(matcher)
-        if not missing_books:
-            output(
-                "[bold green]No books are missing from the Calibre library.[/]",
-                kind="missing_summary",
-                data={"count": 0},
-            )
-            return
+        """Print requests missing from their respective libraries."""
+        missing = self.get_wanted_requests(matcher)
         output(
-            f"[bold yellow]Books missing from the Calibre library: {len(missing_books)}[/]",
+            f"[bold yellow]Missing book requests: {len(missing)}[/]"
+            if missing
+            else "[bold green]No books are missing from the requested libraries.[/]",
             kind="missing_summary",
-            data={"count": len(missing_books)},
+            data={"count": len(missing)},
         )
-        for book in sorted(missing_books, key=lambda book: (book.title.casefold(), book.id)):
+        for request in sorted(
+            missing, key=lambda r: (r.book.title.casefold(), r.book.id, r.media_type)
+        ):
+            destination = "Calibre" if request.media_type == "ebook" else "Audiobookshelf"
             output(
-                colored(f"- {book}", "cyan"), kind="missing_book", data={"book": book_data(book)}
+                colored(f"- {request.book} [{request.media_type} → {destination}]", "cyan"),
+                kind="missing_book",
+                data={
+                    "book": book_data(request.book),
+                    "media_type": request.media_type,
+                    "destination": destination,
+                },
             )
 
     def review_matches(self, matcher: BookMatcher, matched: bool | None = None) -> None:
         """Print comparisons, optionally filtering by whether a candidate is accepted."""
-        calibre_books = self.fetch_calibre_books(self.factory.calibre())
-        hardcover_books = self.fetch_hardcover_books(self.factory.hardcover())
-        reviews = matcher.review_matches(calibre_books, hardcover_books)
+        # Complete all lookups before printing, so a failed backend is never shown as missing.
+        reviews = [
+            (book, candidates, media, library.name)
+            for media, requests, library in self._library_groups()
+            for book, candidates in matcher.review_matches(
+                library.get_books(),
+                [request.book for request in requests],
+            )
+        ]
         output(f"[bold cyan]Match threshold:[/] {matcher.threshold:.3f}")
 
         shown = 0
-        for hardcover_book, candidates in sorted(
-            reviews, key=lambda item: (item[0].title.casefold(), item[0].id)
+        for hardcover_book, candidates, media, destination in sorted(
+            reviews, key=lambda item: (item[0].title.casefold(), item[0].id, item[2])
         ):
             accepted = any(candidate.accepted for candidate in candidates)
             if matched is not None and accepted != matched:
@@ -211,10 +263,15 @@ class SyncService:
             shown += 1
             output()
             output(
-                match_review(self._format_match_review(hardcover_book, candidates)),
+                match_review(
+                    self._format_match_review(hardcover_book, candidates, destination)
+                    + f"\n  Media: {media} → {destination}"
+                ),
                 kind="match_review",
                 data={
                     "book": book_data(hardcover_book),
+                    "media_type": media,
+                    "destination": destination,
                     "threshold": matcher.threshold,
                     "matched": accepted,
                     "candidates": [
@@ -239,11 +296,12 @@ class SyncService:
     def _format_match_review(
         hardcover_book: Book,
         candidates: list[MatchReview],
+        destination: str = "Calibre",
     ) -> str:
-        """Format one Hardcover book and its relevant Calibre candidates."""
+        """Format a requested book and candidates from its destination library."""
         lines = [f"Hardcover: {hardcover_book}"]
         if not candidates:
-            return "\n".join((*lines, "  No Calibre candidates."))
+            return "\n".join((*lines, f"  No {destination} candidates."))
 
         ambiguous = len(candidates) > 1 and candidates[0].score - candidates[1].score <= 0.02
         for index, candidate in enumerate(candidates):
@@ -256,48 +314,18 @@ class SyncService:
             lines.append(f"  {status}: {candidate.calibre_book} [score={candidate.score:.3f}]")
             lines.append(f"    Evidence: {'; '.join(candidate.evidence)}")
         if not any(candidate.accepted for candidate in candidates):
-            lines.append("  No Calibre match was assigned.")
+            lines.append(f"  No {destination} match was assigned.")
         return "\n".join(lines)
 
     @staticmethod
-    def fetch_calibre_books(calibre: Calibre) -> set[Book]:
-        """Fetch books from the Calibre library."""
-        books = calibre.get_books()
-        logger.debug("Calibre library contains %d books", len(books))
-        return books
-
-    @staticmethod
-    def fetch_hardcover_books(hardcover: list[Hardcover]) -> set[Book]:
-        """Fetch books from the Hardcover API."""
-        with ThreadPoolExecutor(max_workers=min(10, len(hardcover))) as executor:
-            results = executor.map(lambda client: client.get_books(), hardcover)
-            books = set(chain.from_iterable(results))
-        logger.debug("Hardcover library contains %d books", len(books))
-        return books
-
-    @staticmethod
-    def match_books(
-        calibre_books: Iterable[Book],
-        hardcover_books: Iterable[Book],
-        matcher: BookMatcher,
-    ) -> set[tuple[Book, Book, float]]:
-        """Match books from the Hardcover list against the Calibre library."""
-        logger.info("Determining which Hardcover books need to be downloaded")
-        matches = matcher.match_books(calibre_books, hardcover_books)
-        logger.debug("%d books already present in Calibre library", len(matches))
-        return matches
-
-    @staticmethod
-    def process_books(
-        wanted_books: Iterable[Book],
+    def process_requests(
+        wanted_requests: Iterable[BookRequest],
         torrent_discovery: TorrentDiscoveryService,
         matcher: BookMatcher,
-        incomplete_timed_out_books: Iterable[Book] = (),
-    ) -> set[tuple[bytes, Book]]:
+        incomplete_requests: Iterable[BookRequest] = (),
+    ) -> list[tuple[bytes, BookRequest]]:
         """Process the matched and unmatched books to find torrents for the missing ones."""
 
-        if not wanted_books:
-            return set()
-        return torrent_discovery.download_torrents(
-            wanted_books, matcher, incomplete_timed_out_books
-        )
+        if not wanted_requests:
+            return []
+        return torrent_discovery.download_torrents(wanted_requests, matcher, incomplete_requests)

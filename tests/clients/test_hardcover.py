@@ -12,6 +12,62 @@ def hardcover():
     return Hardcover("api-key", HardcoverUser(id=123, name="Test User"))
 
 
+@pytest.mark.parametrize("language,codes,expected", [
+    ("en-US", ["ENG"], True),
+    ("en_GB", ["eng"], True),
+    (" English ", [" ENG "], True),
+    ({"language": "Swedish"}, ["SWE"], True),
+    ("German", ["GER"], True),
+    ("de", ["DEU"], True),
+    ("de-DE", ["GER"], True),
+    ("ger", ["DEU"], True),
+    ("deu", ["GER"], True),
+    ("French", ["FRE"], True),
+    ("Welsh", ["WEL"], True),
+    ("cy", ["CYM"], True),
+    ("sq", ["ALB"], True),
+    ("Albanian", ["SQI"], True),
+    ("Albanian", ["ENG"], False),
+    ("Greek", ["ENG"], False),
+    ("Greek", ["ELL"], True),
+    ("Greek", ["GRE"], True),
+    ("Malay", ["ENG"], False),
+    ("Malay", ["MSA"], True),
+    ({"language": "Malay"}, ["MAY"], True),
+    ("sv-SE", ["ENG"], False),
+    ("SWE", ["ENG"], False),
+    ("Swedish", ["ENG"], False),
+    ("not-a-language", ["ENG"], None),
+    ("", ["ENG"], None),
+    (None, ["ENG"], None),
+    ({"id": 1}, ["ENG"], None),
+])
+def test_language_matching_uses_iso_codes_names_and_bibliographic_aliases(
+    language, codes, expected
+):
+    assert Hardcover._language_value_matches(language, codes) is expected
+
+
+def test_search_titles_filter_known_languages_and_preserve_unknown_metadata():
+    book = {
+        "title": "Dune",
+        "alternative_titles": {
+            "en-US": "Dune: English title",
+            "sv-SE": "Dune: Swedish title",
+            "zz-ZZ": "Dune: Unknown language",
+        },
+    }
+    editions = [
+        {"title": "Dune: German edition", "language": {"language": "German"}},
+        {"title": "Dune: Greek edition", "language": "Greek"},
+        {"title": "Dune: Malay edition", "language": {"language": "Malay"}},
+        {"title": "Dune: Unknown edition", "language": "not-a-language"},
+    ]
+    assert Hardcover._extract_alternative_titles(book, editions, ["ENG"]) == [
+        "Dune: English title", "Dune: Unknown language", "Dune: Unknown edition",
+    ]
+
+
 def test_extract_isbn_none():
     assert Hardcover._extract_isbn(None) == []
 
@@ -257,3 +313,125 @@ def test_get_books_propagates_api_failure(hardcover, error):
         hardcover._session.post = Mock(return_value=response)
     with pytest.raises(HardcoverError):
         hardcover.get_books()
+
+
+def test_default_list_uses_want_to_read_status(hardcover):
+    hardcover.make_query = Mock(return_value={"data": {"user_books": []}})
+    hardcover.fetch_data()
+    query = hardcover.make_query.call_args.args[0]
+    assert "status_id: { _eq: 1 }" in query
+    assert hardcover.make_query.call_args.kwargs["variables"] == {"user_id": 123}
+
+
+def test_custom_list_fetches_books_and_preserves_metadata(hardcover):
+    hardcover.list_slug = "download-queue"
+    hardcover.make_query = Mock(
+        return_value={
+            "data": {
+                "lists": [
+                    {
+                        "list_books": [
+                            {
+                                "book": {
+                                    "id": 42,
+                                    "title": "Dune",
+                                    "contributions": [{"author": {"name": "Frank Herbert"}}],
+                                    "editions": [{"isbn_13": "9780441172719"}],
+                                    "book_series": [{"position": 1, "series": {"name": "Dune"}}],
+                                    "alternative_titles": ["Dune Chronicles"],
+                                },
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    )
+
+    (book,) = hardcover.get_books()
+
+    assert (book.id, book.title, book.authors) == (42, "Dune", ["Frank Herbert"])
+    assert book.isbn == ["9780441172719"]
+    assert book.series == "Dune"
+    assert "Dune Chronicles" in book.alternative_titles
+    query = hardcover.make_query.call_args.args[0]
+    assert "status_id" not in query
+    assert "user_id: {_eq: $user_id}" in query
+    assert "slug: {_eq: $slug}" in query
+    assert "book_mappings" in query
+    assert hardcover.make_query.call_args.kwargs["variables"] == {
+        "user_id": 123,
+        "slug": "download-queue",
+        "limit": 100,
+        "offset": 0,
+    }
+
+
+def test_custom_list_paginates(hardcover):
+    hardcover.list_slug = "large-list"
+    rows = [{"book": {"id": i, "title": f"Book {i}"}} for i in range(101)]
+    hardcover.make_query = Mock(
+        side_effect=[
+            {"data": {"lists": [{"list_books": rows[:100]}]}},
+            {"data": {"lists": [{"list_books": rows[100:]}]}},
+        ]
+    )
+    assert len(hardcover.get_books()) == 101
+    assert [call.kwargs["variables"]["offset"] for call in hardcover.make_query.call_args_list] == [
+        0,
+        100,
+    ]
+
+
+def test_custom_empty_list_does_not_fall_back(hardcover):
+    hardcover.list_slug = "empty"
+    hardcover.make_query = Mock(return_value={"data": {"lists": [{"list_books": []}]}})
+    assert hardcover.get_books() == set()
+    hardcover.make_query.assert_called_once()
+
+
+def test_custom_missing_list_raises(hardcover):
+    hardcover.list_slug = "missing"
+    hardcover.make_query = Mock(return_value={"data": {"lists": []}})
+    with pytest.raises(HardcoverError, match="Cannot fetch books.*List 'missing'.*not found"):
+        hardcover.get_books()
+    hardcover.make_query.assert_called_once()
+
+
+def test_custom_list_api_failure_propagates(hardcover):
+    hardcover.list_slug = "private-list"
+    hardcover.make_query = Mock(side_effect=HardcoverError("permission denied"))
+    with pytest.raises(HardcoverError, match="Cannot fetch books.*permission denied"):
+        hardcover.get_books()
+
+
+def test_get_book_recovers_metadata_without_reading_a_list(hardcover):
+    hardcover.make_query = Mock(
+        return_value={
+            "data": {
+                "books": [
+                    {
+                        "id": 42,
+                        "title": "Dune",
+                        "contributions": [{"author": {"name": "Frank Herbert"}}],
+                        "book_series": [{"position": 0, "series": {"name": "Dune"}}],
+                    }
+                ]
+            }
+        }
+    )
+    book = hardcover.get_book(42)
+    assert (book.id, book.source, book.title, book.series_number) == (42, "hardcover", "Dune", 0)
+    query = hardcover.make_query.call_args.args[0]
+    assert "books(where:" in query and "user_books" not in query
+    assert hardcover.make_query.call_args.kwargs["variables"] == {"book_id": 42}
+
+
+@pytest.mark.parametrize("books", [[], [{"id": 99}], [{"id": 42}, {"id": 43}], "invalid"])
+def test_get_book_does_not_substitute_a_different_work(hardcover, books):
+    hardcover.make_query = Mock(return_value={"data": {"books": books}})
+    if books == []:
+        assert hardcover.get_book(42) is None
+    else:
+        with pytest.raises(HardcoverError):
+            hardcover.get_book(42)

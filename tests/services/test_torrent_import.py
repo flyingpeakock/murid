@@ -8,6 +8,7 @@ import pytest
 from murid.clients.calibre import CalibreError
 from murid.domain.book import Book
 from murid.domain.book_matcher import BookMatcher
+from murid.libraries.calibre import CalibreLibrary
 from murid.notifications.apprise import AppriseHandler
 from murid.services.torrent_import import TorrentImportConfig, TorrentImportService
 
@@ -55,7 +56,7 @@ def notify():
 def service(torrent_client, calibre, matcher, notify):
     config = TorrentImportConfig(
         torrent_client=torrent_client,
-        calibre=calibre,
+        library=CalibreLibrary(calibre),
         matcher=matcher,
         notify=notify,
         dry_run=False,
@@ -110,6 +111,28 @@ def test_import_selects_requested_file_from_completed_pack(
     calibre.add_book.assert_called_once_with(book, str(selected_file))
 
 
+@pytest.mark.parametrize("directory", [False, True])
+def test_automatic_import_keeps_format_filtering(
+    service,
+    torrent_client,
+    calibre,
+    book,
+    monkeypatch,
+    tmp_path,
+    directory,
+):
+    pdf = tmp_path / "Dune.pdf"
+    pdf.write_bytes(b"ebook")
+    torrent_client.get_completed_path.return_value = str(tmp_path if directory else pdf)
+    monkeypatch.setattr("murid.services.torrent_import.time.sleep", lambda _: None)
+
+    assert service.process_torrent("abc123", book)
+
+    assert service.last_outcome == "failed"
+    calibre.add_book.assert_not_called()
+    torrent_client.add_tag.assert_called_once_with("abc123", "murid-import-failed")
+
+
 def test_no_suitable_file_tags_torrent_and_notifies_apprise(
     service,
     torrent_client,
@@ -145,7 +168,7 @@ def test_no_suitable_file_tags_torrent_and_notifies_apprise(
 
     assert result is True
     calibre.add_book.assert_not_called()
-    torrent_client.add_tag.assert_called_once_with("abc123", "murid_import_failed")
+    torrent_client.add_tag.assert_called_once_with("abc123", "murid-import-failed")
     notify.assert_not_called()
     assert len(apprise_client.calls) == 1
     assert apprise_client.calls[0]["title"] == "murid - ERROR"
@@ -169,7 +192,7 @@ def test_calibre_error_adds_tag(service, torrent_client, calibre, book):
 
     service.process_torrent("abc123", book)
 
-    torrent_client.add_tag.assert_called_once_with("abc123", "murid_import_failed")
+    torrent_client.add_tag.assert_called_once_with("abc123", "murid-import-failed")
 
 
 def test_success_triggers_notification(service, torrent_client, calibre, notify, book):
@@ -190,7 +213,7 @@ def test_failed_verification_adds_tag(service, torrent_client, calibre, book):
 
     service.process_torrent("abc123", book)
 
-    torrent_client.add_tag.assert_called_once_with("abc123", "murid_import_failed")
+    torrent_client.add_tag.assert_called_once_with("abc123", "murid-import-failed")
 
 
 def test_process_torrent_no_retry(service, torrent_client, calibre, book):
@@ -236,7 +259,7 @@ def test_is_timeout_returns_true_after_timeout(
 
     torrent_client.add_tag.assert_called_once_with(
         "abc123",
-        "murid_timeout",
+        "murid-timeout",
     )
 
 
@@ -260,9 +283,9 @@ def test_is_timeout_tags_all_pending_torrents(
 
     assert torrent_client.add_tag.call_count == 3
 
-    torrent_client.add_tag.assert_any_call("a", "murid_timeout")
-    torrent_client.add_tag.assert_any_call("b", "murid_timeout")
-    torrent_client.add_tag.assert_any_call("c", "murid_timeout")
+    torrent_client.add_tag.assert_any_call("a", "murid-timeout")
+    torrent_client.add_tag.assert_any_call("b", "murid-timeout")
+    torrent_client.add_tag.assert_any_call("c", "murid-timeout")
 
     assert notify.call_count == 3
 
@@ -297,7 +320,11 @@ def test_shared_hash_reports_collision_without_losing_first_book(
     calibre.add_book.assert_called_once_with(book, str(Path("/downloads/dune.epub")))
     assert (result.added, result.imported, result.failed, result.pending) == (1, 1, 1, 0)
     assert "already assigned" in caplog.text
-    torrent_client.remove_tag.assert_called_once_with("shared", "murid_pending")
+    assert {call.args for call in torrent_client.remove_tag.call_args_list} == {
+        ("shared", "murid"),
+        ("shared", "murid-timeout"),
+        ("shared", "murid-import-failed"),
+    }
 
 
 def test_calibre_timeout_tags_import_failure(service, torrent_client, calibre, book, monkeypatch):
@@ -307,4 +334,30 @@ def test_calibre_timeout_tags_import_failure(service, torrent_client, calibre, b
 
     assert service.process_torrent("abc123", book)
     assert service.last_outcome == "failed"
-    torrent_client.add_tag.assert_called_once_with("abc123", "murid_import_failed")
+    torrent_client.add_tag.assert_called_once_with("abc123", "murid-import-failed")
+
+
+def test_unpublished_audio_waits_for_download_without_marking_failure(
+    service, torrent_client, book
+):
+    service.media_type = "audiobook"
+    service.library = MagicMock()
+    service.library.resume_import.return_value = False
+    torrent_client.get_completed_path.return_value = None
+
+    assert service.process_torrent("incomplete", book) is False
+    assert service.last_outcome == "pending"
+    service.library.import_book.assert_not_called()
+    torrent_client.add_tag.assert_not_called()
+
+
+def test_dry_run_does_not_resume_published_audio(service, torrent_client, book):
+    service.dry_run = True
+    service.media_type = "audiobook"
+    service.library = MagicMock()
+    torrent_client.get_completed_path.return_value = None
+
+    assert service.process_torrent("incomplete", book) is False
+    service.library.resume_import.assert_not_called()
+    service.library.import_book.assert_not_called()
+    torrent_client.add_tag.assert_not_called()

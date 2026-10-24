@@ -1,9 +1,16 @@
 # Murid Configuration
 
-# One or more Hardcover API tokens.
-# Must start with "Bearer "
+# One entry per Hardcover user. API keys must start with "Bearer ".
+# Select lists explicitly using their URL slugs.
 hardcover_api_keys:
-  - !ENV HARDCOVER_API_KEY
+  - api_key: !ENV HARDCOVER_API_KEY
+    reading_list:
+      want-to-read: {} # type defaults to ebook
+      # books-to-download:
+      #   type: ebook
+      # audiobooks:
+      #   type: audiobook
+      # type: [ebook, audiobook] requests both independently.
 
 # Redact secrets from logs and config dumps
 redact_sensitive_data: true
@@ -18,13 +25,24 @@ mam_id: !ENV MAM_ID
 lang_codes:
   - "ENG"
 
-# Calibre settings
+# Calibre settings (required only when ebooks are requested)
 calibre:
   calibredb_executable: "calibredb"
   command_timeout_seconds: 120 # Maximum runtime for each calibredb command
   library: "http://localhost:8080/#books" # Or a local library path
   server_username: "user"
   server_password: !ENV CALIBRE_PASSWORD
+
+# Required only when audiobooks are requested. API key is always redacted in output.
+# audiobookshelf:
+#   url: https://audiobooks.example.com
+#   api_key: !ENV AUDIOBOOKSHELF_API_KEY
+#   library_id: your-library-id
+#   library_path: /mnt/audiobooks # Absolute path as seen by Murid
+#   filetypes: [m4b, mp3]
+#   scan_timeout_seconds: 120 # Separate from torrent download timeout
+#   staging_path: /mnt/.murid-staging-audiobooks # Optional; same filesystem, outside scanned roots
+#   folder_id: your-folder-id # Required only if the library has multiple roots
 
 # qBittorrent connection settings
 qbittorrent:

@@ -284,6 +284,24 @@ def test_search_author_searches_author_field_only(mam):
     assert captured["query"].search_fields == ["author"]
 
 
+@pytest.mark.parametrize("medium,category", [("ebook", 14), ("audiobook", 13)])
+@pytest.mark.parametrize("search", ["search_title", "search_author"])
+def test_media_searches_scope_every_query_to_its_main_category(mam, medium, category, search):
+    queries = []
+    mam.search = lambda query: queries.append(query) or set()
+    getattr(mam, search)("Dune", medium)
+    assert queries[0].main_categories == [category]
+    assert queries[0].search_fields == (
+        ["author"] if search == "search_author" else ["title", "author", "series"]
+    )
+
+
+@pytest.mark.parametrize("category,expected", [(13, "audiobook"), ("14", "ebook"), (None, None)])
+def test_parse_main_category_preserves_medium(category, expected):
+    torrent = MyAnonamouse._parse_torrent({"main_cat": category})
+    assert torrent.media_type == expected
+
+
 def test_parse_torrent_multiple_authors():
     torrent = MyAnonamouse._parse_torrent({"author_info": '{"1":"Author One","2":"Author Two"}'})
 

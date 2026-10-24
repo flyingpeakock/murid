@@ -41,9 +41,10 @@ class MuridArgumentParser(argparse.ArgumentParser):
         sub_parsers = {}
         sub_parsers["run"] = command_subparsers.add_parser(
             "run",
-            help="Sync the Hardcover reading list with Calibre once",
+            help="Sync Hardcover reading lists with their libraries once",
             description=(
-                "Compare Hardcover books with Calibre, search MyAnonamouse for missing books, "
+                "Compare Hardcover requests with Calibre and Audiobookshelf, "
+                "search for missing books, "
                 "and import available downloads. Run once, then exit."
             ),
         )
@@ -67,7 +68,7 @@ class MuridArgumentParser(argparse.ArgumentParser):
 
         sub_parsers["test-connection"] = command_subparsers.add_parser(
             "test-connection",
-            help="Check access to Hardcover, Calibre, MyAnonamouse, and qBittorrent",
+            help="Check configured libraries, Hardcover, MyAnonamouse, and qBittorrent",
             description=(
                 "Test each configured service independently and report connection or "
                 "authentication failures."
@@ -76,10 +77,10 @@ class MuridArgumentParser(argparse.ArgumentParser):
 
         sub_parsers["list-missing"] = command_subparsers.add_parser(
             "list-missing",
-            help="List Hardcover books missing from Calibre",
+            help="List Hardcover requests missing from their media-specific libraries",
             description=(
-                "Fetch the Hardcover reading list and Calibre library, then list Hardcover books "
-                "that the matcher considers missing from Calibre."
+                "Compare configured Hardcover requests with Calibre for ebooks and "
+                "Audiobookshelf for audiobooks, then list missing requests."
             ),
         )
 
@@ -94,10 +95,10 @@ class MuridArgumentParser(argparse.ArgumentParser):
 
         sub_parsers["retry-import"] = command_subparsers.add_parser(
             "retry-import",
-            help="Retry Calibre imports for Murid downloads needing attention",
+            help="Retry imports for Murid downloads needing attention",
             description=(
                 "Check timed-out and failed-import torrents in Murid's qBittorrent category, "
-                "and retry importing completed downloads into Calibre."
+                "and retry importing completed downloads into the correct library."
             ),
         )
 
@@ -107,32 +108,34 @@ class MuridArgumentParser(argparse.ArgumentParser):
             description=(
                 "Find a book on the Hardcover reading list, search MyAnonamouse, "
                 "and explain which torrent Murid would select. Use --add to download "
-                "the selected torrent and import its completed ebook into Calibre."
+                "the selected torrent and import it into the selected media library."
             ),
         )
         sub_parsers["search-book"].add_argument("name", help="Name of the book on Hardcover")
         sub_parsers["search-book"].add_argument(
             "--add",
             action="store_true",
-            help="Add the selected torrent to qBittorrent and import its ebook into Calibre",
+            help="Download and import the selected torrent into its media library",
         )
 
         sub_parsers["add-book"] = command_subparsers.add_parser(
             "add-book",
-            help="Add an ebook file using metadata from your Hardcover reading list",
+            help="Import a local ebook or audiobook using Hardcover metadata",
             description=(
                 "Match a book name against your Hardcover reading list and add the given "
-                "ebook file to Calibre with the matched book's metadata."
+                "ebook file or audiobook folder with the matched book's metadata."
             ),
         )
         sub_parsers["add-book"].add_argument("name", help="Name of the book on Hardcover")
-        sub_parsers["add-book"].add_argument("path", help="Path to an individual ebook file")
+        sub_parsers["add-book"].add_argument(
+            "path", help="Path to an ebook file, M4B file, or complete audiobook folder"
+        )
 
         sub_parsers["review-matches"] = command_subparsers.add_parser(
             "review-matches",
-            help="Show Hardcover to Calibre matches, scores, and evidence",
+            help="Show Hardcover library matches, scores, and evidence for each medium",
             description=(
-                "Compare Hardcover books with Calibre and show match scores, supporting metadata, "
+                "Compare requests with their media-specific libraries and show scores, metadata, "
                 "and ambiguous candidates. Show all books unless a filter is selected."
             ),
         )
@@ -143,14 +146,14 @@ class MuridArgumentParser(argparse.ArgumentParser):
             const=True,
             default=None,
             dest="matched",
-            help="Show only Hardcover books with an accepted Calibre match",
+            help="Show only Hardcover requests with an accepted library match",
         )
         review_filter.add_argument(
             "--unmatched",
             action="store_const",
             const=False,
             dest="matched",
-            help="Show only Hardcover books without an accepted Calibre match",
+            help="Show only Hardcover requests without an accepted library match",
         )
 
         sub_parsers["validate-config"] = command_subparsers.add_parser(
@@ -164,6 +167,42 @@ class MuridArgumentParser(argparse.ArgumentParser):
             help="Print the parsed configuration",
             description="Read and print the parsed Murid configuration, then exit.",
         )
+
+        for command in (
+            "run",
+            "schedule",
+            "list-missing",
+            "review-matches",
+            "status",
+            "retry-import",
+            "test-connection",
+            "search-book",
+            "add-book",
+        ):
+            media = sub_parsers[command].add_mutually_exclusive_group()
+            media.add_argument(
+                "--ebooks",
+                dest="media_type",
+                action="store_const",
+                const="ebook",
+                help="Only process ebooks (Calibre)",
+            )
+            media.add_argument(
+                "--audiobooks",
+                dest="media_type",
+                action="store_const",
+                const="audiobook",
+                help="Only process audiobooks (Audiobookshelf)",
+            )
+            if command in ("search-book", "add-book"):
+                media.add_argument(
+                    "--media-type",
+                    choices=["ebook", "audiobook"],
+                    help="Requested medium and destination library",
+                )
+            sub_parsers[command].set_defaults(
+                media_type="ebook" if command in ("search-book", "add-book") else None
+            )
 
         config_path = str(self.default_config_path())
         for command, parser in sub_parsers.items():
@@ -201,11 +240,11 @@ class MuridArgumentParser(argparse.ArgumentParser):
                     type=str.upper,
                     choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                 )
-            if command in ("run", "schedule"):
+            if command in ("run", "schedule", "search-book", "add-book", "retry-import"):
                 parser.add_argument(
                     "--dry-run",
                     "-d",
-                    help="Find books and torrents without adding them to qBittorrent or Calibre",
+                    help="Preview without adding torrents, copying, scanning, or tag changes",
                     action="store_true",
                     dest="dry_run",
                 )

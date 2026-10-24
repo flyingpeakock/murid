@@ -14,6 +14,66 @@ def records(result, kind):
     return [record for record in result.records if record["type"] == kind]
 
 
+def configure_audio(workflow):
+    workflow.config.pop("calibre")
+    workflow.config["hardcover_api_keys"] = [
+        {
+            "api_key": "Bearer integration-token",
+            "reading_list": {"want-to-read": {"type": ["audiobook"]}},
+        },
+    ]
+    workflow.config["audiobookshelf"] = {
+        "url": "https://audio.example.com",
+        "api_key": "private-audio-key",
+        "library_id": "audio-id",
+        "library_path": str(workflow.audio_library_path),
+    }
+
+
+def test_audio_config_validates_without_calibre_or_mount(workflow):
+    configure_audio(workflow)
+    assert not workflow.audio_library_path.exists()
+    result = workflow.run("validate-config")
+    assert result.code == 0, result.errors
+    assert not workflow.audio_library_path.exists()
+
+
+def test_grouped_ebook_lists_use_every_list(workflow):
+    workflow.config["hardcover_api_keys"] = [
+        {
+            "api_key": "Bearer integration-token",
+            "reading_list": {"want-to-read": {}},
+        }
+    ]
+    result = workflow.run("list-missing")
+    assert result.code == 0, result.errors
+    assert records(result, "missing_summary")[0]["count"] == 1
+
+
+def test_grouped_audio_config_can_run_discovery_without_library_writes(workflow):
+    configure_audio(workflow)
+    workflow.config["hardcover_api_keys"] = [
+        {
+            "api_key": "Bearer integration-token",
+            "reading_list": {"audiobooks": {"type": "audiobook"}},
+        }
+    ]
+    assert workflow.run("validate-config").code == 0
+    result = workflow.run("run", "--dry-run")
+    assert records(result, "sync_summary")[0]["missing"] == 1
+    assert workflow.api.added_files == []
+
+
+def test_audio_print_config_json_always_hides_key(workflow):
+    configure_audio(workflow)
+    workflow.config["redact_sensitive_data"] = False
+    result = workflow.run("print-config")
+    assert result.code == 0, result.errors
+    rendered = records(result, "config")[0]["config"]
+    assert rendered["audiobookshelf"]["api_key"] == "**REDACTED**"
+    assert "private-audio-key" not in str(result)
+
+
 def seed_library(workflow):
     workflow.database.write_text(
         json.dumps(
@@ -29,13 +89,94 @@ def seed_library(workflow):
     )
 
 
+def seed_audio(workflow, tracks=1):
+    workflow.audio_items = [
+        {
+            "id": "item-id",
+            "libraryId": "audio-id",
+            "mediaType": "book",
+            "isMissing": False,
+            "isInvalid": False,
+            "media": {
+                "numTracks": tracks,
+                "numAudioFiles": tracks,
+                "metadata": {"title": "Dune", "authors": [{"name": "Frank Herbert"}]},
+                "tags": ["murid:hardcover:42"],
+                "tracks": [{"duration": 100}] if tracks else [],
+            },
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "ebook_present,audio_present",
+    [(True, False), (False, True), (True, True)],
+)
+def test_mixed_media_inspection_routes_each_request(workflow, ebook_present, audio_present):
+    ebook_config = workflow.config["calibre"]
+    configure_audio(workflow)
+    workflow.config["calibre"] = ebook_config
+    workflow.config["hardcover_api_keys"][0]["reading_list"] = {
+        "want-to-read": {"type": ["ebook", "audiobook"]},
+    }
+    if ebook_present:
+        seed_library(workflow)
+    if audio_present:
+        seed_audio(workflow)
+    before = workflow.database.read_text()
+    result = workflow.run("list-missing")
+    assert result.code == 0, result.errors
+    assert {r["media_type"] for r in records(result, "missing_book")} == (
+        ({"ebook"} if not ebook_present else set())
+        | ({"audiobook"} if not audio_present else set())
+    )
+    review = workflow.run("review-matches")
+    assert review.code == 0, review.errors
+    assert {r["media_type"]: r["matched"] for r in records(review, "match_review")} == {
+        "ebook": ebook_present,
+        "audiobook": audio_present,
+    }
+    assert workflow.database.read_text() == before
+    assert workflow.api.added_files == []
+    assert not any("myanonamouse" in url for _, url, _ in workflow.requests)
+
+
+def test_audio_only_inspection_needs_no_calibre_and_ignores_ebook_only_items(workflow, monkeypatch):
+    configure_audio(workflow)
+    seed_audio(workflow, tracks=0)
+
+    def no_calibre(*args, **kwargs):
+        raise AssertionError("Calibre must not be initialized for audio-only requests")
+
+    monkeypatch.setattr("murid.services.service_factory.Calibre", no_calibre)
+    result = workflow.run("list-missing")
+    assert result.code == 0, result.errors
+    missing = records(result, "missing_book")
+    assert len(missing) == 1
+    assert missing[0]["media_type"] == "audiobook"
+    assert missing[0]["destination"] == "Audiobookshelf"
+
+
+@pytest.mark.parametrize("command", ["list-missing", "review-matches"])
+def test_library_access_failure_is_not_reported_as_empty(workflow, command):
+    configure_audio(workflow)
+    workflow.audio_status = 403
+    result = workflow.run(command)
+    assert result.code == 1
+    assert "HTTP 403" in str(result.errors)
+    assert "private-audio-key" not in str(result)
+    assert not records(result, "missing_book")
+    assert not records(result, "missing_summary")
+    assert not records(result, "review_summary")
+
+
 def seed_torrent(workflow, **overrides):
     values = {
         "hash": "existing-hash",
         "name": "Dune",
         "state": "uploading",
         "category": "murid",
-        "tags": "murid_timeout,murid_pending",
+        "tags": "murid-timeout,murid",
         "progress": 1.0,
         "content_path": "/remote/downloads/Dune",
         "comment": "MID=101",
@@ -44,6 +185,37 @@ def seed_torrent(workflow, **overrides):
     torrent = SimpleNamespace(**values)
     workflow.api.torrents.append(torrent)
     return torrent
+
+
+@pytest.mark.parametrize(
+    "tags,comment",
+    [
+        ("murid-import-failed,murid_media_audiobook", "MID=101"),
+        ("murid-import-failed", "MID=101\n[murid:1]invalid-json"),
+    ],
+)
+def test_search_preview_reports_invalid_torrent_identity_without_blocking_candidates(
+    workflow, tags, comment
+):
+    torrent = seed_torrent(workflow, tags=tags, comment=comment)
+    original = vars(torrent).copy()
+
+    preview = workflow.run("search-book", "Dune", "--ebooks")
+
+    assert preview.code == 0, preview.errors
+    assert any(item["selected"] for item in records(preview, "candidate"))
+    assert any("existing-hash" in error["message"] for error in preview.errors)
+    assert vars(torrent) == original
+    assert workflow.api.added_files == []
+    assert workflow.database.read_text() == "[]"
+
+    recovery = workflow.run("run")
+
+    assert recovery.code == 1
+    assert records(recovery, "sync_summary")[0]["skipped"] == 1
+    assert vars(torrent) == original
+    assert workflow.api.added_files == []
+    assert workflow.database.read_text() == "[]"
 
 
 @pytest.mark.parametrize("present", [False, True])
@@ -91,7 +263,7 @@ def test_review_matches_applies_filters_and_reports_evidence(workflow, present, 
 
 
 def test_status_reports_only_configured_category_and_attention(workflow):
-    seed_torrent(workflow, tags="murid_import_failed,murid_timeout")
+    seed_torrent(workflow, tags="murid-import-failed,murid-timeout")
     seed_torrent(workflow, hash="other-hash", category="other", name="Unrelated")
 
     result = workflow.run("status")
@@ -155,8 +327,11 @@ def test_search_book_reports_unknown_title(workflow):
     assert workflow.api.added_files == []
 
 
-def test_add_book_imports_hardcover_metadata_and_rejects_duplicate(workflow):
-    path = str(workflow.downloads / "Dune.epub")
+@pytest.mark.parametrize("extension", ["epub", "pdf"])
+def test_add_book_imports_hardcover_metadata_and_rejects_duplicate(workflow, extension):
+    file = workflow.downloads / f"Dune.{extension}"
+    file.write_bytes(b"fixture ebook")
+    path = str(file)
 
     result = workflow.run("add-book", "Dune", path)
     duplicate = workflow.run("add-book", "Dune", path)
@@ -171,6 +346,8 @@ def test_add_book_imports_hardcover_metadata_and_rejects_duplicate(workflow):
     assert duplicate.code == 1
     assert "already in Calibre" in duplicate.errors[0]["message"]
     assert workflow.api.added_files == []
+    imports = (workflow.library / "imports.jsonl").read_text().splitlines()
+    assert json.loads(imports[0])[-1] == path
 
 
 @pytest.mark.parametrize("file_kind", ["missing", "directory"])
@@ -196,7 +373,9 @@ def test_retry_import_handles_existing_download_without_adding(workflow, progres
     assert outcome["imported"] == int(progress == 1)
     assert outcome["pending"] == int(progress < 1)
     assert len(json.loads(workflow.database.read_text())) == int(progress == 1)
-    assert torrent.tags == ("murid_timeout,murid_pending" if progress < 1 else "")
+    assert set(filter(None, torrent.tags.split(","))) == (
+        {"murid-timeout", "murid"} if progress < 1 else set()
+    )
     assert workflow.api.added_files == []
     assert not any("download.php" in url for _, url, _ in workflow.requests)
 
@@ -248,7 +427,7 @@ def test_print_config_includes_defaults_and_respects_redaction(workflow, redact)
     assert config["schedule"] == "0 * * * *"
     assert config["filetypes"] == ["epub", "mobi"]
     assert config["hardcover_api_keys"] == (
-        "**REDACTED**" if redact else ["Bearer integration-token"]
+        "**REDACTED**" if redact else workflow.config["hardcover_api_keys"]
     )
     assert config["mam_id"] == ("**REDACTED**" if redact else "integration-cookie")
     assert config["qbittorrent"]["password"] == ("**REDACTED**" if redact else "integration")

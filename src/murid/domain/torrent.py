@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .book import Book
+from .book_request import MediaType
 
 
 @dataclass
@@ -19,7 +20,7 @@ class TorrentMetadata:
 
 
 @dataclass(slots=True)
-class Torrent:
+class Torrent:  # pylint: disable=too-many-instance-attributes
     """Represents a torrent with its metadata and associated book."""
 
     book: Book
@@ -29,6 +30,7 @@ class Torrent:
     language: str | None = None
     file_types: list[str] | None = None
     raw: dict[str, Any] | None = None
+    media_type: MediaType | None = None
 
     @property
     def download_url(self) -> str | None:

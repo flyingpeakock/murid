@@ -10,10 +10,10 @@ command, as in the examples below.
 | --- | --- |
 | `run` | Sync once and exit |
 | `schedule` | Sync repeatedly using the configured cron schedule |
-| `list-missing` | List Hardcover books missing from Calibre |
-| `review-matches` | Inspect Hardcover to Calibre matches and scores; use `--matched` or `--unmatched` to filter |
+| `list-missing` | List Hardcover requests missing from their respective libraries, with media type and destination |
+| `review-matches` | Inspect library matches and scores for each medium; use `--matched` or `--unmatched` to filter |
 | `search-book NAME` | Preview torrent candidates for a Hardcover book; use `--add` to download and import the selected torrent |
-| `add-book NAME PATH` | Import an ebook file with metadata from Hardcover |
+| `add-book NAME PATH` | Import a local ebook, or an audiobook with `--audiobooks` |
 | `status` | Show Murid torrents and their download and import status |
 | `retry-import` | Retry imports for tagged downloads |
 | `test-connection` | Check access to each configured service |
@@ -66,6 +66,37 @@ murid review-matches --unmatched --config ./config.yaml
 murid validate-config --config ./config.yaml
 ```
 
+`list-missing` and `review-matches` compare ebook requests with Calibre and
+audiobook requests with Audiobookshelf. A book requested in both formats is
+checked independently in each library. Inspection is read-only, and a library
+lookup error stops the command rather than reporting that library as empty.
+
+## Choose ebooks or audiobooks
+
+Use `--ebooks` or `--audiobooks` to restrict `list-missing`, `review-matches`,
+`run`, `schedule`, `retry-import`, `status`, or `test-connection` to one medium.
+Without either flag, these commands retain their existing behavior across configured
+media. The flags are mutually exclusive.
+
+```bash
+murid list-missing --audiobooks
+murid review-matches --ebooks --unmatched
+murid run --audiobooks --dry-run
+murid retry-import --audiobooks
+murid status --ebooks
+murid test-connection --audiobooks
+```
+
+Filtered sync and inspection fetch only reading lists requesting that medium and
+use only its library. Retry leaves torrents for the other medium untouched.
+Legacy torrents without media tags are ebooks. Invalid torrent identities still
+appear in status and require resolution before sync or retry can report success.
+Connection checks restrict the library check while still checking shared services.
+
+`search-book` and `add-book` also accept these flags and default to ebooks when
+neither is given. `--media-type ebook|audiobook` remains supported on these two
+commands as an alternative to the flags.
+
 ## Import a local ebook
 
 To import a file that Murid could not select automatically, give the book name from your
@@ -78,6 +109,9 @@ murid add-book "Children of Dune" /path/to/children-of-dune.epub --config ./conf
 Murid matches the name against your Hardcover books, including close spellings and alternate
 titles, then uses the matched title, authors, and series when adding the file to Calibre.
 It stops if the name is ambiguous or the book already exists in Calibre.
+The explicit file overrides automatic `filetypes` preferences; Calibre determines
+whether it supports the selected format. Automatic torrent imports still apply
+the configured format filter.
 
 ## Inspect downloads and retry imports
 
@@ -144,20 +178,24 @@ The default is every hour. For a single sync, use `murid run`; add `--dry-run` t
 preview matches and fetch selected `.torrent` files without adding torrents or
 downloading ebooks. See the [quick start](../README.md#quick-start) for initial setup.
 
-Downloads receive a persistent `murid_pending` tag when added to qBittorrent.
+Downloads receive a persistent `murid` tag when added to qBittorrent.
 Each scheduled run checks pending and timed-out torrents again, including downloads
 left behind by an interrupted run. Once the book is confirmed in Calibre, Murid
-clears the pending and timeout tags. If a completed download fails to import, Murid
-marks it `murid_import_failed`; use `retry-import` after investigating the failure.
-Recovery uses the MyAnonamouse ID in the torrent comment to identify the download,
-then matches its title, authors, and identifiers against the configured Hardcover
-Want to Read lists. A unique match supplies the Hardcover ID and book metadata
-used for file selection and import. Books missing from those lists or matching
-multiple Hardcover works are reported as skipped and remain tagged for attention;
-check the reading lists or import an individual ebook with `add-book`.
+clears its lifecycle tags. Downloads exceeding the wait limit receive
+`murid-timeout`; completed downloads that fail to import receive
+`murid-import-failed`. Use `retry-import` after investigating a failure.
+Recovery reads the media type and Hardcover ID from the torrent comment and fetches
+the work directly, even if it has since left your reading lists. Older identity
+tags automatically migrate during sync, retry, or torrent add; no migration command
+is required. Original comments and MaM IDs are preserved. See
+[torrent metadata and migration](configuration.md#audiobookshelf) for details.
 
-If two requested books resolve to the same torrent hash in a batch, Murid imports
-the first book and reports the second as a failure instead of replacing the first.
+Legacy ebooks without a recorded Hardcover ID still use the MaM ID in the comment
+and require a unique match in the configured Hardcover lists. Unresolved or
+conflicting identities remain tagged for attention and block sync discovery.
+
+If two requested works resolve to the same torrent hash in a batch, Murid rejects
+the conflicting request and stops the batch before imports begin.
 Use `add-book` to import another book from the completed download.
 
 | Expression    | Meaning        |
@@ -166,3 +204,41 @@ Use `add-book` to import another book from the completed download.
 | `0 */6 * * *` | Every 6 hours  |
 | `0 3 * * *`   | Daily at 03:00 |
 | `0 0 * * 0`   | Weekly         |
+
+## Audiobook commands
+
+Manual commands look up titles across your configured Hardcover lists. The media
+flag chooses the destination and torrent preferences, independently of the list's
+automatic media setting. It defaults to `ebook`; the corresponding library must
+be configured.
+
+```bash
+murid search-book "Book title" --audiobooks --config ./config.yaml
+murid search-book "Book title" --audiobooks --add --dry-run --config ./config.yaml
+murid add-book "Book title" "/downloads/Book title" --audiobooks --dry-run --config ./config.yaml
+murid add-book "Book title" "/downloads/Book title" --audiobooks --config ./config.yaml
+```
+
+Use one M4B file or a complete single-book MP3/M4B folder. A complete audiobook
+stored as one MP3 must be placed in its own title-matched folder. Track/disc
+structure is retained; supported disc folders are described in the
+[configuration reference](configuration.md). Sources stay available for seeding.
+If ingestion is delayed, `add-book` reports pending and exits with status 1;
+repeating it checks the existing journal/destination without another copy, even
+when that original source path no longer exists. The title must still resolve
+against your configured lists. Torrent recovery can resolve removed-list works
+by their saved Hardcover ID.
+
+`run`, `schedule`, `search-book`, `add-book`, and `retry-import` support `--dry-run`.
+Search and sync previews may fetch `.torrent` data but never add torrents, import
+files, scan libraries, or clear lifecycle tags. JSON search/import/status records
+include `media_type` and `destination`; status also includes the saved Hardcover ID
+and flags conflicting request tags. Sync and retry summaries include `by_media`
+counts so a pending audiobook cannot be mistaken for an ebook failure.
+
+`test-connection` checks each configured or required library. Audiobookshelf checks
+cover server version, admin/root access, usable items, folder selection, shared
+library access, staging placement, and its existing writable ancestor. These are
+read-only checks. A successful diagnostic does not prove physical bind-mount aliases
+or replace a real ingestion test. Run it with the actual service user's credentials
+and environment before enabling scheduled imports.

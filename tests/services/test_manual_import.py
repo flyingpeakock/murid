@@ -21,11 +21,12 @@ def book(id, title, alternative_titles=None):
 
 def factory(books):
     calibre = Mock()
+    calibre.name = "Calibre"
     calibre.contains_book.return_value = False
     return SimpleNamespace(
         matcher=lambda: BookMatcher(0.85),
         hardcover=lambda: [SimpleNamespace(get_books=lambda: books)],
-        calibre=lambda: calibre,
+        library=lambda media: calibre,
     )
 
 
@@ -38,7 +39,7 @@ def test_add_book_matches_misspelling_and_uses_hardcover_metadata(tmp_path):
     result = add_book("Children of Dunee", str(file), services)
 
     assert result is matched
-    services.calibre().add_book.assert_called_once_with(matched, str(file))
+    assert services.library("ebook").import_book.call_args.args[:2] == (matched, str(file))
 
 
 def test_add_book_matches_alternative_title(tmp_path):
@@ -58,7 +59,7 @@ def test_add_book_rejects_ambiguous_name(tmp_path):
     with pytest.raises(ManualImportError, match="More than one Hardcover book"):
         add_book("Dune", str(file), services)
 
-    services.calibre().add_book.assert_not_called()
+    services.library("ebook").import_book.assert_not_called()
 
 
 def test_add_book_rejects_unknown_name(tmp_path):
@@ -69,19 +70,19 @@ def test_add_book_rejects_unknown_name(tmp_path):
     with pytest.raises(ManualImportError, match="No Hardcover book matched"):
         add_book("Unknown book", str(file), services)
 
-    services.calibre().add_book.assert_not_called()
+    services.library("ebook").import_book.assert_not_called()
 
 
 def test_add_book_rejects_duplicate(tmp_path):
     file = tmp_path / "file.epub"
     file.write_bytes(b"ebook")
     services = factory({book(1, "Dune")})
-    services.calibre().contains_book.return_value = True
+    services.library("ebook").contains_book.return_value = True
 
     with pytest.raises(ManualImportError, match="already in Calibre"):
         add_book("Dune", str(file), services)
 
-    services.calibre().add_book.assert_not_called()
+    services.library("ebook").import_book.assert_not_called()
 
 
 def test_add_book_rejects_missing_file_before_loading_clients(tmp_path):
@@ -90,4 +91,4 @@ def test_add_book_rejects_missing_file_before_loading_clients(tmp_path):
     with pytest.raises(ManualImportError, match="does not exist"):
         add_book("Dune", str(tmp_path / "missing.epub"), services)
 
-    services.calibre().add_book.assert_not_called()
+    services.library("ebook").import_book.assert_not_called()

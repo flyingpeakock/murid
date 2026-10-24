@@ -8,6 +8,17 @@ in {
     ...
   }: let
     cfg = config.services.murid;
+    mediaTypes =
+      if cfg.config == null
+      then []
+      else
+        lib.concatMap (entry:
+          lib.concatMap (options:
+            if builtins.isString options.type
+            then [options.type]
+            else options.type)
+          (builtins.attrValues entry.reading_list))
+        cfg.config.hardcover_api_keys;
 
     yaml = pkgs.formats.yaml {};
     createYAMLConfig = config: yaml.generate "murid.yaml" config;
@@ -108,6 +119,17 @@ in {
         default = "murid";
       };
 
+      supplementaryGroups = lib.mkOption {
+        description = "Additional service groups for reading downloads and writing shared libraries";
+        type = lib.types.listOf lib.types.str;
+        default = [];
+      };
+      requiresMountsFor = lib.mkOption {
+        description = "Additional absolute paths whose mounts must be available before Murid starts; use for configFile deployments and download mounts";
+        type = lib.types.listOf (lib.types.addCheck lib.types.str (lib.hasPrefix "/"));
+        default = [];
+      };
+
       configFile = lib.mkOption {
         description = ''
           Path to the murid configuration file.
@@ -137,8 +159,32 @@ in {
         type = lib.types.nullOr (lib.types.submodule {
           options = {
             hardcover_api_keys = lib.mkOption {
-              description = "List of API keys for hardcover";
-              type = lib.types.listOf configEnvType;
+              description = "Hardcover accounts with API tokens and grouped reading lists";
+              type = lib.types.listOf (lib.types.submodule {
+                options = {
+                  api_key = lib.mkOption {
+                    description = "Hardcover API token, including the Bearer prefix";
+                    type = configEnvType;
+                  };
+                  reading_list = lib.mkOption {
+                    description = "List slugs mapped to options; type defaults to ebook";
+                    # attrsOf supplies an empty value even when this option is omitted.
+                    apply = lists:
+                      if lists == {}
+                      then throw "Hardcover reading_list must be a non-empty mapping"
+                      else lists;
+                    type = lib.types.attrsOf (lib.types.submodule {
+                      options.type = lib.mkOption {
+                        description = "Requested medium, or a list requesting both media";
+                        default = "ebook";
+                        type =
+                          lib.types.either (lib.types.enum ["ebook" "audiobook"])
+                          (lib.types.addCheck (lib.types.listOf (lib.types.enum ["ebook" "audiobook"])) (values: values != []));
+                      };
+                    });
+                  };
+                };
+              });
               default = [];
             };
 
@@ -172,7 +218,53 @@ in {
 
             calibre = lib.mkOption {
               description = "Calibre configuration";
-              type = configCalibreType;
+              type = lib.types.nullOr configCalibreType;
+              default = null;
+            };
+
+            audiobookshelf = lib.mkOption {
+              description = "Audiobookshelf configuration; required for audiobook requests";
+              default = null;
+              type = lib.types.nullOr (lib.types.submodule {
+                options = {
+                  url = lib.mkOption {
+                    description = "Audiobookshelf HTTP(S) base URL";
+                    type = lib.types.str;
+                  };
+                  api_key = lib.mkOption {
+                    description = "API key for an active admin/root user with library access";
+                    type = configEnvType;
+                  };
+                  library_id = lib.mkOption {
+                    description = "Audiobookshelf book library ID";
+                    type = lib.types.str;
+                  };
+                  library_path = lib.mkOption {
+                    description = "Absolute shared library path as seen by Murid";
+                    type = lib.types.str;
+                  };
+                  staging_path = lib.mkOption {
+                    description = "Private staging directory outside all scanned roots on the library filesystem; defaults to a sibling of library_path";
+                    type = lib.types.nullOr lib.types.str;
+                    default = null;
+                  };
+                  folder_id = lib.mkOption {
+                    description = "Audiobookshelf folder ID corresponding to library_path; required for multiple library roots";
+                    type = lib.types.nullOr lib.types.str;
+                    default = null;
+                  };
+                  scan_timeout_seconds = lib.mkOption {
+                    description = "Separate maximum wait for verified Audiobookshelf ingestion";
+                    type = lib.types.ints.positive;
+                    default = 120;
+                  };
+                  filetypes = lib.mkOption {
+                    description = "Accepted audiobook formats in preference order";
+                    type = lib.types.addCheck (lib.types.listOf (lib.types.enum ["m4b" "mp3"])) (values: values != []);
+                    default = ["m4b" "mp3"];
+                  };
+                };
+              });
             };
 
             schedule = lib.mkOption {
@@ -229,6 +321,14 @@ in {
           assertion = (cfg.config != null) != (cfg.configFile != null);
           message = "Set exactly one of services.murid.config or services.murid.configFile";
         }
+        {
+          assertion = !(builtins.elem "ebook" mediaTypes) || cfg.config.calibre != null;
+          message = "Ebook requests require services.murid.config.calibre";
+        }
+        {
+          assertion = !(builtins.elem "audiobook" mediaTypes) || cfg.config.audiobookshelf != null;
+          message = "Audiobook requests require services.murid.config.audiobookshelf";
+        }
       ];
 
       users = {
@@ -244,12 +344,25 @@ in {
       };
 
       systemd.services.murid = {
-        description = "Murid automatically keeps your Calibre library in sync";
+        description = "Murid syncs Hardcover ebook and audiobook requests with their libraries";
         enable = true;
         after = ["network.target"];
         wantedBy = ["multi-user.target"];
+        unitConfig.RequiresMountsFor = lib.unique (cfg.requiresMountsFor
+          ++ (
+            if cfg.config != null && cfg.config.audiobookshelf != null
+            then let
+              audio = cfg.config.audiobookshelf;
+              staging =
+                if audio.staging_path != null
+                then audio.staging_path
+                else "${builtins.dirOf audio.library_path}/.murid-staging-${builtins.baseNameOf audio.library_path}";
+            in [audio.library_path staging]
+            else []
+          ));
         serviceConfig = {
           Type = "simple";
+          SupplementaryGroups = cfg.supplementaryGroups;
           User = cfg.user;
           Group = cfg.group;
           EnvironmentFile = lib.optionalString (cfg.environmentFile != null) cfg.environmentFile;

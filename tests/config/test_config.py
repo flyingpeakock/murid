@@ -1,16 +1,21 @@
 # test_config.py
 
 import logging
+from copy import deepcopy
 from io import StringIO
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 import yaml
 
-from murid.config import Config, ConfigError, _defaults, env_constructor
+from murid.config import Config, ConfigError, env_constructor
+from murid.services.service_factory import ServiceFactory
 
 missing = object()
-base = _defaults.copy() | {
-    "hardcover_api_keys": ["Bearer secret123"],
+base = {
+    "hardcover_api_keys": [{"api_key": "Bearer secret123", "reading_list": {"want-to-read": {}}}],
     "calibre": {
         "library": "metadata.db",
     },
@@ -26,10 +31,185 @@ base = _defaults.copy() | {
 }
 
 
+def audiobook_settings(**overrides):
+    return {
+        "url": "https://audio.example.com/abs/",
+        "api_key": "audio-secret",
+        "library_id": "library-id",
+        "library_path": str(Path("audiobooks").absolute()),
+        **overrides,
+    }
+
+
+def test_grouped_reading_lists_and_defaults(build_config):
+    entries = [
+        {
+            "api_key": "Bearer key",
+            "reading_list": {
+                "want-to-read": {},
+                "audio": {"type": "audiobook"},
+                "both": {"type": ["ebook", "audiobook"]},
+            },
+        }
+    ]
+    config = build_config(hardcover_api_keys=entries, audiobookshelf=audiobook_settings())
+    assert config.hardcover_lists == [
+        {"api_key": "Bearer key", "list": "audio", "media_types": ["audiobook"]},
+        {"api_key": "Bearer key", "list": "both", "media_types": ["ebook", "audiobook"]},
+        {"api_key": "Bearer key", "list": "want-to-read", "media_types": ["ebook"]},
+    ]
+
+
+def test_reading_list_is_required(build_config):
+    with pytest.raises(ConfigError, match="reading_list"):
+        build_config(hardcover_api_keys=[{"api_key": "Bearer key"}])
+
+
+def test_normalized_lists_preserve_raw_config_and_are_reused_by_factory(build_config, monkeypatch):
+    entries = [{"api_key": "Bearer custom", "reading_list": {"selected": {}}}]
+    config = build_config(hardcover_api_keys=entries)
+    assert config.hardcover_api_keys == entries
+    assert yaml.safe_load(str(config))["hardcover_api_keys"] == "**REDACTED**"
+    normalize = Mock(side_effect=AssertionError("Loaded config must not be normalized again"))
+    monkeypatch.setattr("murid.services.service_factory.hardcover_list_settings", normalize)
+    factory = ServiceFactory(SimpleNamespace(), config, initialize_notifier=False)
+    assert factory.hardcover_lists is config.hardcover_lists
+    normalize.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "lists",
+    [
+        {},
+        None,
+        [],
+        {"want to read": {}},
+        {"": {}},
+        {5: {}},
+        {"audio": None},
+        {"audio": {"format": "mp3"}},
+        {"audio": {"type": "audiobooks"}},
+        {"audio": {"type": []}},
+        {"audio": {"type": True}},
+        {"audio": {"type": ["video"]}},
+    ],
+)
+def test_invalid_grouped_reading_lists(build_config, lists):
+    with pytest.raises(ConfigError, match="reading_list"):
+        build_config(hardcover_api_keys=[{"api_key": "Bearer key", "reading_list": lists}])
+
+
+@pytest.mark.parametrize("legacy", [{"list": "a"}, {"media_types": ["ebook"]}])
+def test_grouped_lists_reject_ambiguous_legacy_settings(build_config, legacy):
+    with pytest.raises(ConfigError, match="Extra inputs are not permitted"):
+        build_config(
+            hardcover_api_keys=[
+                {
+                    "api_key": "Bearer key",
+                    "reading_list": {"a": {}},
+                    **legacy,
+                }
+            ]
+        )
+
+
+def test_grouped_audio_only_needs_no_calibre(build_config):
+    config = build_config(
+        calibre=missing,
+        audiobookshelf=audiobook_settings(),
+        hardcover_api_keys=[
+            {
+                "api_key": "Bearer key",
+                "reading_list": {
+                    "audio": {"type": "audiobook"},
+                },
+            }
+        ],
+    )
+    assert config.audiobookshelf["library_id"] == "library-id"
+
+
+@pytest.mark.parametrize("media_types", [[], "audiobook", ["video"], [None], [True]])
+def test_reject_invalid_media_types(build_config, media_types):
+    with pytest.raises(ConfigError, match="media_types"):
+        build_config(hardcover_api_keys=[{"api_key": "Bearer key", "media_types": media_types}])
+
+
+def test_audio_only_config_needs_no_calibre(build_config):
+    config = build_config(
+        calibre=missing,
+        hardcover_api_keys=[
+            {"api_key": "Bearer key", "reading_list": {"want-to-read": {"type": "audiobook"}}}
+        ],
+        audiobookshelf=audiobook_settings(),
+    )
+    assert config.audiobookshelf["filetypes"] == ["m4b", "mp3"]
+    assert config.audiobookshelf["url"] == "https://audio.example.com/abs"
+
+
+def test_audiobook_requests_require_backend(build_config):
+    with pytest.raises(ConfigError, match="require audiobookshelf"):
+        build_config(
+            hardcover_api_keys=[
+                {"api_key": "Bearer key", "reading_list": {"want-to-read": {"type": "audiobook"}}}
+            ]
+        )
+
+
+def test_both_media_require_both_libraries(build_config):
+    with pytest.raises(ConfigError, match="calibre.library"):
+        build_config(
+            calibre=missing,
+            hardcover_api_keys=[
+                {
+                    "api_key": "Bearer key",
+                    "reading_list": {"want-to-read": {"type": ["ebook", "audiobook"]}},
+                }
+            ],
+            audiobookshelf=audiobook_settings(),
+        )
+
+
+@pytest.mark.parametrize("redact", [True, False])
+def test_audiobookshelf_secret_always_redacted(build_config, redact):
+    config = build_config(audiobookshelf=audiobook_settings(), redact_sensitive_data=redact)
+    assert "audio-secret" not in str(config)
+    assert config.audiobookshelf["api_key"] == "audio-secret"
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("url", "ftp://example.com"),
+        ("url", "https://user:secret@example.com"),
+        ("url", "https://example.com?token=secret"),
+        ("api_key", ""),
+        ("url", "https://[broken"),
+        ("url", "https://example.com:invalid"),
+        ("library_id", ""),
+        ("library_path", "relative/path"),
+        ("filetypes", []),
+        ("filetypes", ["epub"]),
+        ("filetypes", "mp3"),
+    ],
+)
+def test_invalid_audiobookshelf_settings(build_config, key, value):
+    with pytest.raises(ConfigError, match=rf"audiobookshelf\.{key}[.:]"):
+        build_config(audiobookshelf=audiobook_settings(**{key: value}))
+
+
+@pytest.mark.parametrize("key", ["url", "api_key", "library_id", "library_path"])
+def test_audiobookshelf_required_fields(build_config, key):
+    settings = audiobook_settings()
+    settings.pop(key)
+    with pytest.raises(ConfigError, match=f"audiobookshelf.{key}"):
+        build_config(audiobookshelf=settings)
+
+
 @pytest.fixture
 def build_config(tmp_path):
     def _make(**overrides):
-        data = base.copy()
+        data = deepcopy(base)
         for key, value in overrides.items():
             if value is missing:
                 data.pop(key, None)
@@ -60,7 +240,7 @@ def make_config(yaml_text: str) -> Config:
 def test_load_valid_config(build_config):
     config = build_config()
 
-    assert config.get("hardcover_api_keys") == ["Bearer secret123"]
+    assert config.get("hardcover_api_keys") == base["hardcover_api_keys"]
     assert config.get("redact_sensitive_data") is True
 
 
@@ -71,7 +251,7 @@ def test_default_redact_sensitive_data(build_config):
 
 def test_get_existing_key(build_config):
     config = build_config()
-    assert config.get("hardcover_api_keys")[0] == "Bearer secret123"
+    assert config.get("hardcover_api_keys")[0]["api_key"] == "Bearer secret123"
 
 
 def test_get_default_value(build_config):
@@ -88,7 +268,7 @@ def test_get_missing_key_raises(build_config):
 def test_redact_sensitive_data_must_be_boolean(build_config):
     with pytest.raises(
         ConfigError,
-        match="Config item 'redact_sensitive_data' must be a bool",
+        match="redact_sensitive_data",
     ):
         build_config(redact_sensitive_data="yes")
 
@@ -235,10 +415,10 @@ def test_matcher_threshold_defaults_to_0_92(build_config):
 
 
 def test_matcher_threshold_must_be_float(build_config):
-    with pytest.raises(ConfigError, match="Config item 'matcher_threshold' must be a float"):
+    with pytest.raises(ConfigError, match="matcher_threshold"):
         build_config(matcher_threshold="not-a-float")
 
-    with pytest.raises(ConfigError, match="Config item 'matcher_threshold' must be a float"):
+    with pytest.raises(ConfigError, match="matcher_threshold"):
         build_config(matcher_threshold=1)
 
 
@@ -248,7 +428,7 @@ def test_matcher_threshold_can_be_set(build_config):
 
 
 def test_mam_id_must_exist(build_config):
-    with pytest.raises(ConfigError, match="Config item 'mam_id' is missing"):
+    with pytest.raises(ConfigError, match="mam_id"):
         build_config(mam_id=missing)
 
 
@@ -268,44 +448,44 @@ def test_lang_codes_can_be_overridden(build_config):
 
 
 def test_lang_codes_must_be_list(build_config):
-    with pytest.raises(ConfigError, match="Config item 'lang_codes' must be a list"):
+    with pytest.raises(ConfigError, match="lang_codes"):
         build_config(lang_codes="not-a-list")
 
 
 def test_lang_codes_list_items_must_be_strings(build_config):
-    with pytest.raises(ConfigError, match="Config item 'lang_codes item' must be a str"):
+    with pytest.raises(ConfigError, match="lang_codes.0"):
         build_config(lang_codes=[123, "SWE"])
 
 
 def test_lang_codes_cannot_be_empty(build_config):
-    with pytest.raises(ConfigError, match="Config item 'lang_codes' must be a non-empty list"):
+    with pytest.raises(ConfigError, match="lang_codes"):
         build_config(lang_codes=[])
 
 
 def test_qbittorrent_config_must_be_dict(build_config):
-    with pytest.raises(ConfigError, match="Config item 'qbittorrent' must be a dict"):
+    with pytest.raises(ConfigError, match="qbittorrent"):
         build_config(qbittorrent="not-a-dict")
 
 
 def test_qbittorrent_config_requires_host(build_config):
-    with pytest.raises(ConfigError, match="Config item 'host' is missing"):
+    with pytest.raises(ConfigError, match="host"):
         build_config(qbittorrent={"username": "admin", "password": "adminadmin", "port": 8080})
 
 
 def test_qbittorrent_config_requires_username(build_config):
-    with pytest.raises(ConfigError, match="Config item 'username' is missing"):
+    with pytest.raises(ConfigError, match="username"):
         build_config(
             qbittorrent={"host": "http://localhost", "password": "adminadmin", "port": 8080}
         )
 
 
 def test_qbittorrent_config_requires_password(build_config):
-    with pytest.raises(ConfigError, match="Config item 'password' is missing"):
+    with pytest.raises(ConfigError, match="password"):
         build_config(qbittorrent={"host": "http://localhost", "username": "admin", "port": 8080})
 
 
 def test_qbittorrent_config_requires_port(build_config):
-    with pytest.raises(ConfigError, match="Config item 'port' is missing"):
+    with pytest.raises(ConfigError, match="port"):
         build_config(
             qbittorrent={"host": "http://localhost", "username": "admin", "password": "adminadmin"}
         )
@@ -326,7 +506,7 @@ def test_qbittorrent_host_trims_trailing_slash(build_config):
 
 
 def test_qbittorrent_verify_cert_must_be_boolean(build_config):
-    with pytest.raises(ConfigError, match="Config item 'qbittorrent.verify_cert' must be a bool"):
+    with pytest.raises(ConfigError, match="qbittorrent.verify_cert"):
         build_config(
             qbittorrent={
                 "host": "http://localhost",
@@ -339,7 +519,7 @@ def test_qbittorrent_verify_cert_must_be_boolean(build_config):
 
 
 def test_qbittorrent_category_must_be_string(build_config):
-    with pytest.raises(ConfigError, match="Config item 'qbittorrent.category' must be a str"):
+    with pytest.raises(ConfigError, match="qbittorrent.category"):
         build_config(
             qbittorrent={
                 "host": "http://localhost",
@@ -386,10 +566,10 @@ def test_schedule_defaults_to_once_an_hour(build_config):
 
 
 def test_schedule_must_be_valid_cron(build_config):
-    with pytest.raises(ConfigError, match="Config item 'schedule' must be a valid cron expression"):
+    with pytest.raises(ConfigError, match="schedule"):
         build_config(schedule="not-a-cron")
 
-    with pytest.raises(ConfigError, match="Config item 'schedule' must be a valid cron expression"):
+    with pytest.raises(ConfigError, match="schedule"):
         build_config(schedule="* * *")
 
 
@@ -404,12 +584,12 @@ def test_filetypes_defaults_to_epub_mobi_azw3_azw(build_config):
 
 
 def test_filetypes_must_be_list(build_config):
-    with pytest.raises(ConfigError, match="Config item 'filetypes' must be a list"):
+    with pytest.raises(ConfigError, match="filetypes"):
         build_config(filetypes="not-a-list")
 
 
 def test_filetypes_list_items_must_be_strings(build_config):
-    with pytest.raises(ConfigError, match="Config item 'filetypes item' must be a str"):
+    with pytest.raises(ConfigError, match="filetypes.0"):
         build_config(filetypes=[123, "epub"])
 
 
@@ -419,38 +599,39 @@ def test_filetypes_can_be_overridden(build_config):
 
 
 def test_hardcover_api_keys_must_be_present(build_config):
-    with pytest.raises(ConfigError, match="Config item 'hardcover_api_keys' is missing"):
+    with pytest.raises(ConfigError, match="hardcover_api_keys"):
         build_config(hardcover_api_keys=missing)
 
 
 def test_hardcover_api_keys_must_be_list(build_config):
-    with pytest.raises(ConfigError, match="Config item 'hardcover_api_keys' must be a list"):
+    with pytest.raises(ConfigError, match="hardcover_api_keys"):
         build_config(hardcover_api_keys="not-a-list")
 
 
 def test_hardcover_api_keys_must_not_be_empty(build_config):
     with pytest.raises(
         ConfigError,
-        match="Config item 'hardcover_api_keys' must be a non-empty list",
+        match="hardcover_api_keys",
     ):
         build_config(hardcover_api_keys=[])
 
 
-def test_hardcover_api_keys_list_items_must_be_strings(build_config):
-    with pytest.raises(ConfigError, match="Config item 'hardcover_api_keys item' must be a str"):
+def test_hardcover_api_keys_list_items_must_be_accounts(build_config):
+    with pytest.raises(ConfigError, match="hardcover_api_keys.0"):
         build_config(hardcover_api_keys=[123, "Bearer secret123"])
 
 
 def test_hardcover_api_keys_can_be_set(build_config):
-    config = build_config(hardcover_api_keys=["Bearer newsecret"])
-    assert config.get("hardcover_api_keys") == ["Bearer newsecret"]
+    entries = [{"api_key": "Bearer newsecret", "reading_list": {"want-to-read": {}}}]
+    config = build_config(hardcover_api_keys=entries)
+    assert config.get("hardcover_api_keys") == entries
 
 
 def test_hardcover_api_keys_must_start_with_bearer(build_config):
-    with pytest.raises(
-        ConfigError, match="Config item 'hardcover_api_keys item' must start with 'Bearer '"
-    ):
-        build_config(hardcover_api_keys=["not-a-bearer-token"])
+    with pytest.raises(ConfigError, match="hardcover_api_keys.0"):
+        build_config(
+            hardcover_api_keys=[{"api_key": "not-a-bearer-token", "reading_list": {"books": {}}}]
+        )
 
 
 def test_editing_copy_does_not_modify_original(build_config):
@@ -463,14 +644,12 @@ def test_editing_copy_does_not_modify_original(build_config):
 
 
 def test_blacklisted_torrent_ids_must_be_list(build_config):
-    with pytest.raises(ConfigError, match="Config item 'blacklisted_torrent_ids' must be a list"):
+    with pytest.raises(ConfigError, match="blacklisted_torrent_ids"):
         build_config(blacklisted_torrent_ids="not-a-list")
 
 
 def test_blacklisted_torrent_ids_list_items_must_be_int(build_config):
-    with pytest.raises(
-        ConfigError, match="Config item 'blacklisted_torrent_ids item' must be an int"
-    ):
+    with pytest.raises(ConfigError, match="blacklisted_torrent_ids.1"):
         build_config(blacklisted_torrent_ids=[123, "not-an-int"])
 
 
@@ -480,13 +659,13 @@ def test_blacklisted_torrent_ids_can_be_set(build_config):
 
 
 def test_torrent_timeout_seconds_must_be_int(build_config):
-    with pytest.raises(ConfigError, match="Config item 'torrent_timeout_seconds' must be an int"):
+    with pytest.raises(ConfigError, match="torrent_timeout_seconds"):
         build_config(torrent_timeout_seconds="not-an-int")
 
 
 @pytest.mark.parametrize("value", [-0.01, 1.01, float("nan"), float("inf"), -float("inf")])
 def test_threshold_must_be_finite_and_in_range(build_config, value):
-    with pytest.raises(ConfigError, match="matcher_threshold.*between 0 and 1"):
+    with pytest.raises(ConfigError, match="matcher_threshold"):
         build_config(matcher_threshold=value)
 
 
@@ -523,3 +702,203 @@ def test_calibre_timeout_default_and_override(build_config):
     assert build_config().calibre["command_timeout_seconds"] == 120
     config = build_config(calibre={"library": "metadata.db", "command_timeout_seconds": 5})
     assert config.calibre["command_timeout_seconds"] == 5
+
+
+def test_hardcover_grouped_accounts_and_redaction(build_config):
+    entries = [
+        {"api_key": "Bearer first", "reading_list": {"download-queue": {}}},
+        {"api_key": "Bearer second", "reading_list": {"want-to-read": {}}},
+    ]
+    config = build_config(hardcover_api_keys=entries)
+    assert config.hardcover_api_keys == entries
+    assert all(token not in str(config) for token in ("Bearer first", "Bearer second"))
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"list": "books"},
+        {"api_key": "not-bearer"},
+        {"api_key": 123},
+        {"api_key": "Bearer secret", "list": None},
+        {"api_key": "Bearer secret", "list": ""},
+        {"api_key": "Bearer secret", "list": "My Books"},
+        {"api_key": "Bearer secret", "list": "https://hardcover.app/@user/lists/books"},
+        {"api_key": "Bearer secret", "list_slug": "typo"},
+    ],
+)
+def test_hardcover_invalid_per_user_settings_rejected(build_config, entry):
+    with pytest.raises(ConfigError):
+        build_config(hardcover_api_keys=[entry])
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("scan_timeout_seconds", 0),
+        ("scan_timeout_seconds", -1),
+        ("scan_timeout_seconds", True),
+        ("scan_timeout_seconds", 1.5),
+        ("staging_path", "relative/staging"),
+        ("folder_id", ""),
+        ("folder_id", 123),
+    ],
+)
+def test_invalid_audiobook_import_settings(build_config, key, value):
+    with pytest.raises(ConfigError, match=rf"audiobookshelf\.{key}[.:]"):
+        build_config(audiobookshelf=audiobook_settings(**{key: value}))
+
+
+def test_audiobook_scan_timeout_is_independent_of_download_timeout(build_config):
+    config = build_config(audiobookshelf=audiobook_settings(), torrent_timeout_seconds=1800)
+    assert config.audiobookshelf["scan_timeout_seconds"] == 120
+    config = build_config(audiobookshelf=audiobook_settings(scan_timeout_seconds=7))
+    assert config.audiobookshelf["scan_timeout_seconds"] == 7
+
+
+@pytest.mark.parametrize("document", ["[]", "true", "42", "text", "", "null"])
+def test_invalid_or_empty_root_reports_config_error(document):
+    with pytest.raises(ConfigError):
+        make_config(document)
+
+
+def test_null_uses_defaults_in_previously_merged_sections(build_config):
+    config = build_config(
+        matcher_threshold=None,
+        lang_codes=None,
+        schedule=None,
+        qbittorrent=base["qbittorrent"] | {"verify_cert": None, "mapping": None},
+        calibre={"library": "metadata.db", "command_timeout_seconds": None},
+    )
+    assert config.matcher_threshold == 0.92
+    assert config.lang_codes == ["ENG"]
+    assert config.schedule == "0 * * * *"
+    assert config.qbittorrent["verify_cert"] is True
+    assert config.qbittorrent["mapping"] == {"qbit_path": None, "murid_path": None}
+    assert config.calibre["command_timeout_seconds"] == 120
+
+
+def test_nested_null_does_not_hide_invalid_reading_list_options(build_config):
+    with pytest.raises(ConfigError, match="reading_list"):
+        build_config(
+            hardcover_api_keys=[
+                {
+                    "api_key": "Bearer key",
+                    "reading_list": {"books": {"type": None}},
+                }
+            ]
+        )
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "Bearer legacy",
+        {"api_key": "Bearer legacy", "list": "books"},
+        {"api_key": "Bearer legacy", "media_types": ["ebook"]},
+    ],
+)
+def test_legacy_hardcover_formats_are_rejected(build_config, entry):
+    with pytest.raises(ConfigError, match="hardcover_api_keys"):
+        build_config(hardcover_api_keys=[entry])
+
+
+def test_qbittorrent_passthrough_options_are_preserved(build_config):
+    config = build_config(qbittorrent=base["qbittorrent"] | {"REQUESTS_ARGS": {"timeout": 7}})
+    assert config.qbittorrent["REQUESTS_ARGS"] == {"timeout": 7}
+
+
+@pytest.mark.parametrize(
+    "overrides,path",
+    [
+        ({"qbittorrent": base["qbittorrent"] | {"port": "8080"}}, "qbittorrent.port"),
+        ({"torrent_timeout_seconds": True}, "torrent_timeout_seconds"),
+        ({"matcher_threshold": 1}, "matcher_threshold"),
+        ({"blacklisted_torrent_ids": [True]}, "blacklisted_torrent_ids.0"),
+        ({"lang_codes": [123]}, "lang_codes.0"),
+    ],
+)
+def test_values_are_not_coerced(build_config, overrides, path):
+    with pytest.raises(ConfigError, match=path):
+        build_config(**overrides)
+
+
+def test_validation_errors_do_not_disclose_input_secrets(build_config, caplog):
+    secret = "sensitive-value-do-not-log"
+    with pytest.raises(ConfigError) as error:
+        build_config(
+            hardcover_api_keys=[
+                {
+                    "api_key": secret,
+                    "reading_list": {"books": {}},
+                    "unexpected": secret,
+                }
+            ],
+            qbittorrent=base["qbittorrent"] | {"port": secret},
+            audiobookshelf=audiobook_settings(url=f"https://user:{secret}@example.com"),
+        )
+    assert "api_key" in str(error.value)
+    assert "qbittorrent.port" in str(error.value)
+    assert "audiobookshelf.url" in str(error.value)
+    assert secret not in str(error.value)
+    assert secret not in caplog.text
+    assert error.value.__cause__ is None
+
+
+def test_defaults_do_not_share_mutable_values(build_config):
+    first = build_config()
+    first.lang_codes.append("SWE")
+    first.qbittorrent["mapping"]["qbit_path"] = "/downloads"
+    second = build_config()
+    assert second.lang_codes == ["ENG"]
+    assert second.qbittorrent["mapping"]["qbit_path"] is None
+
+
+def test_yaml_env_and_inline_env_are_trimmed(monkeypatch, tmp_path):
+    monkeypatch.setenv("TEST_CONFIG_KEY", "  Bearer env-key  ")
+    monkeypatch.setenv("TEST_CONFIG_PORT", "8080")
+    data = deepcopy(base)
+    data["calibre"]["library"] = str(tmp_path)
+    document = yaml.safe_dump(data).replace("Bearer secret123", "!ENV TEST_CONFIG_KEY")
+    # The YAML tag is handled by the constructor.
+    config = make_config(document)
+    assert config.hardcover_api_keys[0]["api_key"] == "Bearer env-key"
+    # The quoted inline form is handled by sanitization.
+    document = document.replace("api_key: !ENV TEST_CONFIG_KEY", 'api_key: "!ENV TEST_CONFIG_KEY"')
+    assert make_config(document).hardcover_api_keys[0]["api_key"] == "Bearer env-key"
+    data["qbittorrent"]["port"] = "!ENV TEST_CONFIG_PORT"
+    with pytest.raises(ConfigError, match="qbittorrent.port"):
+        make_config(yaml.safe_dump(data))
+
+
+@pytest.mark.parametrize(
+    "mapping",
+    [
+        {"qbit_path": "/downloads"},
+        {"murid_path": "/"},
+        {"qbit_path": "/downloads", "murid_path": "/murid-nonexistent-download-mount"},
+        {"qbit_path": 123, "murid_path": "/"},
+    ],
+)
+def test_invalid_torrent_path_mapping(build_config, mapping):
+    with pytest.raises(ConfigError, match="qbittorrent.mapping"):
+        build_config(qbittorrent=base["qbittorrent"] | {"mapping": mapping})
+
+
+def test_valid_torrent_path_mapping(build_config, tmp_path):
+    mapping = {"qbit_path": "/downloads", "murid_path": str(tmp_path)}
+    config = build_config(qbittorrent=base["qbittorrent"] | {"mapping": mapping})
+    assert config.qbittorrent["mapping"] == mapping
+
+
+@pytest.mark.parametrize(
+    "overrides,path",
+    [
+        ({"audiobookshelf": audiobook_settings(unknown=True)}, "audiobookshelf.unknown"),
+        ({"audiobookshelf": audiobook_settings(scan_timeout_seconds=None)}, "scan_timeout_seconds"),
+        ({"qbittorrent": base["qbittorrent"] | {"password": None}}, "qbittorrent.password"),
+    ],
+)
+def test_section_specific_extra_and_null_policies(build_config, overrides, path):
+    with pytest.raises(ConfigError, match=path):
+        build_config(**overrides)

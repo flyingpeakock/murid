@@ -16,18 +16,20 @@ import yaml
 from murid import ui
 from murid.clients.calibre import Calibre
 from murid.clients.myanonamouse import MyAnonamouse
+from murid.domain.torrent_metadata import TorrentMetainfo
 from murid.main import main
 
 
 class FakeQbittorrentAPI:
     """Share download and tag state across clients created by ServiceFactory."""
 
-    app = SimpleNamespace(version="5.0", web_api_version="2.11")
+    app = SimpleNamespace(version="5.2.0", web_api_version="2.12.1")
 
     def __init__(self, downloads):
         self.downloads = downloads
         self.torrents = []
         self.added_files = []
+        self.tag_definitions = set()
 
     def auth_log_in(self):
         pass
@@ -37,16 +39,18 @@ class FakeQbittorrentAPI:
 
     def torrents_add(self, *, torrent_files, category, tags):
         self.added_files.append(torrent_files)
+        metadata = TorrentMetainfo(torrent_files)
+        self.tag_definitions.update(tags.split(","))
         self.torrents.append(
             SimpleNamespace(
-                hash="test-hash",
+                hash=metadata.hashes[0],
                 name="Dune",
                 state="uploading",
                 category=category,
                 tags=tags,
                 progress=1.0,
                 content_path=f"/remote/downloads/{self.downloads.name}",
-                comment="https://www.myanonamouse.net/t/101 MID=101",
+                comment=metadata.comment,
             )
         )
         return "Ok."
@@ -57,10 +61,11 @@ class FakeQbittorrentAPI:
             for torrent in self.torrents
             if (category is None or torrent.category == category)
             and (tag is None or tag in torrent.tags.split(","))
-            and (torrent_hashes is None or torrent.hash == torrent_hashes)
+            and (torrent_hashes is None or torrent.hash in torrent_hashes.split("|"))
         ]
 
     def torrents_add_tags(self, *, tags, torrent_hashes):
+        self.tag_definitions.update(tags.split(","))
         for torrent in self.torrents_info(torrent_hashes=torrent_hashes):
             torrent.tags = ",".join(sorted(set(torrent.tags.split(",")) | {tags}))
 
@@ -68,9 +73,23 @@ class FakeQbittorrentAPI:
         for torrent in self.torrents_info(torrent_hashes=torrent_hashes):
             torrent.tags = ",".join(tag for tag in torrent.tags.split(",") if tag != tags)
 
+    def torrents_set_comment(self, *, comment, torrent_hashes):
+        for torrent in self.torrents_info(torrent_hashes=torrent_hashes):
+            torrent.comment = comment.strip()
+
+    def torrents_properties(self, *, torrent_hash):
+        torrent = self.torrents_info(torrent_hashes=torrent_hash)[0]
+        return SimpleNamespace(comment=getattr(torrent, "comment", ""))
+
+    def torrents_tags(self):
+        return sorted(self.tag_definitions)
+
+    def torrents_delete_tags(self, *, tags):
+        self.tag_definitions.difference_update(tags.split(","))
+
 
 @pytest.fixture
-def workflow(tmp_path, monkeypatch, capsys):
+def workflow(tmp_path, monkeypatch, capsys, torrent_file):
     library = tmp_path / "library with spaces"
     library.mkdir()
     database = library / "books.json"
@@ -91,7 +110,9 @@ def workflow(tmp_path, monkeypatch, capsys):
         "murid.services.service_factory.Calibre", partial(Calibre, run=run_calibredb)
     )
     config = {
-        "hardcover_api_keys": ["Bearer integration-token"],
+        "hardcover_api_keys": [
+            {"api_key": "Bearer integration-token", "reading_list": {"want-to-read": {}}}
+        ],
         "mam_id": "integration-cookie",
         "calibre": {"calibredb_executable": sys.executable, "library": str(library)},
         "qbittorrent": {
@@ -117,6 +138,11 @@ def workflow(tmp_path, monkeypatch, capsys):
         api=api,
         requests=[],
         hardcover_error=False,
+        audio_items=[],
+        audio_library_path=tmp_path / "audio-library",
+        audio_auto_scan=True,
+        audio_scans=0,
+        audio_status=200,
         notifications=[],
         notification_status=200,
         torrent_rows=[
@@ -142,6 +168,40 @@ def workflow(tmp_path, monkeypatch, capsys):
             assert kwargs["headers"]["Authorization"] == "Bearer integration-token"
             if state.hardcover_error:
                 data = {"errors": [{"message": "reading list unavailable"}]}
+            elif "GetListBooks" in kwargs["json"]["query"]:
+                assert kwargs["json"]["variables"]["slug"] in {"download-queue", "audiobooks"}
+                assert kwargs["json"]["variables"]["user_id"] == 1
+                data = {
+                    "data": {
+                        "lists": [
+                            {
+                                "list_books": [
+                                    {
+                                        "book": {
+                                            "id": 42,
+                                            "title": "Dune",
+                                            "contributions": [
+                                                {"author": {"name": "Frank Herbert"}}
+                                            ],
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            elif "GetBook(" in kwargs["json"]["query"]:
+                data = {
+                    "data": {
+                        "books": [
+                            {
+                                "id": kwargs["json"]["variables"]["book_id"],
+                                "title": "Dune",
+                                "contributions": [{"author": {"name": "Frank Herbert"}}],
+                            }
+                        ]
+                    }
+                }
             elif "GetUserBooks" in kwargs["json"]["query"]:
                 data = {
                     "data": {
@@ -158,11 +218,75 @@ def workflow(tmp_path, monkeypatch, capsys):
                 }
             else:
                 data = {"data": {"me": [{"id": 1, "name": "Integration Reader"}]}}
+        elif url.startswith("https://audio.example.com/"):
+            assert _session.headers["Authorization"] == "Bearer private-audio-key"
+            response.status_code = state.audio_status
+            library_data = {
+                "id": "audio-id",
+                "mediaType": "book",
+                "folders": [{"id": "folder", "fullPath": "/server/books"}],
+            }
+            if url.endswith("/api/libraries/audio-id/scan"):
+                assert method.lower() == "post"
+                state.audio_scans += 1
+                if state.audio_auto_scan and state.audio_status == 200:
+                    state.audio_items = []
+                    for marker in state.audio_library_path.rglob(".murid-import.json"):
+                        folder = marker.parent
+                        metadata = json.loads((folder / "metadata.json").read_text())
+                        tracks = [
+                            {
+                                "duration": 120,
+                                "metadata": {
+                                    "relPath": entry["path"],
+                                    "size": entry["size"],
+                                },
+                            }
+                            for entry in json.loads(marker.read_text())["audio_files"]
+                        ]
+                        state.audio_items.append(
+                            {
+                                "id": "imported-item",
+                                "libraryId": "audio-id",
+                                "folderId": "folder",
+                                "relPath": folder.relative_to(state.audio_library_path).as_posix(),
+                                "mediaType": "book",
+                                "isMissing": False,
+                                "isInvalid": False,
+                                "media": {
+                                    "numTracks": len(tracks),
+                                    "tracks": tracks,
+                                    "tags": metadata["tags"],
+                                    "metadata": {
+                                        "title": metadata["title"],
+                                        "authors": [{"name": name} for name in metadata["authors"]],
+                                    },
+                                },
+                            }
+                        )
+                data = {}
+            else:
+                assert method.lower() == "get"
+                if url.endswith("/status"):
+                    data = {"serverVersion": "2.37.1"}
+                elif url.endswith("/api/me"):
+                    data = {"type": "admin", "isActive": True}
+                elif url.endswith("/api/libraries"):
+                    data = {"libraries": [library_data]}
+                elif url.endswith("/api/libraries/audio-id"):
+                    data = library_data
+                elif url.endswith("/api/libraries/audio-id/items"):
+                    assert kwargs["params"]["page"] == 0
+                    data = {"results": state.audio_items, "total": len(state.audio_items)}
+                else:
+                    data = next(
+                        item for item in state.audio_items if url.endswith("/" + item["id"])
+                    )
         elif url == MyAnonamouse.SEARCH_URL:
             assert _session.cookies.get("mam_id") == "integration-cookie"
             data = {"data": state.torrent_rows}
         elif url == f"{MyAnonamouse.DOWNLOAD_URL}/?tid=101":
-            response._content = b"fixture torrent bytes"
+            response._content = torrent_file
             return response
         elif url == "http://notifications.invalid/notify":
             state.notifications.append(json.loads(kwargs["data"]))
