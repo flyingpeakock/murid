@@ -183,3 +183,16 @@ def test_search_book_add_reports_incomplete_import():
         search_book("Dune", factory, add=True)
 
     factory.torrent_import().import_torrents.assert_called_once()
+
+
+def test_search_book_explains_vip_rejection_and_does_not_download(capsys):
+    vip = torrent(101)
+    vip.metadata.vip = True
+    factory, discovery = make_factory({book(1)}, {vip})
+    discovery.torrent_selectors["ebook"].exclude_vip = True
+
+    with pytest.raises(BookSearchError, match="No torrent was selected"):
+        search_book("Dune", factory, add=True)
+
+    assert "Reason: VIP" in capsys.readouterr().out
+    discovery.mam.download_torrent.assert_not_called()

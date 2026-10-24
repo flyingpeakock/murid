@@ -228,6 +228,7 @@ class ServiceFactory:
                 else self.config["filetypes"]
             ),
             blacklist=set(self.config["blacklisted_torrent_ids"]),
+            exclude_vip=self.config.get("exclude_vip", False),
             media_type=media_type,
         )
 

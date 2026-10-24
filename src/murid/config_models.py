@@ -201,6 +201,7 @@ class MuridSettings(DefaultedSettings):
     # Apprise accepts its own configuration formats; leave validation to that library.
     apprise: Any = None
     filetypes: list[NonEmptyString] = Field(default_factory=lambda: ["epub", "mobi", "azw3", "azw"])
+    exclude_vip: bool = False
     blacklisted_torrent_ids: list[int] = Field(default_factory=list)
     torrent_timeout_seconds: PositiveSeconds = 1800
 

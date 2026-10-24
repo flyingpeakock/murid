@@ -379,3 +379,8 @@ def test_book_title_is_string(mam):
 
     torrent = MyAnonamouse._parse_torrent({"title": "123", "author_info": "{}"})
     assert torrent.book.title == "123"
+
+
+@pytest.mark.parametrize("value,expected", [("1", True), (1, True), ("0", False), (0, False)])
+def test_parse_vip_flag(value, expected):
+    assert MyAnonamouse._parse_torrent({"vip": value}).metadata.vip is expected

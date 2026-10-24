@@ -921,3 +921,18 @@ def test_valid_torrent_path_mapping(build_config, tmp_path):
 def test_section_specific_extra_and_null_policies(build_config, overrides, path):
     with pytest.raises(ConfigError, match=path):
         build_config(**overrides)
+
+
+def test_exclude_vip_defaults_to_false(build_config):
+    assert build_config().exclude_vip is False
+
+
+@pytest.mark.parametrize("value", [True, False, None])
+def test_exclude_vip_boolean_setting(build_config, value):
+    assert build_config(exclude_vip=value).exclude_vip is (value is True)
+
+
+@pytest.mark.parametrize("value", ["true", "false", 0, 1, [], {}])
+def test_exclude_vip_requires_boolean(build_config, value):
+    with pytest.raises(ConfigError, match="exclude_vip"):
+        build_config(exclude_vip=value)

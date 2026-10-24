@@ -87,6 +87,9 @@ filetypes:
   - azw3
   - azw
 
+# Exclude torrents restricted to VIP members (ebooks and audiobooks).
+exclude_vip: false
+
 # Torrent IDs that should never be processed
 blacklisted_torrent_ids: []
 

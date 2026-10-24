@@ -297,6 +297,12 @@ in {
               ];
             };
 
+            exclude_vip = lib.mkOption {
+              description = "Exclude VIP-only torrents from ebook and audiobook selection";
+              type = lib.types.bool;
+              default = false;
+            };
+
             blacklisted_torrent_ids = lib.mkOption {
               description = "List of blacklisted torrent ID's to ignore when fetching data from trackers";
               type = lib.types.listOf lib.types.int;

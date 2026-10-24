@@ -334,3 +334,28 @@ def test_filtered_torrent_cannot_be_selected_with_same_book_metadata():
     assert (
         TorrentSelector({"en"}).select(make_book(), [rejected, eligible], BookMatcher()) is eligible
     )
+
+
+@pytest.mark.parametrize("medium,format_", [("ebook", "epub"), ("audiobook", "m4b")])
+@pytest.mark.parametrize("exclude_vip", [False, True])
+def test_vip_filter_selects_accessible_alternative(medium, format_, exclude_vip):
+    vip = make_torrent(id=1, file_types=[format_])
+    vip.metadata.vip = True
+    vip.metadata.seeders = 100
+    regular = make_torrent(id=2, file_types=[format_])
+    vip.media_type = regular.media_type = medium
+    selector = TorrentSelector({"en"}, media_type=medium, exclude_vip=exclude_vip)
+    assert selector.rejection_reasons(vip) == (["VIP"] if exclude_vip else [])
+    assert selector.rejection_reasons(regular) == []
+    assert selector.select(make_book(), [vip, regular], BookMatcher()) is (
+        regular if exclude_vip else vip
+    )
+    assert selector.select(make_book(), [vip], BookMatcher()) is (
+        None if exclude_vip else vip
+    )
+
+
+def test_vip_torrents_are_eligible_by_default():
+    torrent = make_torrent()
+    torrent.metadata.vip = True
+    assert TorrentSelector({"en"}).select(make_book(), [torrent], BookMatcher()) is torrent

@@ -22,6 +22,7 @@ Defaults below apply to the YAML configuration. Required values must be supplied
 | `redact_sensitive_data` | Hide secrets in logs and config dumps | `true` |
 | `apprise` | List of Apprise notification URLs | `null` (disabled) |
 | `filetypes` | Accepted ebook formats, most preferred first | `["epub", "mobi", "azw3", "azw"]` |
+| `exclude_vip` | Exclude VIP-only torrents from ebook and audiobook selection | `false` |
 | `blacklisted_torrent_ids` | MyAnonamouse torrent IDs to exclude | `[]` |
 | `torrent_timeout_seconds` | Positive integer seconds to wait for a torrent to complete | `1800` |
 

@@ -116,9 +116,13 @@ def test_unknown_library_type_fails_explicitly(args, config):
         ServiceFactory(args, config, initialize_notifier=False).library("video")
 
 
-def test_discovery_uses_independent_media_format_preferences(args, config, monkeypatch):
+@pytest.mark.parametrize("exclude_vip", [False, True])
+def test_discovery_uses_independent_media_format_preferences(
+    args, config, monkeypatch, exclude_vip
+):
     config.update(
         filetypes=["epub", "mobi"],
+        exclude_vip=exclude_vip,
         blacklisted_torrent_ids=[],
         audiobookshelf={"filetypes": ["mp3", "m4b"]},
     )
@@ -132,6 +136,7 @@ def test_discovery_uses_independent_media_format_preferences(args, config, monke
     monkeypatch.setattr(factory, "myanonamouse", Mock())
     monkeypatch.setattr(factory, "qbittorrent", Mock())
     discovery = factory.torrent_discovery()
+    assert all(s.exclude_vip is exclude_vip for s in discovery.torrent_selectors.values())
     assert list(discovery.torrent_selectors["ebook"].filetype_priority) == ["epub", "mobi"]
     assert list(discovery.torrent_selectors["audiobook"].filetype_priority) == ["mp3", "m4b"]
 
