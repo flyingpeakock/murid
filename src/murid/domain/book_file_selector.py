@@ -139,7 +139,7 @@ class BookFileSelector:  # pylint: disable=too-few-public-methods
         path: Path,
         matcher: BookMatcher,
     ) -> tuple[float, str] | None:
-        title_names = [book.title, *(book.alternative_titles or [])]
+        title_names = [book.title, *book.alternative_titles]
         filename_titles = cls._filename_title_variants(book, path.stem)
         best_score = -1.0
         best_key: str | None = None
@@ -191,7 +191,7 @@ class BookFileSelector:  # pylint: disable=too-few-public-methods
     def _strip_author_names(book: Book, variants: set[str]) -> set[str]:
         """Add filename variants without a known author prefix or suffix."""
         author_names = set()
-        for author in book.authors or []:
+        for author in book.authors:
             author_name = BookMatcher.normalize(author)
             if author_name:
                 author_names.add(author_name)
