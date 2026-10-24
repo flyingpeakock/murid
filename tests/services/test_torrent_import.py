@@ -335,3 +335,29 @@ def test_calibre_timeout_tags_import_failure(service, torrent_client, calibre, b
     assert service.process_torrent("abc123", book)
     assert service.last_outcome == "failed"
     torrent_client.add_tag.assert_called_once_with("abc123", "murid_import_failed")
+
+
+def test_unpublished_audio_waits_for_download_without_marking_failure(
+    service, torrent_client, book
+):
+    service.media_type = "audiobook"
+    service.library = MagicMock()
+    service.library.resume_import.return_value = False
+    torrent_client.get_completed_path.return_value = None
+
+    assert service.process_torrent("incomplete", book) is False
+    assert service.last_outcome == "pending"
+    service.library.import_book.assert_not_called()
+    torrent_client.add_tag.assert_not_called()
+
+
+def test_dry_run_does_not_resume_published_audio(service, torrent_client, book):
+    service.dry_run = True
+    service.media_type = "audiobook"
+    service.library = MagicMock()
+    torrent_client.get_completed_path.return_value = None
+
+    assert service.process_torrent("incomplete", book) is False
+    service.library.resume_import.assert_not_called()
+    service.library.import_book.assert_not_called()
+    torrent_client.add_tag.assert_not_called()

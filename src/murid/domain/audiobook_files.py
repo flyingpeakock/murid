@@ -42,15 +42,21 @@ class AudiobookFiles:
 
 
 def _matches_title(book: Book, name: str, matcher: BookMatcher) -> bool:
+    def matches(candidate: str) -> bool:
+        return any(
+            matcher.title_similarity(title, candidate.strip(" -_[]()")) >= 0.85
+            for title in (book.title, *book.alternative_titles)
+            if title
+        )
+
+    # Author names can be part of the title itself, not just download decoration.
+    if matches(name):
+        return True
     for author in book.authors:
         name = re.sub(re.escape(author), " ", name, flags=re.IGNORECASE)
     name = re.sub(r"\b(?:unabridged|audiobook|m4b|mp3)\b", " ", name, flags=re.IGNORECASE)
     name = re.sub(r"\b(?:part|cd|disc|disk)\s*\d+\b", " ", name, flags=re.IGNORECASE)
-    return any(
-        matcher.title_similarity(title, name.strip(" -_[]()")) >= 0.85
-        for title in (book.title, *book.alternative_titles)
-        if title
-    )
+    return matches(name)
 
 
 def select_audiobook(

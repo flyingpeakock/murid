@@ -134,26 +134,29 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
         return result
 
     def process_torrent(self, torrent_id: str, book: Book) -> bool:
-        """Import a completed path through its library's media-specific implementation."""
+        """Resume published content or import a completed path through its library."""
         self.last_outcome = "pending"
-        path = self.torrent_client.get_completed_path(torrent_id)
-        if not path:
-            return False
-
         if self.dry_run:
+            if not self.torrent_client.get_completed_path(torrent_id):
+                return False
             logger.info("%s: dry run enabled, not importing into %s", book, self.library.name)
             self.last_outcome = "planned"
             return True
 
         try:
-            time.sleep(0.5)  # Give the torrent client a moment to move the files
-            path = self.torrent_client.get_completed_path(torrent_id)
-            if not path:
-                return False
-
+            if not self.library.resume_import(book, self.matcher):
+                path = self.torrent_client.get_completed_path(torrent_id)
+                if not path:
+                    return False
+                time.sleep(0.5)  # Give the torrent client a moment to move the files
+                path = self.torrent_client.get_completed_path(torrent_id)
+                if not path:
+                    return False
+                self.library.import_book(book, path, self.matcher)
             self.last_outcome = "failed"
-            self.library.import_book(book, path, self.matcher)
-            if self.library.contains_book(book, self.matcher):
+            # Audio import/resume returns only after exact destination/track verification.
+            # Calibre still needs a presence check after its import command returns.
+            if self.media_type == "audiobook" or self.library.contains_book(book, self.matcher):
                 self.last_outcome = "imported"
                 message = f"{book}: imported into {self.library.name} [{self.media_type}]"
                 logger.info("%s: imported into %s", book, self.library.name)

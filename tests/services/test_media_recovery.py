@@ -127,6 +127,7 @@ def test_delayed_audio_ingestion_stays_pending_without_download_timeout(book, mo
     client.add_torrent.return_value = "hash"
     client.get_completed_path.return_value = "/complete"
     library = Mock()
+    library.resume_import.return_value = False
     library.import_book.side_effect = LibraryImportPending("scan still running")
     notify = Mock()
     importer = TorrentImportService(
@@ -147,8 +148,10 @@ def test_delayed_audio_ingestion_stays_pending_without_download_timeout(book, mo
     notify.assert_not_called()
 
 
+@pytest.mark.parametrize("progress", [1, 0])
+@pytest.mark.parametrize("phase", ["copied", "copying"])
 def test_real_audio_backend_restarts_with_missing_source_and_no_second_download(
-    book, tmp_path, monkeypatch
+    book, tmp_path, monkeypatch, progress, phase
 ):
     library_path = tmp_path / "library"
     library_path.mkdir()
@@ -209,7 +212,13 @@ def test_real_audio_backend_restarts_with_missing_source_and_no_second_download(
 
     first = importer("audiobook").import_torrents([(b"torrent", book)])
     assert first.pending == 1 and first.failed == 0
+    # Publication may finish before its new journal phase is persisted.
+    store = AudiobookStore(str(library_path), "library", str(tmp_path / "staging"))
+    manifest = store.load(book, "folder")
+    manifest["phase"] = phase
+    store.save(manifest)
     shutil.rmtree(source)
+    torrents[0].progress = progress
     monkeypatch.setattr(
         AudiobookStore, "_copy", Mock(side_effect=AssertionError("must not recopy"))
     )
@@ -223,6 +232,32 @@ def test_real_audio_backend_restarts_with_missing_source_and_no_second_download(
     assert len(list(library_path.rglob(".murid-import.json"))) == 1
     assert restarted.retry_imports().imported == 0
     api.torrents_add.assert_called_once()
+    abs_client.get_books.assert_not_called()
+
+
+@pytest.mark.parametrize("resuming", [False, True])
+def test_verified_audio_import_does_not_check_general_library_presence(book, monkeypatch, resuming):
+    client = Mock(poll_interval=0)
+    client.get_completed_path.return_value = "/complete"
+    library = Mock()
+    library.resume_import.return_value = resuming
+    library.contains_book.side_effect = AssertionError("Must not reread the library")
+    notify = Mock()
+    importer = TorrentImportService(
+        TorrentImportConfig(client, library, BookMatcher(), notify, media_type="audiobook")
+    )
+    monkeypatch.setattr("murid.services.torrent_import.time.sleep", lambda _: None)
+
+    assert importer.process_torrent("hash", book)
+    assert importer.last_outcome == "imported"
+    if resuming:
+        library.import_book.assert_not_called()
+        client.get_completed_path.assert_not_called()
+    else:
+        library.import_book.assert_called_once_with(book, "/complete", importer.matcher)
+    library.contains_book.assert_not_called()
+    notify.assert_called_once()
+    client.add_tag.assert_not_called()
 
 
 @pytest.mark.parametrize(
