@@ -97,29 +97,31 @@ def publish_directory(source: Path, destination: Path) -> None:
     """Atomically rename without replacing even an empty destination directory."""
     if os.name == "nt":
         os.rename(source, destination)  # Windows rename refuses any existing destination.
-        return
-    libc = ctypes.CDLL(None, use_errno=True)
-    if sys.platform.startswith("linux") and hasattr(libc, "renameat2"):
-        rename = libc.renameat2
-        rename.argtypes = [
-            ctypes.c_int,
-            ctypes.c_char_p,
-            ctypes.c_int,
-            ctypes.c_char_p,
-            ctypes.c_uint,
-        ]
-        rename.restype = ctypes.c_int
-        result = rename(-100, os.fsencode(source), -100, os.fsencode(destination), 1)
-    elif sys.platform == "darwin" and hasattr(libc, "renamex_np"):
-        rename = libc.renamex_np
-        rename.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
-        rename.restype = ctypes.c_int
-        result = rename(os.fsencode(source), os.fsencode(destination), 4)
     else:
-        raise LibraryError("This platform does not support atomic, non-replacing audiobook imports")
-    if result != 0:
-        error = ctypes.get_errno()
-        raise OSError(error, os.strerror(error), str(destination))
+        libc = ctypes.CDLL(None, use_errno=True)
+        if sys.platform.startswith("linux") and hasattr(libc, "renameat2"):
+            rename = libc.renameat2
+            rename.argtypes = [
+                ctypes.c_int,
+                ctypes.c_char_p,
+                ctypes.c_int,
+                ctypes.c_char_p,
+                ctypes.c_uint,
+            ]
+            rename.restype = ctypes.c_int
+            result = rename(-100, os.fsencode(source), -100, os.fsencode(destination), 1)
+        elif sys.platform == "darwin" and hasattr(libc, "renamex_np"):
+            rename = libc.renamex_np
+            rename.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+            rename.restype = ctypes.c_int
+            result = rename(os.fsencode(source), os.fsencode(destination), 4)
+        else:
+            raise LibraryError(
+                "This platform does not support atomic, non-replacing audiobook imports"
+            )
+        if result != 0:
+            error = ctypes.get_errno()
+            raise OSError(error, os.strerror(error), str(destination))
     sync_directory(destination.parent)
     sync_directory(source.parent)
 

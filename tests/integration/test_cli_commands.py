@@ -26,14 +26,16 @@ def configure_audio(workflow):
         "url": "https://audio.example.com",
         "api_key": "private-audio-key",
         "library_id": "audio-id",
-        "library_path": "/not-mounted-yet/audiobooks",
+        "library_path": str(workflow.audio_library_path),
     }
 
 
 def test_audio_config_validates_without_calibre_or_mount(workflow):
     configure_audio(workflow)
+    assert not workflow.audio_library_path.exists()
     result = workflow.run("validate-config")
     assert result.code == 0, result.errors
+    assert not workflow.audio_library_path.exists()
 
 
 def test_grouped_ebook_lists_use_every_list(workflow):

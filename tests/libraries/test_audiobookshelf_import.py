@@ -2,7 +2,8 @@ import json
 import multiprocessing
 import os
 from dataclasses import replace
-from unittest.mock import Mock
+from types import SimpleNamespace
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -273,6 +274,28 @@ def test_atomic_publish_does_not_replace_an_empty_directory(tmp_path):
         publish_directory(source, target)
     assert (source / "audio").exists()
     assert list(target.iterdir()) == []
+
+
+def test_windows_publication_syncs_parents_after_rename(tmp_path, monkeypatch):
+    from murid.libraries import import_filesystem
+
+    source = tmp_path / "staging" / "partial"
+    target = tmp_path / "library" / "book"
+    source.mkdir(parents=True)
+    target.parent.mkdir()
+    (source / "audio").write_bytes(b"content")
+
+    def sync_after_rename(path):
+        assert not source.exists()
+        assert (target / "audio").read_bytes() == b"content"
+
+    sync = Mock(side_effect=sync_after_rename)
+    monkeypatch.setattr(import_filesystem, "os", SimpleNamespace(name="nt", rename=os.rename))
+    monkeypatch.setattr(import_filesystem, "sync_directory", sync)
+
+    publish_directory(source, target)
+
+    assert sync.call_args_list == [call(target.parent), call(source.parent)]
 
 
 def test_interrupted_copy_reuses_completed_staged_tracks(work, monkeypatch):

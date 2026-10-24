@@ -3,6 +3,7 @@
 import logging
 from copy import deepcopy
 from io import StringIO
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -35,7 +36,7 @@ def audiobook_settings(**overrides):
         "url": "https://audio.example.com/abs/",
         "api_key": "audio-secret",
         "library_id": "library-id",
-        "library_path": "/mnt/audiobooks",
+        "library_path": str(Path("audiobooks").absolute()),
         **overrides,
     }
 
@@ -193,7 +194,7 @@ def test_audiobookshelf_secret_always_redacted(build_config, redact):
     ],
 )
 def test_invalid_audiobookshelf_settings(build_config, key, value):
-    with pytest.raises(ConfigError, match="audiobookshelf"):
+    with pytest.raises(ConfigError, match=rf"audiobookshelf\.{key}[.:]"):
         build_config(audiobookshelf=audiobook_settings(**{key: value}))
 
 
@@ -744,7 +745,7 @@ def test_hardcover_invalid_per_user_settings_rejected(build_config, entry):
     ],
 )
 def test_invalid_audiobook_import_settings(build_config, key, value):
-    with pytest.raises(ConfigError, match="audiobookshelf"):
+    with pytest.raises(ConfigError, match=rf"audiobookshelf\.{key}[.:]"):
         build_config(audiobookshelf=audiobook_settings(**{key: value}))
 
 
