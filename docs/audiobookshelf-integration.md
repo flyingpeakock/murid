@@ -194,6 +194,78 @@ sent. Offline CLI integration tests separately exercise manual folder imports,
 scan-pending results, source removal/retry, preview/search/add dry runs, media-aware
 status/summaries, notifications, and diagnostics.
 
+## API upload investigation (2026-10-24)
+
+Source review of v2.37.1 confirms that Murid could replace shared-folder writes
+with HTTP uploads. This removes Murid's need for a writable library mount, but
+still transfers the complete audio and creates a separate server-side copy. The
+download must remain available to Murid for reading and to qBittorrent for seeding.
+No live upload was performed during this investigation.
+
+### Request contract
+
+`POST /api/upload` accepts bearer-authenticated multipart form data:
+
+| Field | Value |
+| --- | --- |
+| `library` | Library ID |
+| `folder` | Folder ID within that library |
+| `title` | Required destination title component |
+| `author` | Optional destination author component |
+| `series` | Optional destination series component |
+| `0`, `1`, ... | One file per distinct multipart field, as used by the web UI |
+
+The account needs upload permission and access to the target library. The server
+chooses `<folder>/<author>/<series>/<title>/`, sanitizing each component; these
+fields determine directory placement rather than directly updating item metadata.
+Murid could omit `series` to retain its current author/title layout and send its
+generated `metadata.json` for Hardcover metadata and identity. Tag precedence
+would still need verification after ingestion.
+
+Sources: [upload handler](https://github.com/advplyr/audiobookshelf/blob/v2.37.1/server/controllers/MiscController.js),
+[web uploader](https://github.com/advplyr/audiobookshelf/blob/v2.37.1/client/pages/upload/index.vue).
+
+### Differences from the current importer
+
+- The endpoint returns plain HTTP 200 without an item ID. It catches individual
+  file-move failures and still returns 200. Completion must be checked through
+  expanded library items, including all expected usable tracks and identity.
+- Files are placed individually into the scanned destination. There is no atomic
+  whole-book publication or upload transaction to resume. Interrupted imports can
+  leave partially populated folders.
+- The handler ensures the destination directory exists and moves files into it;
+  it does not reject an existing destination. The web UI checks path existence
+  separately, which is not an atomic collision guarantee. Retries must not blindly
+  overwrite files belonging to another import.
+- Each uploaded filename is sanitized into one destination filename. Track
+  subdirectories cannot be preserved through this interface. Multi-disc books
+  with repeated basenames need a deterministic, collision-free flattening scheme,
+  persisted together with track order and source-to-destination mapping.
+- The handler does not explicitly scan the completed upload. Use watcher-driven
+  ingestion with polling; an explicit scan fallback still requires admin/root.
+- Murid would still need durable local import state and locking, independent of
+  the library mount. Use a streaming multipart encoder for large books and a
+  separate upload deadline; do not buffer the entire book in memory.
+
+Sources: [upload handler](https://github.com/advplyr/audiobookshelf/blob/v2.37.1/server/controllers/MiscController.js),
+[file move implementation](https://github.com/advplyr/audiobookshelf/blob/v2.37.1/server/libs/expressFileupload/utilities.js),
+[filename sanitization](https://github.com/advplyr/audiobookshelf/blob/v2.37.1/server/utils/fileUtils.js),
+[watcher](https://github.com/advplyr/audiobookshelf/blob/v2.37.1/server/Watcher.js).
+
+### Recommendation
+
+An upload backend is feasible when removing shared-mount permissions and container
+path mappings is the goal. Preserve selection and API verification, but replace
+filesystem publication with streaming upload plus a local journal; adapt config,
+preflight, and retry behavior accordingly. This is not a drop-in replacement for
+`AudiobookStore._copy`, and it gives up atomic publication and exclusive creation.
+
+If the goal is avoiding duplicate disk usage, HTTP upload does not address it.
+Investigate hardlinks or reflinks on a compatible filesystem instead. Hardlinks
+share file contents with the seeding download, so Audiobookshelf operations that
+modify audio would also modify torrent data; reflinks avoid that coupling where
+supported. Neither alternative was implemented or tested here.
+
 ## Container deployment and remaining verification
 
 The deployment is the `server` NixOS container with private networking. Read-only
