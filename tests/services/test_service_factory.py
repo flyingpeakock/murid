@@ -467,3 +467,39 @@ def test_factory_snapshots_list_settings_until_reload(args, config, monkeypatch)
     }
     assert factory.recovery_book(42) is book
     constructor.assert_called_with("Bearer changed", list_slug="selected", lang_codes=["eng"])
+
+
+@pytest.mark.parametrize("media", ["ebook", "audiobook"])
+def test_recovery_uses_account_for_selected_medium(args, config, monkeypatch, media):
+    args.media_type = media
+    other = "ebook" if media == "audiobook" else "audiobook"
+    config["hardcover_api_keys"] = [
+        {"api_key": "Bearer expired", "reading_list": {"unrelated": {"type": other}}},
+        {"api_key": "Bearer active", "reading_list": {"selected": {"type": media}}},
+    ]
+    book = Book("Dune", ["Frank Herbert"], 42, [], "hardcover")
+    client = Mock(get_book=Mock(return_value=book))
+
+    def create(token, **kwargs):
+        assert token == "Bearer active", "Recovery used an unrelated expired account"
+        return client
+
+    monkeypatch.setattr("murid.services.service_factory.Hardcover", create)
+    factory = ServiceFactory(args, config, initialize_notifier=False)
+
+    assert factory.recovery_book(42) is book
+    client.get_book.assert_called_once_with(42)
+
+
+def test_recovery_can_use_an_account_after_its_audio_lists_are_removed(args, config, monkeypatch):
+    args.media_type = "audiobook"
+    book = Book("Dune", ["Frank Herbert"], 42, [], "hardcover")
+    client = Mock(get_book=Mock(return_value=book))
+    constructor = Mock(return_value=client)
+    monkeypatch.setattr("murid.services.service_factory.Hardcover", constructor)
+    factory = ServiceFactory(args, config, initialize_notifier=False)
+
+    assert factory.recovery_book(42) is book
+    constructor.assert_called_once_with(
+        "Bearer secret", list_slug="want-to-read", lang_codes=["eng"]
+    )

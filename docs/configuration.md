@@ -126,14 +126,17 @@ read-only API requests and neither copies files nor requests scans. Work tags
 edition ISBNs and ASINs are excluded from matching against Hardcover ebook metadata.
 
 The import backend accepts one M4B file, or a title-matched folder of numbered or
-book-named M4B/MP3 tracks. One level of disc folders named `CD1`, `Disc 2`, or
+book-named M4B/MP3 tracks. Folders with multiple M4Bs require every file's title to
+match the requested book; numbering alone cannot distinguish tracks from a series
+pack. One level of disc folders named `CD1`, `Disc 2`, or
 `Disk 003` (one to three digits, case insensitive) is supported; filenames and
 repeated track basenames across discs are preserved. Underscores, hyphens, and
 nested disc folders must be reorganized before import because the target server
 does not group them into one book. Mixed encodings and ambiguous multi-book packs
-require selecting one complete book/encoding first. Sources remain intact for
-seeding; Murid copies supported sidecars and merges its identity tag into the
-copied `metadata.json` without adding ebook ISBNs.
+require selecting one complete book/encoding first. Folders containing recognized
+unsupported audio formats, including MP4, AIFF, and OGA, are rejected in full.
+Sources remain intact for seeding; Murid copies supported sidecars and merges its
+identity tag into the copied `metadata.json` without adding ebook ISBNs.
 
 Copies are staged privately, then published atomically into
 `<library_path>/<author>/<title> [hardcover-<id>]/`. Existing unrelated destinations

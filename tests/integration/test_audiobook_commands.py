@@ -220,6 +220,56 @@ def test_audio_retry_dry_run_retains_torrent_tags_and_library(workflow):
     assert list(workflow.audio_library_path.iterdir()) == []
 
 
+@pytest.mark.parametrize("command", ["run", "retry-import"])
+def test_filtered_audio_recovery_skips_unrelated_hardcover_account(workflow, command):
+    from types import SimpleNamespace
+
+    calibre = workflow.config["calibre"]
+    source = audio_setup(workflow)
+    workflow.config["calibre"] = calibre
+    workflow.config["hardcover_api_keys"].insert(
+        0,
+        {
+            "api_key": "Bearer expired-ebook-account",
+            "reading_list": {"want-to-read": {}},
+        },
+    )
+    workflow.api.torrents = [
+        SimpleNamespace(
+            hash="existing",
+            name="Dune",
+            category="murid",
+            progress=1,
+            state="uploading",
+            comment="",
+            content_path=str(source),
+            tags="murid_pending,murid_media_audiobook,murid_hardcover_42",
+        )
+    ]
+
+    result = workflow.run(command, "--audiobooks")
+
+    assert result.code == 0, result.errors
+    assert (
+        record(result, "sync_summary" if command == "run" else "retry_summary")["by_media"][
+            "audiobook"
+        ]["imported"]
+        == 1
+    )
+    hardcover_calls = [
+        kwargs
+        for _, url, kwargs in workflow.requests
+        if url == "https://api.hardcover.app/v1/graphql"
+    ]
+    assert any("GetBook(" in kwargs["json"]["query"] for kwargs in hardcover_calls)
+    assert all(
+        kwargs["headers"]["Authorization"] == "Bearer integration-token"
+        for kwargs in hardcover_calls
+    )
+    assert "murid_pending" not in workflow.api.torrents[0].tags
+    assert workflow.api.added_files == []
+
+
 @pytest.mark.parametrize(
     "command,kind",
     [

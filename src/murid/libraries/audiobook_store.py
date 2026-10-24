@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from ..domain.audiobook_files import AUDIO_EXTENSIONS, IMPORT_MARKER, select_audiobook
+from ..domain.audiobook_files import IMPORT_MARKER, is_audio_path, select_audiobook
 from ..domain.book import Book
 from ..domain.book_matcher import BookMatcher
 from .import_filesystem import (
@@ -162,8 +162,9 @@ class AudiobookStore:
             raise LibraryError(
                 "Audio source must be outside Murid's destination and staging directories"
             )
-        if self.library.is_relative_to(selection.root) or self.staging.is_relative_to(
-            selection.root
+        if Path(source).expanduser().is_dir() and (
+            self.library.is_relative_to(selection.root)
+            or self.staging.is_relative_to(selection.root)
         ):
             raise LibraryError("Audio source must not contain destination or staging directories")
         files = []
@@ -255,7 +256,7 @@ class AudiobookStore:
         actual = {
             p.relative_to(destination).as_posix()
             for p in destination.rglob("*")
-            if p.suffix.lower() in AUDIO_EXTENSIONS and p.is_file()
+            if is_audio_path(p) and p.is_file()
         }
         if actual != expected:
             raise LibraryError("Published audio no longer matches the import manifest")

@@ -1,6 +1,7 @@
 """Conservatively identify a complete single-book audio source."""
 
 import json
+import mimetypes
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,7 +9,34 @@ from pathlib import Path
 from .book import Book
 from .book_matcher import BookMatcher
 
-AUDIO_EXTENSIONS = {".m4b", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".wav", ".wma"}
+# Include unsupported encodings and containers so they cannot disappear from inventories.
+AUDIO_EXTENSIONS = {
+    ".aa",
+    ".aac",
+    ".aax",
+    ".aaxc",
+    ".aif",
+    ".aifc",
+    ".aiff",
+    ".alac",
+    ".ape",
+    ".flac",
+    ".m4a",
+    ".m4b",
+    ".m4p",
+    ".mka",
+    ".mp2",
+    ".mp3",
+    ".mp4",
+    ".oga",
+    ".ogg",
+    ".opus",
+    ".w64",
+    ".wav",
+    ".wave",
+    ".wma",
+    ".wv",
+}
 SIDECAR_EXTENSIONS = {
     ".jpg",
     ".jpeg",
@@ -26,6 +54,17 @@ SIDECAR_EXTENSIONS = {
     ".m3u8",
 }
 IMPORT_MARKER = ".murid-import.json"
+
+
+def is_audio_path(path: Path) -> bool:
+    """Recognize audio formats without mistaking playlist sidecars for tracks."""
+    suffix = path.suffix.lower()
+    if suffix in SIDECAR_EXTENSIONS:
+        return False
+    if suffix in AUDIO_EXTENSIONS:
+        return True
+    media_type, _ = mimetypes.guess_type(path.name)
+    return media_type is not None and media_type.startswith("audio/")
 
 
 class AudiobookSelectionError(Exception):
@@ -79,9 +118,7 @@ def select_audiobook(
         raise AudiobookSelectionError("Audio folders cannot contain symlinks or special files")
     if any(p.name == IMPORT_MARKER for p in entries):
         raise AudiobookSelectionError("Source contains a reserved Murid import marker")
-    audio = tuple(
-        p.relative_to(root) for p in entries if p.is_file() and p.suffix.lower() in AUDIO_EXTENSIONS
-    )
+    audio = tuple(p.relative_to(root) for p in entries if p.is_file() and is_audio_path(p))
     if not audio or any(p.suffix.lower().lstrip(".") not in filetypes for p in audio):
         raise AudiobookSelectionError("Source has no audio or contains unsupported audio formats")
     if len({p.suffix.lower() for p in audio}) != 1:
@@ -102,6 +139,23 @@ def select_audiobook(
             "Unsupported audio folders: use one book folder with tracks at its root or in "
             "one level of CD/disc folders named CD1, Disc 2, or Disk 003 (1–3 digits)"
         )
+    if len(audio) > 1 and audio[0].suffix.lower() == ".m4b":
+        # M4Bs can be complete books in a numbered series pack, not just tracks.
+        if any(
+            not _matches_title(book, p.stem, matcher)
+            and not _matches_title(
+                book,
+                re.sub(
+                    r"^(?:(?:track|chapter)[ _-]*)?\d+[\s._-]+", "", p.stem, flags=re.IGNORECASE
+                ),
+                matcher,
+            )
+            for p in audio
+        ):
+            raise AudiobookSelectionError(
+                "Ambiguous multi-M4B pack: every file must match the requested book title; "
+                "select one complete book"
+            )
     metadata_title = _metadata_title(root, book, matcher)
     named = _matches_title(book, root.name, matcher) or (
         isinstance(metadata_title, str) and _matches_title(book, metadata_title, matcher)
@@ -136,7 +190,7 @@ def _single_file(
         raise AudiobookSelectionError("Select a single M4B or a complete single-book audio folder")
     root = path.parent.resolve()
     siblings = list(root.iterdir())
-    single = sum(p.suffix.lower() in AUDIO_EXTENSIONS for p in siblings) == 1
+    single = sum(p.is_file() and is_audio_path(p) for p in siblings) == 1
     sidecars = tuple(
         p.relative_to(root)
         for p in siblings
