@@ -176,19 +176,19 @@ murid schedule --config ./config.yaml
 
 The default is every hour. For a single sync, use `murid run`; add `--dry-run` to
 preview matches and fetch selected `.torrent` files without adding torrents or
-downloading ebooks. See the [quick start](../README.md#quick-start) for initial setup.
+downloading books. See the [quick start](../README.md#quick-start) for initial setup.
 
 Downloads receive a persistent `murid` tag when added to qBittorrent.
 Each scheduled run checks pending and timed-out torrents again, including downloads
-left behind by an interrupted run. Once the book is confirmed in Calibre, Murid
-clears its lifecycle tags. Downloads exceeding the wait limit receive
+left behind by an interrupted run. Once the book is confirmed in its destination library,
+Murid clears its lifecycle tags. Downloads exceeding the wait limit receive
 `murid-timeout`; completed downloads that fail to import receive
 `murid-import-failed`. Use `retry-import` after investigating a failure.
 Recovery reads the media type and Hardcover ID from the torrent comment and fetches
-the work directly, even if it has since left your reading lists. Older identity
-tags automatically migrate during sync, retry, or torrent add; no migration command
-is required. Original comments and MaM IDs are preserved. See
-[torrent metadata and migration](configuration.md#audiobookshelf) for details.
+the work directly, even if it has since left your reading lists. Original comments
+and MaM IDs are preserved. See
+[torrent metadata and recovery](configuration.md#torrent-metadata-and-recovery)
+for details, including automatic conversion of older tags.
 
 Legacy ebooks without a recorded Hardcover ID still use the MaM ID in the comment
 and require a unique match in the configured Hardcover lists. Unresolved or

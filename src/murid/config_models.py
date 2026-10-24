@@ -51,7 +51,7 @@ class SettingsModel(BaseModel):
 
 
 class DefaultedSettings(SettingsModel):
-    """Preserve null-as-default only in sections previously merged with defaults."""
+    """Treat null fields as omitted and allow additional settings in this section."""
 
     model_config = ConfigDict(extra="allow", validate_default=True)
 
