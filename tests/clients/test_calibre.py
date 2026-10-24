@@ -274,7 +274,14 @@ def test_add_book_refuses_directory_import(tmp_path):
     assert len(calls) == 1  # Only the validation command ran.
 
 
-def test_add_book_multiple_authors(tmp_path):
+@pytest.mark.parametrize(
+    ("authors", "serialized"),
+    [
+        (["Neil Gaiman", "Terry Pratchett"], "Neil Gaiman & Terry Pratchett"),
+        (["Alice & Bob", "Pratchett, Terry"], "Alice && Bob & Pratchett, Terry"),
+    ],
+)
+def test_add_book_multiple_authors(tmp_path, authors, serialized):
     db = tmp_path
 
     calls = []
@@ -291,7 +298,7 @@ def test_add_book_multiple_authors(tmp_path):
     book = Book(
         id=1,
         title="Good Omens",
-        authors=["Neil Gaiman", "Terry Pratchett"],
+        authors=authors,
         isbn=[],
         source="calibre",
     )
@@ -303,7 +310,22 @@ def test_add_book_multiple_authors(tmp_path):
     assert "--authors" in args[0]
 
     idx = args[0].index("--authors")
-    assert args[0][idx + 1] == "Neil Gaiman, Terry Pratchett"
+    assert args[0][idx + 1] == serialized
+
+
+def test_get_books_preserves_author_boundaries_and_literal_ampersands(tmp_path):
+    record = {
+        "id": 1,
+        "title": "Good Omens",
+        "authors": "Alice && Bob & Pratchett, Terry",
+        "formats": ["/library/book.epub"],
+    }
+    calibre = Calibre(
+        CalibreConfig("calibredb", str(tmp_path)),
+        run=lambda *args, **kwargs: Result(json.dumps([record])),
+    )
+
+    assert next(iter(calibre.get_books())).authors == ["Alice & Bob", "Pratchett, Terry"]
 
 
 def test_add_book_failure(tmp_path):

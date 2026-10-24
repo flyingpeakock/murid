@@ -111,9 +111,9 @@ class Calibre:
             id=book["id"],
             title=book["title"],
             authors=[
-                author.strip()
+                author.strip().replace("&&", "&")
                 for author in re.split(
-                    r"\s*(?:,|&)\s*|\s+(?:and|with)\s+",
+                    r"(?<!&)&(?!&)|\s+(?:and|with)\s+",
                     book.get("authors") or "",
                     flags=re.IGNORECASE,
                 )
@@ -137,7 +137,8 @@ class Calibre:
                 f"Refusing to add directory '{path}'; select an individual ebook file instead."
             )
 
-        args = ["add", "--title", book.title, "--authors", ", ".join(book.authors)]
+        authors = " & ".join(author.replace("&", "&&") for author in book.authors)
+        args = ["add", "--title", book.title, "--authors", authors]
         # Fill metadata-only records without replacing formats already in the library.
         args.extend(["--automerge", "ignore"])
 
