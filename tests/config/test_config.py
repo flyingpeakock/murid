@@ -2,11 +2,14 @@
 
 import logging
 from io import StringIO
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 import yaml
 
-from murid.config import Config, ConfigError, _defaults, env_constructor, hardcover_list_settings
+from murid.config import Config, ConfigError, _defaults, env_constructor
+from murid.services.service_factory import ServiceFactory
 
 missing = object()
 base = _defaults.copy() | {
@@ -42,7 +45,7 @@ def test_grouped_reading_lists_and_defaults(build_config):
         "both": {"type": ["ebook", "audiobook"]},
     }}]
     config = build_config(hardcover_api_keys=entries, audiobookshelf=audiobook_settings())
-    assert hardcover_list_settings(config.hardcover_api_keys) == [
+    assert config.hardcover_lists == [
         {"api_key": "Bearer key", "list": "audio", "media_types": ["audiobook"]},
         {"api_key": "Bearer key", "list": "both", "media_types": ["ebook", "audiobook"]},
         {"api_key": "Bearer key", "list": "want-to-read", "media_types": ["ebook"]},
@@ -51,9 +54,21 @@ def test_grouped_reading_lists_and_defaults(build_config):
 
 def test_omitting_reading_list_defaults_to_want_to_read_ebooks(build_config):
     config = build_config(hardcover_api_keys=[{"api_key": "Bearer key"}])
-    assert hardcover_list_settings(config.hardcover_api_keys) == [
+    assert config.hardcover_lists == [
         {"api_key": "Bearer key", "list": "want-to-read", "media_types": ["ebook"]},
     ]
+
+
+def test_normalized_lists_preserve_raw_config_and_are_reused_by_factory(build_config, monkeypatch):
+    entries = ["Bearer legacy", {"api_key": "Bearer custom", "list": "selected"}]
+    config = build_config(hardcover_api_keys=entries)
+    assert config.hardcover_api_keys == entries
+    assert yaml.safe_load(str(config))["hardcover_api_keys"] == "**REDACTED**"
+    normalize = Mock(side_effect=AssertionError("Loaded config must not be normalized again"))
+    monkeypatch.setattr("murid.services.service_factory.hardcover_list_settings", normalize)
+    factory = ServiceFactory(SimpleNamespace(), config, initialize_notifier=False)
+    assert factory.hardcover_lists is config.hardcover_lists
+    normalize.assert_not_called()
 
 
 @pytest.mark.parametrize("lists", [

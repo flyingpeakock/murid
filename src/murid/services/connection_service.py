@@ -66,7 +66,7 @@ def check_connections(factory) -> bool:
         )
         for index, token in enumerate(factory.config["hardcover_api_keys"], start=1)
     ]
-    media_types = requested_media_types(factory.config["hardcover_api_keys"])
+    media_types = requested_media_types(factory.hardcover_lists)
     selected = getattr(getattr(factory, "args", None), "media_type", None)
     if selected == "ebook" or (
         not selected

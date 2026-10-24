@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from murid.config import hardcover_list_settings
 from murid.services.connection_service import check_connections
 
 
@@ -10,6 +11,7 @@ def make_factory():
     qbittorrent = SimpleNamespace(category="murid", get_torrents=Mock(return_value=["torrent"]))
     return SimpleNamespace(
         config={"hardcover_api_keys": ["Bearer first", "Bearer second"]},
+        hardcover_lists=hardcover_list_settings(["Bearer first", "Bearer second"]),
         calibre=lambda: calibre,
         myanonamouse=lambda: mam,
         qbittorrent=lambda: qbittorrent,
@@ -78,6 +80,7 @@ def test_audio_only_connections_skip_calibre_and_check_import_access(monkeypatch
     factory.config["hardcover_api_keys"] = [
         {"api_key": "Bearer audio", "media_types": ["audiobook"]},
     ]
+    factory.hardcover_lists = hardcover_list_settings(factory.config["hardcover_api_keys"])
     factory.calibre = Mock(side_effect=AssertionError("Calibre must not be initialized"))
     hardcover = Mock(return_value=SimpleNamespace(user=SimpleNamespace(name="User")))
     monkeypatch.setattr("murid.services.connection_service.Hardcover", hardcover)
@@ -91,6 +94,27 @@ def test_audio_only_connections_skip_calibre_and_check_import_access(monkeypatch
     factory.calibre.assert_not_called()
     hardcover.assert_called_once_with("Bearer audio")
     assert "OK Audiobookshelf: audio library prerequisites checked" in (capsys.readouterr().out)
+
+
+def test_grouped_lists_check_each_account_once_and_both_libraries(monkeypatch, capsys):
+    factory, _ = make_factory()
+    factory.config["hardcover_api_keys"] = [{
+        "api_key": "Bearer grouped",
+        "reading_list": {"ebooks": {}, "audio": {"type": "audiobook"}},
+    }]
+    factory.hardcover_lists = hardcover_list_settings(factory.config["hardcover_api_keys"])
+    audio = SimpleNamespace(check_connection=lambda: "audio accessible")
+    factory.library = Mock(return_value=audio)
+    hardcover = Mock(return_value=SimpleNamespace(user=SimpleNamespace(name="User")))
+    monkeypatch.setattr("murid.services.connection_service.Hardcover", hardcover)
+
+    assert check_connections(factory)
+
+    hardcover.assert_called_once_with("Bearer grouped")
+    factory.library.assert_called_once_with("audiobook")
+    output = capsys.readouterr().out
+    assert "OK Calibre:" in output
+    assert "Connections: 5 passed, 0 failed" in output
 
 
 def test_filtered_connection_skips_configured_other_library(monkeypatch):

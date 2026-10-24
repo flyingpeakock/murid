@@ -34,11 +34,17 @@ class ServiceFactory:
     def __init__(self, args, config=None, *, initialize_notifier=True):
         """Initialize the service factory with command-line arguments."""
         self.args = args
-        if not config:
-            self.config = self._load_config()
-        else:
-            self.config = config
+        self._set_config(config or self._load_config())
         self.notify = self._init_apprise() if initialize_notifier else lambda *args, **kwargs: None
+
+    def _set_config(self, config):
+        """Reuse normalized Config settings or normalize supplied dictionaries once."""
+        self.config = config
+        self.hardcover_lists = (
+            config.hardcover_lists
+            if isinstance(config, Config)
+            else hardcover_list_settings(config["hardcover_api_keys"])
+        )
 
     def _init_apprise(self):
         """Initialize the Apprise notifier."""
@@ -52,7 +58,7 @@ class ServiceFactory:
 
     def reload(self):
         """Reload the configuration from the file."""
-        self.config = self._load_config()
+        self._set_config(self._load_config())
         self.notify = self._init_apprise()
 
     def _load_config(self) -> dict:
@@ -89,19 +95,9 @@ class ServiceFactory:
         )
 
     def hardcover(self) -> set[Hardcover]:
-        """Create a list of Hardcover instances for each user specified in the configuration."""
-        keys = [
-            settings
-            for entry in self.config["hardcover_api_keys"]
-            for settings in (
-                hardcover_list_settings([entry])
-                if isinstance(entry, dict) and "reading_list" in entry
-                else [entry]
-            )
-        ]
-        with ThreadPoolExecutor(max_workers=min(10, len(keys))) as executor:
-            hardcover_clients = set(executor.map(self._hardcover_client, keys))
-        return hardcover_clients
+        """Create a Hardcover client for each normalized reading list."""
+        with ThreadPoolExecutor(max_workers=min(10, len(self.hardcover_lists))) as executor:
+            return set(executor.map(self._hardcover_client, self.hardcover_lists))
 
     def library(self, media_type: MediaType) -> Library:
         """Construct only the backend for the requested medium."""
@@ -128,20 +124,19 @@ class ServiceFactory:
             )
         raise ConfigError(f"Unknown media type: {media_type!r}")
 
-    def _hardcover_client(self, entry):
-        if isinstance(entry, dict):
-            client = Hardcover(entry["api_key"], list_slug=entry.get("list", "want-to-read"))
-        else:
-            client = Hardcover(entry)
-        if hasattr(client, "lang_codes"):
-            client.lang_codes = self.config["lang_codes"]
-        return client
+    def _hardcover_client(self, entry: dict) -> Hardcover:
+        return Hardcover(
+            entry["api_key"], list_slug=entry["list"], lang_codes=self.config["lang_codes"]
+        )
 
     def wanted_requests(self) -> set[BookRequest]:
         """Fetch lists as independent requests, combining overlapping work identities."""
-        entries = hardcover_list_settings(self.config["hardcover_api_keys"])
         selected = getattr(self.args, "media_type", None)
-        entries = [entry for entry in entries if not selected or selected in entry["media_types"]]
+        entries = [
+            entry
+            for entry in self.hardcover_lists
+            if not selected or selected in entry["media_types"]
+        ]
         if not entries:
             return set()
 
@@ -186,7 +181,7 @@ class ServiceFactory:
         """Create a TorrentDiscoveryService instance using the MyAnonamouse client."""
         media_type = media_type or getattr(self.args, "media_type", None)
         media_types = (
-            {media_type} if media_type else requested_media_types(self.config["hardcover_api_keys"])
+            {media_type} if media_type else requested_media_types(self.hardcover_lists)
         )
         return TorrentDiscoveryService(
             self.myanonamouse(),
@@ -233,8 +228,7 @@ class ServiceFactory:
 
     def recovery_book(self, book_id: int) -> Book | None:
         """Fetch a persisted work independently of its current reading-list membership."""
-        entry = hardcover_list_settings(self.config["hardcover_api_keys"])[0]
-        return self._hardcover_client(entry).get_book(book_id)
+        return self._hardcover_client(self.hardcover_lists[0]).get_book(book_id)
 
     def retry_service(self):
         """Route persisted requests lazily, without initializing unrelated libraries."""
