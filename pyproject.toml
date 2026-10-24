@@ -28,6 +28,7 @@ dependencies = [
   "pydantic>=2,<3",
   "pycountry",
   "python-stdnum",
+  "filelock>=3.29.7",
 ]
 
 dynamic = [ "version" ]

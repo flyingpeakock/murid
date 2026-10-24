@@ -1,7 +1,6 @@
 """Filesystem primitives for durable audiobook staging and exclusive publication."""
 
 import ctypes
-import importlib
 import json
 import os
 import sys
@@ -9,34 +8,25 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
+from filelock import FileLock, SoftFileLock, Timeout
+
 from .library import LibraryError
 
 
 @contextmanager
 def import_lock(path: Path):
-    """Keep the lock inode stable; OS locks release automatically after a crash."""
-    module = importlib.import_module("msvcrt" if os.name == "nt" else "fcntl")
-    with path.open("a+b") as stream:
-        if os.name == "nt":
-            if path.stat().st_size == 0:
-                stream.write(b"\0")
-                stream.flush()
-            stream.seek(0)
-        try:
-            if os.name == "nt":
-                module.locking(stream.fileno(), module.LK_NBLCK, 1)
-            else:
-                module.flock(stream.fileno(), module.LOCK_EX | module.LOCK_NB)
-        except OSError:
-            raise LibraryError("This audiobook import is already active; retry later") from None
-        try:
-            yield
-        finally:
-            if os.name == "nt":
-                stream.seek(0)
-                module.locking(stream.fileno(), module.LK_UNLCK, 1)
-            else:
-                module.flock(stream.fileno(), module.LOCK_UN)
+    """Acquire a native lock immediately; OS locks release automatically after a crash."""
+    lock = FileLock(path, timeout=0)
+    try:
+        lock.acquire()
+    except Timeout:
+        raise LibraryError("This audiobook import is already active; retry later") from None
+    try:
+        if isinstance(lock, SoftFileLock):
+            raise LibraryError("Audiobook imports require native filesystem locks")
+        yield
+    finally:
+        lock.release()
 
 
 @contextmanager
