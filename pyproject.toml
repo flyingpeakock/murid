@@ -27,6 +27,7 @@ dependencies = [
   "apprise",
   "pydantic>=2,<3",
   "pycountry",
+  "python-stdnum",
 ]
 
 dynamic = [ "version" ]

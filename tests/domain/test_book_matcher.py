@@ -455,10 +455,16 @@ def test_canonicalize_does_not_destroy_numeric_titles():
     ("isbn", "expected"),
     [
         ("0306406152", "9780306406157"),
+        ("306406152", "9780306406157"),
+        ("306-40615-2", "9780306406157"),
+        ("80442957x", "9780804429573"),
         ("0-306-40615-2", "9780306406157"),
         ("9780306406157", "9780306406157"),
         ("978-0-306-40615-7", "9780306406157"),
         ("080442957X", "9780804429573"),
+        ("0-8044-2957-x", "9780804429573"),
+        ("  0 306 40615 2  ", "9780306406157"),
+        ("ISBN: 978.0.306.40615.7", "9780306406157"),
         ("9791090636071", "9791090636071"),
     ],
 )
@@ -472,6 +478,11 @@ def test_normalize_isbn_valid(isbn, expected):
         "",
         None,
         "123",
+        "306406153",  # Invalid nine-digit SBN checksum.
+        "X04429570",  # SBN check digits must also be at the end.
+        "0-8044-2957-0",  # Invalid ISBN-10 checksum despite valid formatting.
+        "X804429570",  # X is only allowed as the final ISBN-10 check digit.
+        "97803064061570",  # Extra digits must not be truncated.
         "0306406153",  # Invalid ISBN-10 checksum
         "9780306406158",  # Invalid ISBN-13 checksum
         "9770306406157",  # Unsupported ISBN prefix

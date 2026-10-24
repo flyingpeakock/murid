@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from urllib.parse import unquote, urlsplit
 
 from rapidfuzz import fuzz
+from stdnum import isbn as stdnum_isbn
+from stdnum.exceptions import ValidationError
 
 from .book import Book
 
@@ -88,54 +90,18 @@ class BookMatcher:
                 author = f"{given} {surname}"
         return cls.normalize(author)
 
-    @classmethod
-    def normalize_isbn(cls, isbn: str | None) -> str | None:
-        """Validate an ISBN and convert ISBN-10 to ISBN-13."""
+    @staticmethod
+    def normalize_isbn(isbn: str | None) -> str | None:
+        """Validate an ISBN or legacy SBN and normalize it to ISBN-13."""
         if not isbn:
             return None
 
         isbn = re.sub(r"[^0-9Xx]", "", str(isbn)).upper()
 
-        if len(isbn) == 10:
-            return cls._normalize_isbn10(isbn)
-
-        return cls._normalize_isbn13(isbn)
-
-    @staticmethod
-    def _normalize_isbn10(isbn: str) -> str | None:
-        """Validate ISBN-10 and convert it to ISBN-13."""
-        if not re.fullmatch(r"[0-9]{9}[0-9X]", isbn):
+        try:
+            return stdnum_isbn.validate(isbn, convert=True)
+        except ValidationError:
             return None
-
-        checksum = sum(
-            int(digit) * weight for digit, weight in zip(isbn[:9], range(10, 1, -1), strict=False)
-        )
-        checksum += 10 if isbn[-1] == "X" else int(isbn[-1])
-
-        if checksum % 11:
-            return None
-
-        prefix = "978" + isbn[:9]
-        checksum = sum(
-            int(digit) * (1 if index % 2 == 0 else 3) for index, digit in enumerate(prefix)
-        )
-        return prefix + str((10 - checksum % 10) % 10)
-
-    @staticmethod
-    def _normalize_isbn13(isbn: str) -> str | None:
-        """Validate ISBN-13."""
-        if len(isbn) != 13 or not isbn.isdigit():
-            return None
-
-        if not isbn.startswith(("978", "979")):
-            return None
-
-        checksum = sum(
-            int(digit) * (1 if index % 2 == 0 else 3) for index, digit in enumerate(isbn[:12])
-        )
-        expected = (10 - checksum % 10) % 10
-
-        return isbn if int(isbn[-1]) == expected else None
 
     @classmethod
     def normalized_isbns(cls, book: Book) -> set[str]:
