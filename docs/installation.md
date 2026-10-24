@@ -44,7 +44,7 @@ inputs.murid.url = "github:flyingpeakock/murid";
       enable = true;
       environmentFile = "/etc/murid.env";
       config = {
-        hardcover_api_keys = [{
+        hardcover_accounts = [{
           api_key = "!ENV HARDCOVER_API_KEY";
           reading_list.want-to-read = {};
         }];

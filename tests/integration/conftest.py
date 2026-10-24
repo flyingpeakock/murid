@@ -110,7 +110,7 @@ def workflow(tmp_path, monkeypatch, capsys, torrent_file):
         "murid.services.service_factory.Calibre", partial(Calibre, run=run_calibredb)
     )
     config = {
-        "hardcover_api_keys": [
+        "hardcover_accounts": [
             {"api_key": "Bearer integration-token", "reading_list": {"want-to-read": {}}}
         ],
         "mam_id": "integration-cookie",

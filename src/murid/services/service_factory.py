@@ -44,7 +44,7 @@ class ServiceFactory:
         self.hardcover_lists = (
             config.hardcover_lists
             if isinstance(config, Config)
-            else hardcover_list_settings(config["hardcover_api_keys"])
+            else hardcover_list_settings(config["hardcover_accounts"])
         )
 
     def _init_apprise(self):

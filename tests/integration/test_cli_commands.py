@@ -16,7 +16,7 @@ def records(result, kind):
 
 def configure_audio(workflow):
     workflow.config.pop("calibre")
-    workflow.config["hardcover_api_keys"] = [
+    workflow.config["hardcover_accounts"] = [
         {
             "api_key": "Bearer integration-token",
             "reading_list": {"want-to-read": {"type": ["audiobook"]}},
@@ -39,7 +39,7 @@ def test_audio_config_validates_without_calibre_or_mount(workflow):
 
 
 def test_grouped_ebook_lists_use_every_list(workflow):
-    workflow.config["hardcover_api_keys"] = [
+    workflow.config["hardcover_accounts"] = [
         {
             "api_key": "Bearer integration-token",
             "reading_list": {"want-to-read": {}},
@@ -52,7 +52,7 @@ def test_grouped_ebook_lists_use_every_list(workflow):
 
 def test_grouped_audio_config_can_run_discovery_without_library_writes(workflow):
     configure_audio(workflow)
-    workflow.config["hardcover_api_keys"] = [
+    workflow.config["hardcover_accounts"] = [
         {
             "api_key": "Bearer integration-token",
             "reading_list": {"audiobooks": {"type": "audiobook"}},
@@ -117,7 +117,7 @@ def test_mixed_media_inspection_routes_each_request(workflow, ebook_present, aud
     ebook_config = workflow.config["calibre"]
     configure_audio(workflow)
     workflow.config["calibre"] = ebook_config
-    workflow.config["hardcover_api_keys"][0]["reading_list"] = {
+    workflow.config["hardcover_accounts"][0]["reading_list"] = {
         "want-to-read": {"type": ["ebook", "audiobook"]},
     }
     if ebook_present:
@@ -434,8 +434,8 @@ def test_print_config_includes_defaults_and_respects_redaction(workflow, redact)
     assert config["matcher_threshold"] == 0.92
     assert config["schedule"] == "0 * * * *"
     assert config["filetypes"] == ["epub", "mobi"]
-    assert config["hardcover_api_keys"] == (
-        "**REDACTED**" if redact else workflow.config["hardcover_api_keys"]
+    assert config["hardcover_accounts"] == (
+        "**REDACTED**" if redact else workflow.config["hardcover_accounts"]
     )
     assert config["mam_id"] == ("**REDACTED**" if redact else "integration-cookie")
     assert config["qbittorrent"]["password"] == ("**REDACTED**" if redact else "integration")

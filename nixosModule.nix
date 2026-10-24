@@ -18,7 +18,7 @@ in {
             then [options.type]
             else options.type)
           (builtins.attrValues entry.reading_list))
-        cfg.config.hardcover_api_keys;
+        cfg.config.hardcover_accounts;
 
     yaml = pkgs.formats.yaml {};
     createYAMLConfig = config: yaml.generate "murid.yaml" config;
@@ -156,9 +156,29 @@ in {
       config = lib.mkOption {
         description = "Configuration for murid";
         default = null;
-        type = lib.types.nullOr (lib.types.submodule {
+        apply = value:
+          if value == null
+          then null
+          else
+            builtins.removeAttrs (value
+              // lib.optionalAttrs (value.hardcover_api_keys != null) {
+                hardcover_accounts = value.hardcover_api_keys;
+              }) ["hardcover_api_keys"];
+        type = lib.types.nullOr (lib.types.submodule ({options, ...}: {
           options = {
             hardcover_api_keys = lib.mkOption {
+              visible = false;
+              default = null;
+              type = lib.types.nullOr options.hardcover_accounts.type;
+              apply = value:
+                if value == null
+                then null
+                # Option defaults have priority 1500; reject an explicit replacement.
+                else if options.hardcover_accounts.highestPrio < 1500
+                then throw "Set only services.murid.config.hardcover_accounts; remove hardcover_api_keys"
+                else lib.warn "services.murid.config.hardcover_api_keys is deprecated; use services.murid.config.hardcover_accounts instead" value;
+            };
+            hardcover_accounts = lib.mkOption {
               description = "Hardcover accounts with API tokens and grouped reading lists";
               type = lib.types.listOf (lib.types.submodule {
                 options = {
@@ -315,7 +335,7 @@ in {
               default = 1800; # 30 minutes
             };
           };
-        });
+        }));
       };
     };
 

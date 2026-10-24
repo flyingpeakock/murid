@@ -10,7 +10,7 @@ def check_connections(factory) -> bool:
 
     labels = [
         f"Hardcover account {index}"
-        for index in range(1, len(factory.config["hardcover_api_keys"]) + 1)
+        for index in range(1, len(factory.config["hardcover_accounts"]) + 1)
     ]
     width = max(map(len, [*labels, "Calibre", "Audiobookshelf", "MyAnonamouse", "qBittorrent"]))
 
@@ -62,7 +62,7 @@ def check_connections(factory) -> bool:
             f"Hardcover account {index}",
             lambda token=token: hardcover_detail(token["api_key"]),
         )
-        for index, token in enumerate(factory.config["hardcover_api_keys"], start=1)
+        for index, token in enumerate(factory.config["hardcover_accounts"], start=1)
     ]
     media_types = requested_media_types(factory.hardcover_lists)
     selected = getattr(getattr(factory, "args", None), "media_type", None)

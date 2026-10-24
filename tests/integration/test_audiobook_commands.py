@@ -10,7 +10,7 @@ pytestmark = pytest.mark.integration
 
 def audio_setup(workflow):
     workflow.config.pop("calibre")
-    workflow.config["hardcover_api_keys"] = [
+    workflow.config["hardcover_accounts"] = [
         {
             "api_key": "Bearer integration-token",
             "reading_list": {"audiobooks": {"type": "audiobook"}},
@@ -122,7 +122,7 @@ def test_default_ebook_manual_import_still_works_with_mixed_lists(workflow):
         "calibredb_executable": sys.executable,
         "library": str(workflow.library),
     }
-    workflow.config["hardcover_api_keys"][0]["reading_list"]["want-to-read"] = {}
+    workflow.config["hardcover_accounts"][0]["reading_list"]["want-to-read"] = {}
     result = workflow.run("add-book", "Dune", str(workflow.downloads / "Dune.epub"))
     assert result.code == 0, result.errors
     assert record(result, "imported")["media_type"] == "ebook"
@@ -227,7 +227,7 @@ def test_filtered_audio_recovery_skips_unrelated_hardcover_account(workflow, com
     calibre = workflow.config["calibre"]
     source = audio_setup(workflow)
     workflow.config["calibre"] = calibre
-    workflow.config["hardcover_api_keys"].insert(
+    workflow.config["hardcover_accounts"].insert(
         0,
         {
             "api_key": "Bearer expired-ebook-account",
@@ -282,7 +282,7 @@ def test_filtered_inspection_ignores_unavailable_other_library(
     workflow, monkeypatch, command, kind, media
 ):
     audio_setup(workflow)
-    workflow.config["hardcover_api_keys"][0]["reading_list"]["download-queue"] = {}
+    workflow.config["hardcover_accounts"][0]["reading_list"]["download-queue"] = {}
     workflow.config["calibre"] = {
         "calibredb_executable": sys.executable,
         "library": str(workflow.library),
@@ -318,7 +318,7 @@ def test_ebook_filter_preserves_pending_audio_and_avoids_audio_backend(workflow,
     from types import SimpleNamespace
 
     source = audio_setup(workflow)
-    workflow.config["hardcover_api_keys"][0]["reading_list"]["download-queue"] = {}
+    workflow.config["hardcover_accounts"][0]["reading_list"]["download-queue"] = {}
     workflow.config["calibre"] = {
         "calibredb_executable": sys.executable,
         "library": str(workflow.library),

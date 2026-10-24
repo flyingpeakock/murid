@@ -15,7 +15,7 @@ from murid.services.service_factory import ServiceFactory
 
 missing = object()
 base = {
-    "hardcover_api_keys": [{"api_key": "Bearer secret123", "reading_list": {"want-to-read": {}}}],
+    "hardcover_accounts": [{"api_key": "Bearer secret123", "reading_list": {"want-to-read": {}}}],
     "calibre": {
         "library": "metadata.db",
     },
@@ -52,7 +52,7 @@ def test_grouped_reading_lists_and_defaults(build_config):
             },
         }
     ]
-    config = build_config(hardcover_api_keys=entries, audiobookshelf=audiobook_settings())
+    config = build_config(hardcover_accounts=entries, audiobookshelf=audiobook_settings())
     assert config.hardcover_lists == [
         {"api_key": "Bearer key", "list": "audio", "media_types": ["audiobook"]},
         {"api_key": "Bearer key", "list": "both", "media_types": ["ebook", "audiobook"]},
@@ -62,14 +62,14 @@ def test_grouped_reading_lists_and_defaults(build_config):
 
 def test_reading_list_is_required(build_config):
     with pytest.raises(ConfigError, match="reading_list"):
-        build_config(hardcover_api_keys=[{"api_key": "Bearer key"}])
+        build_config(hardcover_accounts=[{"api_key": "Bearer key"}])
 
 
 def test_normalized_lists_preserve_raw_config_and_are_reused_by_factory(build_config, monkeypatch):
     entries = [{"api_key": "Bearer custom", "reading_list": {"selected": {}}}]
-    config = build_config(hardcover_api_keys=entries)
-    assert config.hardcover_api_keys == entries
-    assert yaml.safe_load(str(config))["hardcover_api_keys"] == "**REDACTED**"
+    config = build_config(hardcover_accounts=entries)
+    assert config.hardcover_accounts == entries
+    assert yaml.safe_load(str(config))["hardcover_accounts"] == "**REDACTED**"
     normalize = Mock(side_effect=AssertionError("Loaded config must not be normalized again"))
     monkeypatch.setattr("murid.services.service_factory.hardcover_list_settings", normalize)
     factory = ServiceFactory(SimpleNamespace(), config, initialize_notifier=False)
@@ -96,14 +96,14 @@ def test_normalized_lists_preserve_raw_config_and_are_reused_by_factory(build_co
 )
 def test_invalid_grouped_reading_lists(build_config, lists):
     with pytest.raises(ConfigError, match="reading_list"):
-        build_config(hardcover_api_keys=[{"api_key": "Bearer key", "reading_list": lists}])
+        build_config(hardcover_accounts=[{"api_key": "Bearer key", "reading_list": lists}])
 
 
 @pytest.mark.parametrize("legacy", [{"list": "a"}, {"media_types": ["ebook"]}])
 def test_grouped_lists_reject_ambiguous_legacy_settings(build_config, legacy):
     with pytest.raises(ConfigError, match="Extra inputs are not permitted"):
         build_config(
-            hardcover_api_keys=[
+            hardcover_accounts=[
                 {
                     "api_key": "Bearer key",
                     "reading_list": {"a": {}},
@@ -117,7 +117,7 @@ def test_grouped_audio_only_needs_no_calibre(build_config):
     config = build_config(
         calibre=missing,
         audiobookshelf=audiobook_settings(),
-        hardcover_api_keys=[
+        hardcover_accounts=[
             {
                 "api_key": "Bearer key",
                 "reading_list": {
@@ -132,13 +132,13 @@ def test_grouped_audio_only_needs_no_calibre(build_config):
 @pytest.mark.parametrize("media_types", [[], "audiobook", ["video"], [None], [True]])
 def test_reject_invalid_media_types(build_config, media_types):
     with pytest.raises(ConfigError, match="media_types"):
-        build_config(hardcover_api_keys=[{"api_key": "Bearer key", "media_types": media_types}])
+        build_config(hardcover_accounts=[{"api_key": "Bearer key", "media_types": media_types}])
 
 
 def test_audio_only_config_needs_no_calibre(build_config):
     config = build_config(
         calibre=missing,
-        hardcover_api_keys=[
+        hardcover_accounts=[
             {"api_key": "Bearer key", "reading_list": {"want-to-read": {"type": "audiobook"}}}
         ],
         audiobookshelf=audiobook_settings(),
@@ -150,7 +150,7 @@ def test_audio_only_config_needs_no_calibre(build_config):
 def test_audiobook_requests_require_backend(build_config):
     with pytest.raises(ConfigError, match="require audiobookshelf"):
         build_config(
-            hardcover_api_keys=[
+            hardcover_accounts=[
                 {"api_key": "Bearer key", "reading_list": {"want-to-read": {"type": "audiobook"}}}
             ]
         )
@@ -160,7 +160,7 @@ def test_both_media_require_both_libraries(build_config):
     with pytest.raises(ConfigError, match="calibre.library"):
         build_config(
             calibre=missing,
-            hardcover_api_keys=[
+            hardcover_accounts=[
                 {
                     "api_key": "Bearer key",
                     "reading_list": {"want-to-read": {"type": ["ebook", "audiobook"]}},
@@ -240,7 +240,7 @@ def make_config(yaml_text: str) -> Config:
 def test_load_valid_config(build_config):
     config = build_config()
 
-    assert config.get("hardcover_api_keys") == base["hardcover_api_keys"]
+    assert config.get("hardcover_accounts") == base["hardcover_accounts"]
     assert config.get("redact_sensitive_data") is True
 
 
@@ -251,7 +251,7 @@ def test_default_redact_sensitive_data(build_config):
 
 def test_get_existing_key(build_config):
     config = build_config()
-    assert config.get("hardcover_api_keys")[0]["api_key"] == "Bearer secret123"
+    assert config.get("hardcover_accounts")[0]["api_key"] == "Bearer secret123"
 
 
 def test_get_default_value(build_config):
@@ -617,39 +617,39 @@ def test_filetypes_can_be_overridden(build_config):
     assert config.get("filetypes") == ["pdf", "epub"]
 
 
-def test_hardcover_api_keys_must_be_present(build_config):
-    with pytest.raises(ConfigError, match="hardcover_api_keys"):
-        build_config(hardcover_api_keys=missing)
+def test_hardcover_accounts_must_be_present(build_config):
+    with pytest.raises(ConfigError, match="hardcover_accounts"):
+        build_config(hardcover_accounts=missing)
 
 
-def test_hardcover_api_keys_must_be_list(build_config):
-    with pytest.raises(ConfigError, match="hardcover_api_keys"):
-        build_config(hardcover_api_keys="not-a-list")
+def test_hardcover_accounts_must_be_list(build_config):
+    with pytest.raises(ConfigError, match="hardcover_accounts"):
+        build_config(hardcover_accounts="not-a-list")
 
 
-def test_hardcover_api_keys_must_not_be_empty(build_config):
+def test_hardcover_accounts_must_not_be_empty(build_config):
     with pytest.raises(
         ConfigError,
-        match="hardcover_api_keys",
+        match="hardcover_accounts",
     ):
-        build_config(hardcover_api_keys=[])
+        build_config(hardcover_accounts=[])
 
 
-def test_hardcover_api_keys_list_items_must_be_accounts(build_config):
-    with pytest.raises(ConfigError, match="hardcover_api_keys.0"):
-        build_config(hardcover_api_keys=[123, "Bearer secret123"])
+def test_hardcover_accounts_list_items_must_be_accounts(build_config):
+    with pytest.raises(ConfigError, match="hardcover_accounts.0"):
+        build_config(hardcover_accounts=[123, "Bearer secret123"])
 
 
-def test_hardcover_api_keys_can_be_set(build_config):
+def test_hardcover_accounts_can_be_set(build_config):
     entries = [{"api_key": "Bearer newsecret", "reading_list": {"want-to-read": {}}}]
-    config = build_config(hardcover_api_keys=entries)
-    assert config.get("hardcover_api_keys") == entries
+    config = build_config(hardcover_accounts=entries)
+    assert config.get("hardcover_accounts") == entries
 
 
-def test_hardcover_api_keys_must_start_with_bearer(build_config):
-    with pytest.raises(ConfigError, match="hardcover_api_keys.0"):
+def test_hardcover_accounts_must_start_with_bearer(build_config):
+    with pytest.raises(ConfigError, match="hardcover_accounts.0"):
         build_config(
-            hardcover_api_keys=[{"api_key": "not-a-bearer-token", "reading_list": {"books": {}}}]
+            hardcover_accounts=[{"api_key": "not-a-bearer-token", "reading_list": {"books": {}}}]
         )
 
 
@@ -728,8 +728,8 @@ def test_hardcover_grouped_accounts_and_redaction(build_config):
         {"api_key": "Bearer first", "reading_list": {"download-queue": {}}},
         {"api_key": "Bearer second", "reading_list": {"want-to-read": {}}},
     ]
-    config = build_config(hardcover_api_keys=entries)
-    assert config.hardcover_api_keys == entries
+    config = build_config(hardcover_accounts=entries)
+    assert config.hardcover_accounts == entries
     assert all(token not in str(config) for token in ("Bearer first", "Bearer second"))
 
 
@@ -748,7 +748,7 @@ def test_hardcover_grouped_accounts_and_redaction(build_config):
 )
 def test_hardcover_invalid_per_user_settings_rejected(build_config, entry):
     with pytest.raises(ConfigError):
-        build_config(hardcover_api_keys=[entry])
+        build_config(hardcover_accounts=[entry])
 
 
 @pytest.mark.parametrize(
@@ -800,7 +800,7 @@ def test_null_uses_defaults_in_previously_merged_sections(build_config):
 def test_nested_null_does_not_hide_invalid_reading_list_options(build_config):
     with pytest.raises(ConfigError, match="reading_list"):
         build_config(
-            hardcover_api_keys=[
+            hardcover_accounts=[
                 {
                     "api_key": "Bearer key",
                     "reading_list": {"books": {"type": None}},
@@ -818,8 +818,8 @@ def test_nested_null_does_not_hide_invalid_reading_list_options(build_config):
     ],
 )
 def test_legacy_hardcover_formats_are_rejected(build_config, entry):
-    with pytest.raises(ConfigError, match="hardcover_api_keys"):
-        build_config(hardcover_api_keys=[entry])
+    with pytest.raises(ConfigError, match="hardcover_accounts"):
+        build_config(hardcover_accounts=[entry])
 
 
 def test_qbittorrent_passthrough_options_are_preserved(build_config):
@@ -846,7 +846,7 @@ def test_validation_errors_do_not_disclose_input_secrets(build_config, caplog):
     secret = "sensitive-value-do-not-log"
     with pytest.raises(ConfigError) as error:
         build_config(
-            hardcover_api_keys=[
+            hardcover_accounts=[
                 {
                     "api_key": secret,
                     "reading_list": {"books": {}},
@@ -881,10 +881,10 @@ def test_yaml_env_and_inline_env_are_trimmed(monkeypatch, tmp_path):
     document = yaml.safe_dump(data).replace("Bearer secret123", "!ENV TEST_CONFIG_KEY")
     # The YAML tag is handled by the constructor.
     config = make_config(document)
-    assert config.hardcover_api_keys[0]["api_key"] == "Bearer env-key"
+    assert config.hardcover_accounts[0]["api_key"] == "Bearer env-key"
     # The quoted inline form is handled by sanitization.
     document = document.replace("api_key: !ENV TEST_CONFIG_KEY", 'api_key: "!ENV TEST_CONFIG_KEY"')
-    assert make_config(document).hardcover_api_keys[0]["api_key"] == "Bearer env-key"
+    assert make_config(document).hardcover_accounts[0]["api_key"] == "Bearer env-key"
     data["qbittorrent"]["port"] = "!ENV TEST_CONFIG_PORT"
     with pytest.raises(ConfigError, match="qbittorrent.port"):
         make_config(yaml.safe_dump(data))
@@ -936,3 +936,23 @@ def test_exclude_vip_boolean_setting(build_config, value):
 def test_exclude_vip_requires_boolean(build_config, value):
     with pytest.raises(ConfigError, match="exclude_vip"):
         build_config(exclude_vip=value)
+
+
+def test_legacy_hardcover_key_warns_and_normalizes(caplog, tmp_path):
+    data = deepcopy(base)
+    data["calibre"]["library"] = str(tmp_path)
+    data["hardcover_api_keys"] = data.pop("hardcover_accounts")
+    with caplog.at_level(logging.WARNING, logger="murid"):
+        config = Config(StringIO(yaml.safe_dump(data)))
+    assert config["hardcover_accounts"] == data["hardcover_api_keys"]
+    assert "hardcover_api_keys" not in config
+    assert "hardcover_api_keys is deprecated; use hardcover_accounts instead" in caplog.text
+    assert "secret123" not in caplog.text
+
+
+def test_both_hardcover_keys_are_rejected(tmp_path):
+    data = deepcopy(base)
+    data["calibre"]["library"] = str(tmp_path)
+    data["hardcover_api_keys"] = data["hardcover_accounts"]
+    with pytest.raises(ConfigError, match="Set only hardcover_accounts"):
+        Config(StringIO(yaml.safe_dump(data)))

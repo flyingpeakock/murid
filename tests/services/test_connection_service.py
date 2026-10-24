@@ -11,7 +11,7 @@ def make_factory():
     qbittorrent = SimpleNamespace(category="murid", get_torrents=Mock(return_value=["torrent"]))
     return SimpleNamespace(
         config={
-            "hardcover_api_keys": [
+            "hardcover_accounts": [
                 {"api_key": "Bearer first", "reading_list": {"want-to-read": {}}},
                 {"api_key": "Bearer second", "reading_list": {"want-to-read": {}}},
             ]
@@ -87,10 +87,10 @@ def test_connections_handles_client_initialization_failure(monkeypatch, capsys):
 
 def test_audio_only_connections_skip_calibre_and_check_import_access(monkeypatch, capsys):
     factory, _ = make_factory()
-    factory.config["hardcover_api_keys"] = [
+    factory.config["hardcover_accounts"] = [
         {"api_key": "Bearer audio", "reading_list": {"want-to-read": {"type": ["audiobook"]}}},
     ]
-    factory.hardcover_lists = hardcover_list_settings(factory.config["hardcover_api_keys"])
+    factory.hardcover_lists = hardcover_list_settings(factory.config["hardcover_accounts"])
     factory.calibre = Mock(side_effect=AssertionError("Calibre must not be initialized"))
     hardcover = Mock(return_value=SimpleNamespace(user=SimpleNamespace(name="User")))
     monkeypatch.setattr("murid.services.connection_service.Hardcover", hardcover)
@@ -108,13 +108,13 @@ def test_audio_only_connections_skip_calibre_and_check_import_access(monkeypatch
 
 def test_grouped_lists_check_each_account_once_and_both_libraries(monkeypatch, capsys):
     factory, _ = make_factory()
-    factory.config["hardcover_api_keys"] = [
+    factory.config["hardcover_accounts"] = [
         {
             "api_key": "Bearer grouped",
             "reading_list": {"ebooks": {}, "audio": {"type": "audiobook"}},
         }
     ]
-    factory.hardcover_lists = hardcover_list_settings(factory.config["hardcover_api_keys"])
+    factory.hardcover_lists = hardcover_list_settings(factory.config["hardcover_accounts"])
     audio = SimpleNamespace(check_connection=lambda: "audio accessible")
     factory.library = Mock(return_value=audio)
     hardcover = Mock(return_value=SimpleNamespace(user=SimpleNamespace(name="User")))

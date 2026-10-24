@@ -7,7 +7,7 @@
   inherit (nixpkgs) lib;
   package = pkgs.writeShellScriptBin "murid" "exit 0";
   inlineConfig = {
-    hardcover_api_keys = [
+    hardcover_accounts = [
       {
         api_key = "!ENV HARDCOVER_API_KEY";
         reading_list.want-to-read = {};
@@ -38,6 +38,13 @@
     }).config;
   fromFile = evaluate {configFile = "/etc/murid.yaml";};
   fromInline = evaluate {config = inlineConfig;};
+  fromLegacy = evaluate {
+    config =
+      (builtins.removeAttrs inlineConfig ["hardcover_accounts"])
+      // {
+        hardcover_api_keys = inlineConfig.hardcover_accounts;
+      };
+  };
   sharedService = evaluate {
     configFile = "/etc/murid.yaml";
     supplementaryGroups = ["media" "qbittorrent"];
@@ -47,7 +54,7 @@
     config =
       inlineConfig
       // {
-        hardcover_api_keys = [
+        hardcover_accounts = [
           {
             api_key = "!ENV HARDCOVER_API_KEY";
             reading_list.want-to-read = {};
@@ -63,12 +70,12 @@
         ];
       };
   };
-  userLists = fromUserLists.services.murid.config.hardcover_api_keys;
+  userLists = fromUserLists.services.murid.config.hardcover_accounts;
   audioConfig =
     inlineConfig
     // {
       calibre = null;
-      hardcover_api_keys = [
+      hardcover_accounts = [
         {
           api_key = "!ENV HARDCOVER_API_KEY";
           reading_list.want-to-read.type = "audiobook";
@@ -101,7 +108,7 @@
       audioConfig
       // {
         inherit (inlineConfig) calibre;
-        hardcover_api_keys = [
+        hardcover_accounts = [
           {
             api_key = "!ENV HARDCOVER_API_KEY";
             reading_list = {
@@ -113,12 +120,12 @@
         ];
       };
   };
-  grouped = builtins.head fromGrouped.services.murid.config.hardcover_api_keys;
+  grouped = builtins.head fromGrouped.services.murid.config.hardcover_accounts;
   groupedAudio = evaluate {
     config =
       audioConfig
       // {
-        hardcover_api_keys = [
+        hardcover_accounts = [
           {
             api_key = "!ENV HARDCOVER_API_KEY";
             reading_list.audio.type = "audiobook";
@@ -131,7 +138,7 @@
       audioConfig
       // {
         inherit (inlineConfig) calibre;
-        hardcover_api_keys = [
+        hardcover_accounts = [
           {
             api_key = "!ENV HARDCOVER_API_KEY";
             reading_list.want-to-read.type = ["ebook" "audiobook"];
@@ -154,26 +161,35 @@
         config =
           audioConfig
           // {
-            hardcover_api_keys = [
+            hardcover_accounts = [
               {
                 api_key = "!ENV KEY";
                 reading_list.want-to-read.type = values;
               }
             ];
           };
-      }).services.murid.config.hardcover_api_keys
+      }).services.murid.config.hardcover_accounts
       true);
   invalidHardcover = entries:
     builtins.tryEval (builtins.deepSeq
       (evaluate {
-        config = inlineConfig // {hardcover_api_keys = entries;};
-      }).services.murid.config.hardcover_api_keys
+        config = inlineConfig // {hardcover_accounts = entries;};
+      }).services.murid.config.hardcover_accounts
       true);
+  conflictingAccounts = builtins.tryEval (builtins.deepSeq
+    (evaluate {
+      config = inlineConfig // {hardcover_api_keys = inlineConfig.hardcover_accounts;};
+    }).services.murid.config
+    true);
   fileCommand = fromFile.systemd.services.murid.serviceConfig.ExecStart;
   inlineCommand = fromInline.systemd.services.murid.serviceConfig.ExecStart;
   expectedFileCommand = "${lib.getExe package} ${lib.escapeShellArgs ["schedule" "--config" "/etc/murid.yaml"]}";
   valid =
-    (builtins.elemAt userLists 0).api_key
+    fromLegacy.services.murid.config.hardcover_accounts
+    == fromInline.services.murid.config.hardcover_accounts
+    && !(fromLegacy.services.murid.config ? hardcover_api_keys)
+    && !conflictingAccounts.success
+    && (builtins.elemAt userLists 0).api_key
     == "!ENV HARDCOVER_API_KEY"
     && (builtins.elemAt userLists 1).reading_list.download-queue.type == "ebook"
     && (builtins.elemAt userLists 2).reading_list.want-to-read.type == "ebook"
@@ -204,7 +220,7 @@
         audioConfig
         // {
           audiobookshelf = null;
-          hardcover_api_keys = [
+          hardcover_accounts = [
             {
               api_key = "!ENV HARDCOVER_API_KEY";
               reading_list.audio.type = "audiobook";

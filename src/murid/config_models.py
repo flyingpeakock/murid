@@ -187,7 +187,7 @@ class AudiobookshelfSettings(SettingsModel):
 class MuridSettings(DefaultedSettings):
     """Application settings and requirements shared across backends."""
 
-    hardcover_api_keys: Annotated[list[HardcoverSettings], Field(min_length=1)]
+    hardcover_accounts: Annotated[list[HardcoverSettings], Field(min_length=1)]
     mam_id: str
     redact_sensitive_data: bool = True
     matcher_threshold: Annotated[
@@ -220,7 +220,7 @@ class MuridSettings(DefaultedSettings):
     def required_backend(cls, value: Any, info: ValidationInfo) -> Any:
         """Require the appropriate library for every requested medium."""
         media_types = set()
-        for account in info.data.get("hardcover_api_keys", []):
+        for account in info.data.get("hardcover_accounts", []):
             for options in account.reading_list.values():
                 media_types.update(
                     [options.type] if isinstance(options.type, str) else options.type

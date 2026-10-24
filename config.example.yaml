@@ -2,7 +2,7 @@
 
 # One entry per Hardcover user. API keys must start with "Bearer ".
 # Select lists explicitly using their URL slugs.
-hardcover_api_keys:
+hardcover_accounts:
   - api_key: !ENV HARDCOVER_API_KEY
     reading_list:
       want-to-read: {} # type defaults to ebook

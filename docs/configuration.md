@@ -59,7 +59,7 @@ Defaults below apply to the YAML configuration. Required values must be supplied
 
 | Option | Description | Default |
 | --- | --- | --- |
-| `hardcover_api_keys` | Hardcover accounts with required `api_key` and `reading_list` (see below) | required |
+| `hardcover_accounts` | Hardcover accounts with required `api_key` and `reading_list` (see below) | required |
 | `qbittorrent` | qBittorrent connection settings (see below) | required connection values |
 | `calibre` | Calibre settings (see below) | library required for ebooks |
 | `audiobookshelf` | Audiobook library settings (see below) | required for audiobooks |
@@ -76,11 +76,11 @@ Defaults below apply to the YAML configuration. Required values must be supplied
 
 ### Hardcover lists
 
-Each entry in `hardcover_api_keys` represents one user and requires an `api_key`
+Each entry in `hardcover_accounts` represents one user and requires an `api_key`
 and a non-empty `reading_list` mapping. Group lists under one API key:
 
 ```yaml
-hardcover_api_keys:
+hardcover_accounts:
   - api_key: !ENV HARDCOVER_API_KEY
     reading_list:
       want-to-read: {} # type defaults to ebook
@@ -115,7 +115,7 @@ request per Hardcover book ID and media type; requesting both means acquiring
 both independently.
 
 ```yaml
-hardcover_api_keys:
+hardcover_accounts:
   - api_key: !ENV HARDCOVER_API_KEY
     reading_list:
       audiobooks:

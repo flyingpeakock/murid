@@ -100,6 +100,7 @@ class Config:
             "mam_id",
             "token",
             "password",
+            "hardcover_accounts",
             "hardcover_api_keys",
             "server_password",
             "apprise",  # Notification URLs can contain credentials in any component.
@@ -115,6 +116,13 @@ class Config:
 
     def validate(self) -> None:
         """Validate settings and retain the dictionary interface used by callers."""
+        if isinstance(self._config, dict) and "hardcover_api_keys" in self._config:
+            if "hardcover_accounts" in self._config:
+                raise ConfigError("Set only hardcover_accounts; remove hardcover_api_keys")
+            logger.warning(
+                "hardcover_api_keys is deprecated; use hardcover_accounts instead"
+            )
+            self._config["hardcover_accounts"] = self._config.pop("hardcover_api_keys")
         try:
             settings = MuridSettings.model_validate(self._config)
         except ValidationError as error:
@@ -127,10 +135,10 @@ class Config:
             raise ConfigError("Invalid configuration:\n" + "\n".join(messages)) from None
         self._config = settings.model_dump()
         # Keep omitted per-list options omitted in print-config output.
-        self._config["hardcover_api_keys"] = [
-            entry.model_dump(exclude_unset=True) for entry in settings.hardcover_api_keys
+        self._config["hardcover_accounts"] = [
+            entry.model_dump(exclude_unset=True) for entry in settings.hardcover_accounts
         ]
-        self.hardcover_lists = hardcover_list_settings(self._config["hardcover_api_keys"])
+        self.hardcover_lists = hardcover_list_settings(self._config["hardcover_accounts"])
         for key in settings.model_extra or {}:
             logger.warning("Unexpected config item %r found in config file", key)
 

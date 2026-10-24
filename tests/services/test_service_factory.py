@@ -14,7 +14,7 @@ from murid.services.service_factory import ServiceFactory
 
 
 def test_wanted_requests_normalize_and_combine_lists(args, config, monkeypatch):
-    config["hardcover_api_keys"] = [
+    config["hardcover_accounts"] = [
         {"api_key": "Bearer legacy", "reading_list": {"want-to-read": {}}},
         {
             "api_key": "Bearer both",
@@ -40,7 +40,7 @@ def test_wanted_requests_normalize_and_combine_lists(args, config, monkeypatch):
 
 
 def test_grouped_lists_expand_to_independent_requests(args, config, monkeypatch):
-    config["hardcover_api_keys"] = [
+    config["hardcover_accounts"] = [
         {
             "api_key": "Bearer key",
             "reading_list": {
@@ -62,7 +62,7 @@ def test_grouped_lists_expand_to_independent_requests(args, config, monkeypatch)
 
 
 def test_grouped_ebook_lists_all_reach_legacy_workflow(args, config, monkeypatch):
-    config["hardcover_api_keys"] = [
+    config["hardcover_accounts"] = [
         {
             "api_key": "Bearer key",
             "reading_list": {
@@ -79,7 +79,7 @@ def test_grouped_ebook_lists_all_reach_legacy_workflow(args, config, monkeypatch
 
 
 def test_audio_only_factory_does_not_initialize_calibre(args, config, monkeypatch):
-    config["hardcover_api_keys"] = [
+    config["hardcover_accounts"] = [
         {"api_key": "Bearer key", "reading_list": {"want-to-read": {"type": ["audiobook"]}}}
     ]
     config.pop("calibre")
@@ -126,7 +126,7 @@ def test_discovery_uses_independent_media_format_preferences(
         blacklisted_torrent_ids=[],
         audiobookshelf={"filetypes": ["mp3", "m4b"]},
     )
-    config["hardcover_api_keys"] = [
+    config["hardcover_accounts"] = [
         {
             "api_key": "Bearer key",
             "reading_list": {"want-to-read": {"type": ["ebook", "audiobook"]}},
@@ -157,7 +157,7 @@ def config():
             "library": "/tmp/metadata.db",
             "calibredb_executable": "calibredb",
         },
-        "hardcover_api_keys": [{"api_key": "Bearer secret", "reading_list": {"want-to-read": {}}}],
+        "hardcover_accounts": [{"api_key": "Bearer secret", "reading_list": {"want-to-read": {}}}],
         "mam_id": "mam-cookie",
         "lang_codes": ["eng"],
         "schedule": "0 * * * *",
@@ -407,7 +407,7 @@ def test_torrent_import_without_dry_run_option(config, monkeypatch):
 
 
 def test_hardcover_per_user_list_settings(args, config, monkeypatch):
-    config["hardcover_api_keys"] = [
+    config["hardcover_accounts"] = [
         {"api_key": "Bearer legacy", "reading_list": {"want-to-read": {}}},
         {"api_key": "Bearer custom", "reading_list": {"download-queue": {}}},
         {"api_key": "Bearer default", "reading_list": {"want-to-read": {}}},
@@ -423,7 +423,7 @@ def test_hardcover_per_user_list_settings(args, config, monkeypatch):
 
 def test_audio_sync_import_and_retry_do_not_construct_calibre(args, config, monkeypatch):
     config["torrent_timeout_seconds"] = 1800
-    config["hardcover_api_keys"] = [
+    config["hardcover_accounts"] = [
         {"api_key": "Bearer key", "reading_list": {"want-to-read": {"type": ["audiobook"]}}}
     ]
     config.pop("calibre")
@@ -458,7 +458,7 @@ def test_manual_audio_preferences_require_a_configured_backend(args, config):
 @pytest.mark.parametrize("media", ["ebook", "audiobook"])
 def test_wanted_requests_filter_before_fetching_unrelated_lists(args, config, monkeypatch, media):
     args.media_type = media
-    config["hardcover_api_keys"] = [
+    config["hardcover_accounts"] = [
         {
             "api_key": "Bearer key",
             "reading_list": {
@@ -484,7 +484,7 @@ def test_wanted_requests_filter_before_fetching_unrelated_lists(args, config, mo
 
 def test_media_filter_with_no_matching_lists_does_not_initialize_clients(args, config, monkeypatch):
     args.media_type = "audiobook"
-    config["hardcover_api_keys"] = [
+    config["hardcover_accounts"] = [
         {"api_key": "Bearer ebooks", "reading_list": {"want-to-read": {}}}
     ]
     client = Mock(side_effect=AssertionError("Unrelated list fetched"))
@@ -497,7 +497,7 @@ def test_factory_snapshots_list_settings_until_reload(args, config, monkeypatch)
     media = ["ebook"]
     entry = {"api_key": "Bearer first"}
     entry["reading_list"] = {"selected": {"type": media}}
-    config["hardcover_api_keys"] = [entry]
+    config["hardcover_accounts"] = [entry]
     factory = ServiceFactory(args, config, initialize_notifier=False)
     media.append("audiobook")
     entry["api_key"] = "Bearer changed"
@@ -529,7 +529,7 @@ def test_factory_snapshots_list_settings_until_reload(args, config, monkeypatch)
 def test_recovery_uses_account_for_selected_medium(args, config, monkeypatch, media):
     args.media_type = media
     other = "ebook" if media == "audiobook" else "audiobook"
-    config["hardcover_api_keys"] = [
+    config["hardcover_accounts"] = [
         {"api_key": "Bearer expired", "reading_list": {"unrelated": {"type": other}}},
         {"api_key": "Bearer active", "reading_list": {"selected": {"type": media}}},
     ]
