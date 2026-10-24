@@ -126,34 +126,34 @@ class Audiobookshelf:
             raise AudiobookshelfError("Audiobookshelf returned an invalid audio track count")
         return media["numTracks"] > 0
 
+    def _validate_item(self, item: dict) -> bool:
+        """Require usable expanded audio with playable, included tracks."""
+        if not self._usable_item(item):
+            return False
+        tracks = item["media"].get("tracks")
+        if not isinstance(tracks, list):
+            raise AudiobookshelfError("Audiobookshelf expanded item is missing audio tracks")
+        return bool(tracks) and all(
+            isinstance(track, dict)
+            and isinstance(track.get("duration"), (int, float))
+            and not isinstance(track["duration"], bool)
+            and math.isfinite(track["duration"])
+            and track["duration"] > 0
+            and not track.get("exclude", False)
+            for track in tracks
+        )
+
+    def _expanded_item(self, item: dict) -> dict:
+        """Fetch expanded details and require the requested item's identity."""
+        detail = self._get(f"/api/items/{quote(item['id'], safe='')}", expanded=1)
+        if detail.get("id") != item["id"]:
+            raise AudiobookshelfError("Audiobookshelf returned an unexpected item identity")
+        return detail
+
     def get_books(self) -> set[Book]:
         """Read usable audio; expanded details preserve author boundaries and track state."""
-        books = set()
-        for item in self._items():
-            if not self._usable_item(item):
-                continue
-            detail = self._get(f"/api/items/{quote(item['id'], safe='')}", expanded=1)
-            if detail.get("id") != item["id"]:
-                raise AudiobookshelfError("Audiobookshelf returned an unexpected item identity")
-            if not self._usable_item(detail):
-                continue
-            tracks = detail["media"].get("tracks")
-            if not isinstance(tracks, list):
-                raise AudiobookshelfError("Audiobookshelf expanded item is missing audio tracks")
-            if not tracks:
-                continue
-            if not all(
-                isinstance(track, dict)
-                and isinstance(track.get("duration"), (int, float))
-                and not isinstance(track["duration"], bool)
-                and math.isfinite(track["duration"])
-                and track["duration"] > 0
-                and not track.get("exclude", False)
-                for track in tracks
-            ):
-                continue
-            books.add(self._book(detail))
-        return books
+        items = (self._expanded_item(item) for item in self._items() if self._usable_item(item))
+        return {self._book(item) for item in items if self._validate_item(item)}
 
     def require_scan_access(self) -> None:
         """Reject insufficient permissions before copying into the shared library."""

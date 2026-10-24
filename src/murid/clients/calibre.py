@@ -85,42 +85,7 @@ class Calibre:
         if extra_data:
             logger.debug("Extra data after JSON response: %r", extra_data)
 
-        books = set()
-        for book in data:
-            identifiers = book.get("identifiers") or {}
-            if not isinstance(identifiers, dict):
-                identifiers = {}
-
-            series_number = book.get("series_index")
-            try:
-                series_number = float(series_number) if series_number is not None else None
-            except (TypeError, ValueError):
-                series_number = None
-
-            books.add(
-                Book(
-                    id=book["id"],
-                    title=book["title"],
-                    authors=[
-                        author.strip()
-                        for author in re.split(
-                            r"\s*(?:,|&)\s*|\s+(?:and|with)\s+",
-                            book.get("authors") or "",
-                            flags=re.IGNORECASE,
-                        )
-                        if author.strip()
-                    ],
-                    isbn=[book.get("isbn")] if book.get("isbn") else [],
-                    source="calibre",
-                    series=book.get("series") or None,
-                    series_number=series_number,
-                    identifiers={
-                        str(name): str(value)
-                        for name, value in identifiers.items()
-                        if name and value
-                    },
-                )
-            )
+        books = {self._book(book) for book in data}
         logger.debug(
             "Loaded %d Calibre books (%d with identifiers, %d with series metadata)",
             len(books),
@@ -128,6 +93,42 @@ class Calibre:
             sum(bool(book.series) for book in books),
         )
         return books
+
+    @staticmethod
+    def _book(book: dict) -> Book:
+        """Map Calibre metadata to a book, normalizing identifiers and series position."""
+        identifiers = book.get("identifiers") or {}
+        if not isinstance(identifiers, dict):
+            identifiers = {}
+
+        series_number = book.get("series_index")
+        try:
+            series_number = float(series_number) if series_number is not None else None
+        except (TypeError, ValueError):
+            series_number = None
+
+        return Book(
+            id=book["id"],
+            title=book["title"],
+            authors=[
+                author.strip()
+                for author in re.split(
+                    r"\s*(?:,|&)\s*|\s+(?:and|with)\s+",
+                    book.get("authors") or "",
+                    flags=re.IGNORECASE,
+                )
+                if author.strip()
+            ],
+            isbn=[book.get("isbn")] if book.get("isbn") else [],
+            source="calibre",
+            series=book.get("series") or None,
+            series_number=series_number,
+            identifiers={
+                str(name): str(value)
+                for name, value in identifiers.items()
+                if name and value
+            },
+        )
 
     def add_book(self, book: Book, path: str) -> None:
         """Add a book to the Calibre library using the calibredb command-line tool."""
