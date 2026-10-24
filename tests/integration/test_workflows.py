@@ -119,10 +119,7 @@ def test_hardcover_failure_aborts_sync_before_downloading(workflow):
 
 def test_sync_uses_configured_custom_list(workflow):
     workflow.config["hardcover_api_keys"] = [
-        {
-            "api_key": "Bearer integration-token",
-            "list": "download-queue",
-        }
+        {"api_key": "Bearer integration-token", "reading_list": {"download-queue": {}}}
     ]
     result = workflow.run("run")
     assert result.code == 0, result.errors

@@ -1,66 +1,19 @@
 """Module for loading and validating the configuration for the Murid application."""
 
 import logging
-import math
 import os
 from io import StringIO
 from typing import Any
-from urllib.parse import urlparse
 
 import yaml
-from croniter import croniter
+from pydantic import ValidationError
+
+from .config_models import MuridSettings
 
 logger = logging.getLogger("murid")
 
 
-class _Missing:  # pylint: disable=too-few-public-methods
-    """Sentinel class for missing config values."""
-
-    def __repr__(self) -> str:
-        """Return a string representation of the missing value."""
-        return "<MISSING>"
-
-
-_MISSING = _Missing()
-
-
-_defaults = {
-    "hardcover_api_keys": _MISSING,
-    "redact_sensitive_data": True,
-    "matcher_threshold": 0.92,
-    "mam_id": _MISSING,
-    "lang_codes": ["ENG"],
-    "calibre": {
-        "calibredb_executable": "calibredb",
-        "library": None,
-        "server_username": None,
-        "server_password": None,
-        "command_timeout_seconds": 120,
-    },
-    "audiobookshelf": None,
-    "qbittorrent": {
-        "host": _MISSING,
-        "username": _MISSING,
-        "password": _MISSING,
-        "port": _MISSING,
-        "verify_cert": True,
-        "category": "murid",
-        "mapping": {
-            "qbit_path": None,
-            "murid_path": None,
-        },
-    },
-    "schedule": "0 * * * *",
-    "apprise": None,
-    "filetypes": [
-        "epub",
-        "mobi",
-        "azw3",
-        "azw",
-    ],
-    "blacklisted_torrent_ids": [],
-    "torrent_timeout_seconds": 1800,
-}
+_GET_DEFAULT = object()
 
 
 class ConfigError(Exception):
@@ -68,28 +21,17 @@ class ConfigError(Exception):
 
 
 def hardcover_list_settings(entries: list) -> list[dict]:
-    """Normalize legacy tokens and omitted options without changing config output."""
-    settings = []
-    for entry in entries:
-        if isinstance(entry, str):
-            settings.append({"api_key": entry, "list": "want-to-read", "media_types": ["ebook"]})
-        elif "reading_list" in entry:
-            for slug, options in entry["reading_list"].items():
-                media = options.get("type", "ebook")
-                settings.append(
-                    {
-                        "api_key": entry["api_key"],
-                        "list": slug,
-                        "media_types": [media] if isinstance(media, str) else list(media),
-                    }
-                )
-        else:
-            settings.append({
-                "api_key": entry["api_key"],
-                "list": entry.get("list", "want-to-read"),
-                "media_types": list(entry.get("media_types", ["ebook"])),
-            })
-    return settings
+    """Expand each account's grouped lists into independent runtime requests."""
+    return [
+        {
+            "api_key": entry["api_key"],
+            "list": slug,
+            "media_types": [media] if isinstance(media, str) else list(media),
+        }
+        for entry in entries
+        for slug, options in entry["reading_list"].items()
+        for media in [options.get("type", "ebook")]
+    ]
 
 
 def requested_media_types(entries: list[dict]) -> set[str]:
@@ -116,16 +58,16 @@ class Config:
             config = yaml.load(config_file, Loader=yaml.SafeLoader)
         except yaml.YAMLError as e:
             raise ConfigError(f"Error parsing config file: {e}") from e
-        self._config = self._sanitize(deep_merge(_defaults, config if config is not None else {}))
+        self._config = self._sanitize(config if config is not None else {})
 
         self.validate()
         logger.debug("Configuration loaded")
 
-    def get(self, key: str, default: Any = _MISSING) -> Any:
+    def get(self, key: str, default: Any = _GET_DEFAULT) -> Any:
         """Get a config value by key, with an optional default if the key is not found."""
         if key in self._config:
             return self._config[key]
-        if default is not _MISSING:
+        if default is not _GET_DEFAULT:
             return default
         raise KeyError(f"Config item '{key}' not found in config file")
 
@@ -171,297 +113,25 @@ class Config:
         return data
 
     def validate(self) -> None:
-        """Validate the loaded configuration.
-
-        Ensure all required fields are present and correctly formatted."""
-        self._ensure_not_missing(self._config)
-        self._ensure_hardcover_api_keys(self.get("hardcover_api_keys"))
-        self.hardcover_lists = hardcover_list_settings(self.get("hardcover_api_keys"))
-        self._ensure_type(self.get("redact_sensitive_data"), bool, "redact_sensitive_data")
-        self._ensure_type(self.get("matcher_threshold"), float, "matcher_threshold")
-        threshold = self.get("matcher_threshold")
-        if not math.isfinite(threshold) or not 0 <= threshold <= 1:
-            raise ConfigError("Config item 'matcher_threshold' must be between 0 and 1")
-        self._ensure_lang_codes(self.get("lang_codes"))
-        self._ensure_qbittorrent(self.get("qbittorrent"))
-        self._ensure_cron(self.get("schedule"))
-        self._ensure_filetypes(self.get("filetypes"))
-        self._ensure_blacklisted_torrent_ids(self.get("blacklisted_torrent_ids"))
-        self._ensure_type(self.get("torrent_timeout_seconds"), int, "torrent_timeout_seconds")
-        if self.get("torrent_timeout_seconds") <= 0:
-            raise ConfigError("Config item 'torrent_timeout_seconds' must be greater than 0")
-        media_types = requested_media_types(self.hardcover_lists)
-        calibre = self.get("calibre")
-        self._ensure_type(calibre, dict, "calibre")
-        if "ebook" in media_types or calibre.get("library") is not None:
-            self._ensure_calibre(calibre)
-        self._ensure_audiobookshelf("audiobook" in media_types)
-
-        self._check_extra_keys(self._config)
-
-    @staticmethod
-    def _ensure_not_missing(data: Any) -> None:
-        """Recursively check for missing config values in the provided data structure."""
-        if isinstance(data, dict):
-            for key, value in data.items():
-                if value is _MISSING:
-                    raise ConfigError(f"Config item '{key}' is missing")
-                Config._ensure_not_missing(value)
-        elif isinstance(data, list):
-            for item in data:
-                Config._ensure_not_missing(item)
-
-    @staticmethod
-    def _ensure_hardcover_api_keys(keys: list) -> None:
-        """Validate token-only entries and per-user list settings."""
-        Config._ensure_type(keys, list, "hardcover_api_keys")
-        if not keys:
-            raise ConfigError("Config item 'hardcover_api_keys' must be a non-empty list")
-        for entry in keys:
-            key = entry
-            if isinstance(entry, dict):
-                unknown = entry.keys() - {"api_key", "list", "media_types", "reading_list"}
-                if unknown:
-                    raise ConfigError(
-                        f"Unexpected Hardcover user options: {', '.join(sorted(unknown))}"
-                    )
-                if "api_key" not in entry:
-                    raise ConfigError("Hardcover user entry requires 'api_key'")
-                key = entry["api_key"]
-                if "reading_list" in entry:
-                    Config._ensure_reading_lists(entry)
-                media_types = entry.get("media_types", ["ebook"])
-                Config._ensure_type(media_types, list, "hardcover_api_keys item.media_types")
-                if not media_types or any(
-                    media not in ("ebook", "audiobook") for media in media_types
-                ):
-                    raise ConfigError(
-                        "Hardcover media_types must be a non-empty list of ebook or audiobook"
-                    )
-                slug = entry.get("list", "want-to-read")
-                Config._ensure_type(slug, str, "hardcover_api_keys item.list")
-                if not slug or any(c.isspace() or c in "/?#" for c in slug):
-                    raise ConfigError(
-                        "Config item 'hardcover_api_keys item.list' must be a non-empty list slug "
-                        "(the last part of the list URL)"
-                    )
-            if not key:
-                raise ConfigError("Config item 'hardcover_api_keys' must not contain empty strings")
-            Config._ensure_type(key, str, "hardcover_api_keys item")
-            if not key.startswith("Bearer "):
-                raise ConfigError("Config item 'hardcover_api_keys item' must start with 'Bearer '")
-
-    @staticmethod
-    def _ensure_reading_lists(entry: dict) -> None:
-        """Validate grouped list slugs and per-list media preferences."""
-        if "list" in entry or "media_types" in entry:
-            raise ConfigError("reading_list cannot be combined with list or media_types")
-        lists = entry["reading_list"]
-        Config._ensure_type(lists, dict, "hardcover_api_keys item.reading_list")
-        if not lists:
-            raise ConfigError("reading_list must be a non-empty mapping of list slugs to options")
-        for slug, options in lists.items():
-            Config._ensure_type(slug, str, "reading_list slug")
-            if not slug or any(c.isspace() or c in "/?#" for c in slug):
-                raise ConfigError("reading_list keys must be non-empty list slugs")
-            Config._ensure_type(options, dict, "reading_list options")
-            if options.keys() - {"type"}:
-                raise ConfigError("reading_list options only support 'type'")
-            media = options.get("type", "ebook")
-            media = [media] if isinstance(media, str) else media
-            Config._ensure_type(media, list, "reading_list type")
-            if not media or any(value not in ("ebook", "audiobook") for value in media):
-                raise ConfigError("reading_list type must contain ebook or audiobook")
-
-    @staticmethod
-    def _ensure_type(data: Any, expected_type: type, position: str) -> None:
-        """Ensure that the provided data is of the expected type."""
-        if not isinstance(data, expected_type) or (expected_type is int and isinstance(data, bool)):
-            raise ConfigError(
-                f"Config item '{position}' must be an {expected_type.__name__}"
-                if expected_type.__name__[0].lower() in "aeiou"
-                else f"Config item '{position}' must be a {expected_type.__name__}"
-            )
-
-    @staticmethod
-    def _ensure_path_exists(path: str) -> None:
-        if not os.path.exists(path):
-            raise ConfigError(f"Path '{path}' does not exist")
-
-    @staticmethod
-    def _ensure_lang_codes(lang_codes: list) -> None:
-        """Ensure that the lang_codes config item is valid."""
-        Config._ensure_type(lang_codes, list, "lang_codes")
-        for lang in lang_codes:
-            Config._ensure_type(lang, str, "lang_codes item")
-        if len(lang_codes) == 0:
-            raise ConfigError("Config item 'lang_codes' must be a non-empty list")
-
-    @staticmethod
-    def _ensure_qbittorrent(qbittorrent: dict) -> None:
-        """Ensure that the qbittorrent config item is valid."""
-        Config._ensure_type(qbittorrent, dict, "qbittorrent")
-        required_keys = ["host", "username", "password", "port"]
-        for key in required_keys:
-            if key == "port":
-                Config._ensure_type(qbittorrent[key], int, f"qbittorrent.{key}")
-            else:
-                Config._ensure_type(qbittorrent[key], str, f"qbittorrent.{key}")
-        if not 1 <= qbittorrent["port"] <= 65535:
-            raise ConfigError("Config item 'qbittorrent.port' must be between 1 and 65535")
-        Config._ensure_type(qbittorrent.get("verify_cert", True), bool, "qbittorrent.verify_cert")
-        Config._ensure_type(qbittorrent.get("category", "murid"), str, "qbittorrent.category")
-        Config._ensure_type(qbittorrent.get("mapping", {}), dict, "qbittorrent.mapping")
-        qbittorrent["host"] = qbittorrent["host"].rstrip("/")
-        mapping = qbittorrent.get("mapping", {})
-        if "qbit_path" not in mapping:
-            raise ConfigError("Config item 'qbittorrent.mapping' must have a 'qbit_path' key")
-        if "murid_path" not in mapping:
-            raise ConfigError("Config item 'qbittorrent.mapping' must have a 'murid_path' key")
-        if mapping["murid_path"] and not os.path.exists(mapping["murid_path"]):
-            raise ConfigError(f"murid path '{mapping['murid_path']}' does not exist")
-        if mapping["murid_path"] and not mapping["qbit_path"]:
-            raise ConfigError(
-                "Config item 'qbittorrent.mapping.qbit_path' must be set if 'murid_path' is set"
-            )
-        if mapping["qbit_path"] and not mapping["murid_path"]:
-            raise ConfigError(
-                "Config item 'qbittorrent.mapping.murid_path' must be set if 'qbit_path' is set"
-            )
-
-    @staticmethod
-    def _ensure_calibre(calibre: dict) -> None:
-        """Ensure that the calibre config item is valid."""
-        Config._ensure_type(calibre, dict, "calibre")
-        timeout = calibre["command_timeout_seconds"]
-        Config._ensure_type(timeout, int, "calibre.command_timeout_seconds")
-        if timeout <= 0:
-            raise ConfigError(
-                "Config item 'calibre.command_timeout_seconds' must be greater than 0"
-            )
-        for old_key in ("library_path", "server_url"):
-            if old_key in calibre:
-                raise ConfigError(
-                    f"Config item 'calibre.{old_key}' has been replaced by 'calibre.library'"
+        """Validate settings and retain the dictionary interface used by callers."""
+        try:
+            settings = MuridSettings.model_validate(self._config)
+        except ValidationError as error:
+            messages = [
+                f"{'.'.join(map(str, item['loc'])) or 'config'}: {item['msg']}"
+                for item in error.errors(
+                    include_input=False, include_context=False, include_url=False
                 )
-        library = calibre["library"]
-        Config._ensure_type(library, str, "calibre.library")
-        if not library:
-            raise ConfigError("Config item 'calibre.library' must not be empty")
-        parsed = urlparse(library)
-        if parsed.scheme in ("http", "https"):
-            if not parsed.netloc:
-                raise ConfigError(f"Calibre server URL '{library}' has no host")
-        elif not os.path.exists(library):
-            raise ConfigError(f"Calibre database path '{library}' does not exist")
-        if "calibredb_executable" in calibre and calibre["calibredb_executable"] is not None:
-            Config._ensure_type(
-                calibre["calibredb_executable"], str, "calibre.calibredb_executable"
-            )
-        if "server_username" in calibre and calibre["server_username"] is not None:
-            Config._ensure_type(calibre["server_username"], str, "calibre.server_username")
-        if "server_password" in calibre and calibre["server_password"] is not None:
-            Config._ensure_type(calibre["server_password"], str, "calibre.server_password")
-
-    def _ensure_audiobookshelf(self, required: bool) -> None:
-        """Validate configured Audiobookshelf access without contacting the server."""
-        settings = self.get("audiobookshelf")
-        if settings is None:
-            if required:
-                raise ConfigError("Audiobook requests require 'audiobookshelf' configuration")
-            return
-        self._ensure_type(settings, dict, "audiobookshelf")
-        unknown = settings.keys() - {
-            "url",
-            "api_key",
-            "library_id",
-            "library_path",
-            "filetypes",
-            "staging_path",
-            "folder_id",
-            "scan_timeout_seconds",
-        }
-        if unknown:
-            raise ConfigError(f"Unexpected Audiobookshelf options: {', '.join(sorted(unknown))}")
-        for key in ("url", "api_key", "library_id", "library_path"):
-            value = settings.get(key)
-            self._ensure_type(value, str, f"audiobookshelf.{key}")
-            if not value:
-                raise ConfigError(f"Config item 'audiobookshelf.{key}' must not be empty")
-        try:
-            parsed = urlparse(settings["url"])
-            valid_url = (
-                parsed.scheme in ("http", "https")
-                and bool(parsed.hostname)
-                and not any((parsed.username, parsed.password, parsed.query, parsed.fragment))
-            )
-            # Accessing port also validates malformed and out-of-range port values.
-            _ = parsed.port
-        except ValueError:
-            valid_url = False
-        if not valid_url:
-            raise ConfigError(
-                "audiobookshelf.url must be an HTTP(S) URL without credentials, query, or fragment"
-            )
-        settings["url"] = settings["url"].rstrip("/")
-        if not os.path.isabs(settings["library_path"]):
-            raise ConfigError("audiobookshelf.library_path must be an absolute path")
-        self._ensure_audiobook_import_settings(settings)
-        # Mount accessibility is a runtime check; configuration can precede deployment.
-        formats = settings.setdefault("filetypes", ["m4b", "mp3"])
-        self._ensure_type(formats, list, "audiobookshelf.filetypes")
-        if not formats or any(fmt not in ("m4b", "mp3") for fmt in formats):
-            raise ConfigError("audiobookshelf.filetypes must be a non-empty list of m4b or mp3")
-
-    @staticmethod
-    def _ensure_audiobook_import_settings(settings: dict) -> None:
-        """Validate filesystem overrides and the ingestion timeout."""
-        staging = settings.get("staging_path")
-        if staging is not None:
-            Config._ensure_type(staging, str, "audiobookshelf.staging_path")
-            if not os.path.isabs(staging):
-                raise ConfigError("audiobookshelf.staging_path must be an absolute path")
-        folder_id = settings.get("folder_id")
-        if folder_id is not None:
-            Config._ensure_type(folder_id, str, "audiobookshelf.folder_id")
-            if not folder_id:
-                raise ConfigError("audiobookshelf.folder_id must not be empty")
-        timeout = settings.setdefault("scan_timeout_seconds", 120)
-        Config._ensure_type(timeout, int, "audiobookshelf.scan_timeout_seconds")
-        if timeout <= 0:
-            raise ConfigError("audiobookshelf.scan_timeout_seconds must be greater than 0")
-
-    @staticmethod
-    def _check_extra_keys(config: dict) -> None:
-        """Check for unexpected config items in the provided config dictionary."""
-        expected_keys = set(_defaults.keys())
-        for key in config.keys():
-            if key not in expected_keys:
-                logger.warning("Unexpected config item %r found in config file", key)
-
-    @staticmethod
-    def _ensure_cron(expr: str) -> None:
-        """Ensure that the provided string is a valid cron expression."""
-        try:
-            croniter(expr)
-        except (ValueError, KeyError):
-            raise ConfigError("Config item 'schedule' must be a valid cron expression") from None
-
-    @staticmethod
-    def _ensure_filetypes(filetypes: list) -> None:
-        """Ensure that the filetypes config item is valid."""
-        Config._ensure_type(filetypes, list, "filetypes")
-        for filetype in filetypes:
-            Config._ensure_type(filetype, str, "filetypes item")
-            if not filetype:
-                raise ConfigError("Config item 'filetypes' must not contain empty strings")
-
-    @staticmethod
-    def _ensure_blacklisted_torrent_ids(ids: list[str]) -> None:
-        """Ensure that the blacklisted_torrent_ids config item is valid."""
-        Config._ensure_type(ids, list, "blacklisted_torrent_ids")
-        for torrent_id in ids:
-            Config._ensure_type(torrent_id, int, "blacklisted_torrent_ids item")
+            ]
+            raise ConfigError("Invalid configuration:\n" + "\n".join(messages)) from None
+        self._config = settings.model_dump()
+        # Keep omitted per-list options omitted in print-config output.
+        self._config["hardcover_api_keys"] = [
+            entry.model_dump(exclude_unset=True) for entry in settings.hardcover_api_keys
+        ]
+        self.hardcover_lists = hardcover_list_settings(self._config["hardcover_api_keys"])
+        for key in settings.model_extra or {}:
+            logger.warning("Unexpected config item %r found in config file", key)
 
     def copy(self) -> dict:
         """Return a copy of the configuration dictionary."""
@@ -498,16 +168,3 @@ class Config:
         if isinstance(rendered.get("audiobookshelf"), dict):
             rendered["audiobookshelf"] = {**rendered["audiobookshelf"], "api_key": "**REDACTED**"}
         return yaml.dump(rendered, default_flow_style=False)
-
-
-def deep_merge(default, override):
-    """Recursively merge two dictionaries
-
-    Values from the override take precedence over the default.
-    """
-    if isinstance(default, dict) and isinstance(override, dict):
-        out = dict(default)
-        for k, v in override.items():
-            out[k] = deep_merge(default.get(k), v)
-        return out
-    return override if override is not None else default
