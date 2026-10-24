@@ -3,6 +3,7 @@
 import logging
 from dataclasses import dataclass
 
+import pycountry
 import requests
 
 from ..domain.book import Book
@@ -25,95 +26,8 @@ class HardcoverError(Exception):
 class Hardcover:
     """Class for interacting with the Hardcover API to fetch user book data."""
 
-    _LANGUAGE_TAG_ALIASES = {
-        "ar": {"ARA"},
-        "bg": {"BUL"},
-        "ca": {"CAT"},
-        "cs": {"CES", "CZE"},
-        "cy": {"CYM", "WEL"},
-        "da": {"DAN"},
-        "de": {"DEU", "GER"},
-        "el": {"ELL", "GRE"},
-        "en": {"ENG"},
-        "es": {"SPA"},
-        "et": {"EST"},
-        "fa": {"FAS", "PER"},
-        "fi": {"FIN"},
-        "fr": {"FRA", "FRE"},
-        "ga": {"GLE"},
-        "he": {"HEB"},
-        "hi": {"HIN"},
-        "hr": {"HRV"},
-        "hu": {"HUN"},
-        "id": {"IND"},
-        "is": {"ISL", "ICE"},
-        "it": {"ITA"},
-        "ja": {"JPN"},
-        "ko": {"KOR"},
-        "lt": {"LIT"},
-        "lv": {"LAV"},
-        "ms": {"MSA", "MAY"},
-        "nl": {"NLD", "DUT"},
-        "no": {"NOR"},
-        "pl": {"POL"},
-        "pt": {"POR"},
-        "ro": {"RON", "RUM"},
-        "ru": {"RUS"},
-        "sk": {"SLK", "SLO"},
-        "sl": {"SLV"},
-        "sr": {"SRP"},
-        "sv": {"SWE"},
-        "th": {"THA"},
-        "tr": {"TUR"},
-        "uk": {"UKR"},
-        "ur": {"URD"},
-        "vi": {"VIE"},
-        "zh": {"ZHO", "CHI"},
-    }
-    _LANGUAGE_NAME_TAGS = {
-        "arabic": "ar",
-        "bulgarian": "bg",
-        "catalan": "ca",
-        "chinese": "zh",
-        "croatian": "hr",
-        "czech": "cs",
-        "danish": "da",
-        "dutch": "nl",
-        "english": "en",
-        "estonian": "et",
-        "finnish": "fi",
-        "french": "fr",
-        "german": "de",
-        "greek": "el",
-        "hebrew": "he",
-        "hindi": "hi",
-        "hungarian": "hu",
-        "icelandic": "is",
-        "indonesian": "id",
-        "irish": "ga",
-        "italian": "it",
-        "japanese": "ja",
-        "korean": "ko",
-        "latvian": "lv",
-        "lithuanian": "lt",
-        "malay": "ms",
-        "norwegian": "no",
-        "polish": "pl",
-        "portuguese": "pt",
-        "romanian": "ro",
-        "russian": "ru",
-        "serbian": "sr",
-        "slovak": "sk",
-        "slovenian": "sl",
-        "spanish": "es",
-        "swedish": "sv",
-        "thai": "th",
-        "turkish": "tr",
-        "ukrainian": "uk",
-        "urdu": "ur",
-        "vietnamese": "vi",
-        "welsh": "cy",
-    }
+    # These familiar names differ from pycountry's qualified ISO language names.
+    _LANGUAGE_NAME_ALIASES = {"greek": "el", "malay": "ms"}
 
     def __init__(
         self,
@@ -389,14 +303,30 @@ class Hardcover:
 
     @classmethod
     def _language_tag_matches(cls, language_tag: str, lang_codes: list[str]) -> bool | None:
-        """Match locale tags such as en-US against configured ISO 639 language codes."""
-        language = language_tag.replace("_", "-").split("-", maxsplit=1)[0].lower()
+        """Match language names and locale tags against configured ISO 639 codes."""
+        language = language_tag.strip().lower()
+        language = cls._LANGUAGE_NAME_ALIASES.get(language, language)
+        if cls._is_language_tag(language):
+            language = language.replace("_", "-").split("-", maxsplit=1)[0]
         configured = {code.strip().upper() for code in lang_codes}
         if language.upper() in configured:
             return True
-        aliases = cls._LANGUAGE_TAG_ALIASES.get(language)
-        if aliases is None:
-            return None
+        # Prefer codes: "en" is also the name of a different language in ISO 639.
+        entry = (
+            pycountry.languages.get(alpha_2=language)
+            or pycountry.languages.get(alpha_3=language)
+            or pycountry.languages.get(bibliographic=language)
+        )
+        if entry is None:
+            try:
+                entry = pycountry.languages.lookup(language)
+            except LookupError:
+                return None
+        aliases = {
+            code.upper()
+            for field in ("alpha_2", "alpha_3", "bibliographic")
+            if (code := getattr(entry, field, None))
+        }
         return bool(aliases & configured)
 
     @classmethod
@@ -406,9 +336,7 @@ class Hardcover:
             value = value.get("language")
         if not isinstance(value, str):
             return None
-        language_name = value.strip().lower()
-        language_tag = cls._LANGUAGE_NAME_TAGS.get(language_name, language_name)
-        return cls._language_tag_matches(language_tag, lang_codes)
+        return cls._language_tag_matches(value, lang_codes)
 
     @staticmethod
     def _extract_identifiers(book: dict, editions: list[dict]) -> dict[str, str | list[str]]:
