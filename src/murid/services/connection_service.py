@@ -60,9 +60,7 @@ def check_connections(factory) -> bool:
     results = [
         check(
             f"Hardcover account {index}",
-            lambda token=token: hardcover_detail(
-                token["api_key"] if isinstance(token, dict) else token
-            ),
+            lambda token=token: hardcover_detail(token["api_key"]),
         )
         for index, token in enumerate(factory.config["hardcover_api_keys"], start=1)
     ]

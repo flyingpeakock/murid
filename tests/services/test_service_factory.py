@@ -12,9 +12,12 @@ from murid.services.service_factory import ServiceFactory
 
 def test_wanted_requests_normalize_and_combine_lists(args, config, monkeypatch):
     config["hardcover_api_keys"] = [
-        "Bearer legacy",
-        {"api_key": "Bearer both", "media_types": ["ebook", "audiobook"]},
-        {"api_key": "Bearer audio", "list": "audio", "media_types": ["audiobook"]},
+        {"api_key": "Bearer legacy", "reading_list": {"want-to-read": {}}},
+        {
+            "api_key": "Bearer both",
+            "reading_list": {"want-to-read": {"type": ["ebook", "audiobook"]}},
+        },
+        {"api_key": "Bearer audio", "reading_list": {"audio": {"type": ["audiobook"]}}},
     ]
     book = Book("Title", ["Author"], 42, [], "Hardcover")
     clients = []
@@ -73,7 +76,9 @@ def test_grouped_ebook_lists_all_reach_legacy_workflow(args, config, monkeypatch
 
 
 def test_audio_only_factory_does_not_initialize_calibre(args, config, monkeypatch):
-    config["hardcover_api_keys"] = [{"api_key": "Bearer key", "media_types": ["audiobook"]}]
+    config["hardcover_api_keys"] = [
+        {"api_key": "Bearer key", "reading_list": {"want-to-read": {"type": ["audiobook"]}}}
+    ]
     config.pop("calibre")
     client = Mock()
     monkeypatch.setattr("murid.services.service_factory.Calibre", client)
@@ -115,7 +120,10 @@ def test_discovery_uses_independent_media_format_preferences(args, config, monke
         audiobookshelf={"filetypes": ["mp3", "m4b"]},
     )
     config["hardcover_api_keys"] = [
-        {"api_key": "Bearer key", "media_types": ["ebook", "audiobook"]},
+        {
+            "api_key": "Bearer key",
+            "reading_list": {"want-to-read": {"type": ["ebook", "audiobook"]}},
+        },
     ]
     factory = ServiceFactory(args, config, initialize_notifier=False)
     monkeypatch.setattr(factory, "myanonamouse", Mock())
@@ -141,7 +149,7 @@ def config():
             "library": "/tmp/metadata.db",
             "calibredb_executable": "calibredb",
         },
-        "hardcover_api_keys": ["Bearer secret"],
+        "hardcover_api_keys": [{"api_key": "Bearer secret", "reading_list": {"want-to-read": {}}}],
         "mam_id": "mam-cookie",
         "lang_codes": ["eng"],
         "schedule": "0 * * * *",
@@ -344,9 +352,9 @@ def test_torrent_import_without_dry_run_option(config, monkeypatch):
 
 def test_hardcover_per_user_list_settings(args, config, monkeypatch):
     config["hardcover_api_keys"] = [
-        "Bearer legacy",
-        {"api_key": "Bearer custom", "list": "download-queue"},
-        {"api_key": "Bearer default"},
+        {"api_key": "Bearer legacy", "reading_list": {"want-to-read": {}}},
+        {"api_key": "Bearer custom", "reading_list": {"download-queue": {}}},
+        {"api_key": "Bearer default", "reading_list": {"want-to-read": {}}},
     ]
     constructor = Mock(side_effect=lambda *args, **kwargs: Mock())
     monkeypatch.setattr("murid.services.service_factory.Hardcover", constructor)
@@ -359,7 +367,9 @@ def test_hardcover_per_user_list_settings(args, config, monkeypatch):
 
 def test_audio_sync_import_and_retry_do_not_construct_calibre(args, config, monkeypatch):
     config["torrent_timeout_seconds"] = 1800
-    config["hardcover_api_keys"] = [{"api_key": "Bearer key", "media_types": ["audiobook"]}]
+    config["hardcover_api_keys"] = [
+        {"api_key": "Bearer key", "reading_list": {"want-to-read": {"type": ["audiobook"]}}}
+    ]
     config.pop("calibre")
     config["audiobookshelf"] = {
         "url": "https://audio.example.com",
@@ -418,21 +428,19 @@ def test_wanted_requests_filter_before_fetching_unrelated_lists(args, config, mo
 
 def test_media_filter_with_no_matching_lists_does_not_initialize_clients(args, config, monkeypatch):
     args.media_type = "audiobook"
-    config["hardcover_api_keys"] = ["Bearer ebooks"]
+    config["hardcover_api_keys"] = [
+        {"api_key": "Bearer ebooks", "reading_list": {"want-to-read": {}}}
+    ]
     client = Mock(side_effect=AssertionError("Unrelated list fetched"))
     monkeypatch.setattr("murid.services.service_factory.Hardcover", client)
     assert ServiceFactory(args, config, initialize_notifier=False).wanted_requests() == set()
     client.assert_not_called()
 
 
-@pytest.mark.parametrize("grouped", [False, True])
-def test_factory_snapshots_list_settings_until_reload(args, config, monkeypatch, grouped):
+def test_factory_snapshots_list_settings_until_reload(args, config, monkeypatch):
     media = ["ebook"]
     entry = {"api_key": "Bearer first"}
-    if grouped:
-        entry["reading_list"] = {"selected": {"type": media}}
-    else:
-        entry.update(list="selected", media_types=media)
+    entry["reading_list"] = {"selected": {"type": media}}
     config["hardcover_api_keys"] = [entry]
     factory = ServiceFactory(args, config, initialize_notifier=False)
     media.append("audiobook")
@@ -454,7 +462,8 @@ def test_factory_snapshots_list_settings_until_reload(args, config, monkeypatch,
     factory.reload()
 
     assert {request.identity for request in factory.wanted_requests()} == {
-        (42, "ebook"), (42, "audiobook"),
+        (42, "ebook"),
+        (42, "audiobook"),
     }
     assert factory.recovery_book(42) is book
     constructor.assert_called_with("Bearer changed", list_slug="selected", lang_codes=["eng"])

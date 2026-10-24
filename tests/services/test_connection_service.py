@@ -10,8 +10,18 @@ def make_factory():
     mam = SimpleNamespace(check_connection=Mock())
     qbittorrent = SimpleNamespace(category="murid", get_torrents=Mock(return_value=["torrent"]))
     return SimpleNamespace(
-        config={"hardcover_api_keys": ["Bearer first", "Bearer second"]},
-        hardcover_lists=hardcover_list_settings(["Bearer first", "Bearer second"]),
+        config={
+            "hardcover_api_keys": [
+                {"api_key": "Bearer first", "reading_list": {"want-to-read": {}}},
+                {"api_key": "Bearer second", "reading_list": {"want-to-read": {}}},
+            ]
+        },
+        hardcover_lists=hardcover_list_settings(
+            [
+                {"api_key": token, "reading_list": {"want-to-read": {}}}
+                for token in ["Bearer first", "Bearer second"]
+            ]
+        ),
         calibre=lambda: calibre,
         myanonamouse=lambda: mam,
         qbittorrent=lambda: qbittorrent,
@@ -78,7 +88,7 @@ def test_connections_handles_client_initialization_failure(monkeypatch, capsys):
 def test_audio_only_connections_skip_calibre_and_check_import_access(monkeypatch, capsys):
     factory, _ = make_factory()
     factory.config["hardcover_api_keys"] = [
-        {"api_key": "Bearer audio", "media_types": ["audiobook"]},
+        {"api_key": "Bearer audio", "reading_list": {"want-to-read": {"type": ["audiobook"]}}},
     ]
     factory.hardcover_lists = hardcover_list_settings(factory.config["hardcover_api_keys"])
     factory.calibre = Mock(side_effect=AssertionError("Calibre must not be initialized"))
@@ -98,10 +108,12 @@ def test_audio_only_connections_skip_calibre_and_check_import_access(monkeypatch
 
 def test_grouped_lists_check_each_account_once_and_both_libraries(monkeypatch, capsys):
     factory, _ = make_factory()
-    factory.config["hardcover_api_keys"] = [{
-        "api_key": "Bearer grouped",
-        "reading_list": {"ebooks": {}, "audio": {"type": "audiobook"}},
-    }]
+    factory.config["hardcover_api_keys"] = [
+        {
+            "api_key": "Bearer grouped",
+            "reading_list": {"ebooks": {}, "audio": {"type": "audiobook"}},
+        }
+    ]
     factory.hardcover_lists = hardcover_list_settings(factory.config["hardcover_api_keys"])
     audio = SimpleNamespace(check_connection=lambda: "audio accessible")
     factory.library = Mock(return_value=audio)

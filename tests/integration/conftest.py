@@ -91,7 +91,9 @@ def workflow(tmp_path, monkeypatch, capsys):
         "murid.services.service_factory.Calibre", partial(Calibre, run=run_calibredb)
     )
     config = {
-        "hardcover_api_keys": ["Bearer integration-token"],
+        "hardcover_api_keys": [
+            {"api_key": "Bearer integration-token", "reading_list": {"want-to-read": {}}}
+        ],
         "mam_id": "integration-cookie",
         "calibre": {"calibredb_executable": sys.executable, "library": str(library)},
         "qbittorrent": {

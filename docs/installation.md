@@ -112,7 +112,10 @@ inputs.murid.url = "github:flyingpeakock/murid";
       enable = true;
       environmentFile = "/etc/murid.env";
       config = {
-        hardcover_api_keys = [ "!ENV HARDCOVER_API_KEY" ];
+        hardcover_api_keys = [{
+          api_key = "!ENV HARDCOVER_API_KEY";
+          reading_list.want-to-read = {};
+        }];
         mam_id = "!ENV MAM_ID";
         calibre.library = "http://localhost:8080/#books";
         qbittorrent = {

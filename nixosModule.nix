@@ -13,16 +13,11 @@ in {
       then []
       else
         lib.concatMap (entry:
-          if builtins.isString entry
-          then ["ebook"]
-          else if entry ? reading_list
-          then
-            lib.concatMap (options:
-              if builtins.isString options.type
-              then [options.type]
-              else options.type)
-            (builtins.attrValues entry.reading_list)
-          else entry.media_types)
+          lib.concatMap (options:
+            if builtins.isString options.type
+            then [options.type]
+            else options.type)
+          (builtins.attrValues entry.reading_list))
         cfg.config.hardcover_api_keys;
 
     yaml = pkgs.formats.yaml {};
@@ -164,37 +159,21 @@ in {
         type = lib.types.nullOr (lib.types.submodule {
           options = {
             hardcover_api_keys = lib.mkOption {
-              description = "Hardcover API tokens or per-user API token and grouped reading lists";
-              apply = entries:
-                map (entry:
-                  if builtins.isString entry
-                  then entry
-                  else if entry.reading_list == null
-                  then builtins.removeAttrs entry ["reading_list"]
-                  else if entry.list != "want-to-read" || entry.media_types != ["ebook"]
-                  then throw "reading_list cannot be combined with custom list or media_types"
-                  else builtins.removeAttrs entry ["list" "media_types"])
-                entries;
-              type = lib.types.listOf (lib.types.either configEnvType (lib.types.submodule {
+              description = "Hardcover accounts with API tokens and grouped reading lists";
+              type = lib.types.listOf (lib.types.submodule {
                 options = {
                   api_key = lib.mkOption {
                     description = "Hardcover API token, including the Bearer prefix";
                     type = configEnvType;
                   };
-                  list = lib.mkOption {
-                    description = "List slug from its URL, or want-to-read for the reading status";
-                    type = lib.types.str;
-                    default = "want-to-read";
-                  };
-                  media_types = lib.mkOption {
-                    description = "Media requested from this list";
-                    type = lib.types.addCheck (lib.types.listOf (lib.types.enum ["ebook" "audiobook"])) (values: values != []);
-                    default = ["ebook"];
-                  };
                   reading_list = lib.mkOption {
                     description = "List slugs mapped to options; type defaults to ebook";
-                    default = null;
-                    type = lib.types.nullOr (lib.types.addCheck (lib.types.attrsOf (lib.types.submodule {
+                    # attrsOf supplies an empty value even when this option is omitted.
+                    apply = lists:
+                      if lists == {}
+                      then throw "Hardcover reading_list must be a non-empty mapping"
+                      else lists;
+                    type = lib.types.attrsOf (lib.types.submodule {
                       options.type = lib.mkOption {
                         description = "Requested medium, or a list requesting both media";
                         default = "ebook";
@@ -202,10 +181,10 @@ in {
                           lib.types.either (lib.types.enum ["ebook" "audiobook"])
                           (lib.types.addCheck (lib.types.listOf (lib.types.enum ["ebook" "audiobook"])) (values: values != []));
                       };
-                    })) (values: values != {}));
+                    });
                   };
                 };
-              }));
+              });
               default = [];
             };
 

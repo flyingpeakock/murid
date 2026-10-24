@@ -7,7 +7,12 @@
   inherit (nixpkgs) lib;
   package = pkgs.writeShellScriptBin "murid" "exit 0";
   inlineConfig = {
-    hardcover_api_keys = ["!ENV HARDCOVER_API_KEY"];
+    hardcover_api_keys = [
+      {
+        api_key = "!ENV HARDCOVER_API_KEY";
+        reading_list.want-to-read = {};
+      }
+    ];
     mam_id = "!ENV MAM_ID";
     calibre.library = "http://localhost:8080/#books";
     qbittorrent = {
@@ -43,12 +48,18 @@
       inlineConfig
       // {
         hardcover_api_keys = [
-          "!ENV HARDCOVER_API_KEY"
+          {
+            api_key = "!ENV HARDCOVER_API_KEY";
+            reading_list.want-to-read = {};
+          }
           {
             api_key = "!ENV SECOND_HARDCOVER_API_KEY";
-            list = "download-queue";
+            reading_list.download-queue = {};
           }
-          {api_key = "!ENV THIRD_HARDCOVER_API_KEY";}
+          {
+            api_key = "!ENV THIRD_HARDCOVER_API_KEY";
+            reading_list.want-to-read = {};
+          }
         ];
       };
   };
@@ -60,7 +71,7 @@
       hardcover_api_keys = [
         {
           api_key = "!ENV HARDCOVER_API_KEY";
-          media_types = ["audiobook"];
+          reading_list.want-to-read.type = "audiobook";
         }
       ];
       audiobookshelf = {
@@ -123,7 +134,7 @@
         hardcover_api_keys = [
           {
             api_key = "!ENV HARDCOVER_API_KEY";
-            media_types = ["ebook" "audiobook"];
+            reading_list.want-to-read.type = ["ebook" "audiobook"];
           }
         ];
       };
@@ -146,21 +157,26 @@
             hardcover_api_keys = [
               {
                 api_key = "!ENV KEY";
-                media_types = values;
+                reading_list.want-to-read.type = values;
               }
             ];
           };
+      }).services.murid.config.hardcover_api_keys
+      true);
+  invalidHardcover = entries:
+    builtins.tryEval (builtins.deepSeq
+      (evaluate {
+        config = inlineConfig // {hardcover_api_keys = entries;};
       }).services.murid.config.hardcover_api_keys
       true);
   fileCommand = fromFile.systemd.services.murid.serviceConfig.ExecStart;
   inlineCommand = fromInline.systemd.services.murid.serviceConfig.ExecStart;
   expectedFileCommand = "${lib.getExe package} ${lib.escapeShellArgs ["schedule" "--config" "/etc/murid.yaml"]}";
   valid =
-    builtins.elemAt userLists 0
+    (builtins.elemAt userLists 0).api_key
     == "!ENV HARDCOVER_API_KEY"
-    && (builtins.elemAt userLists 1).list == "download-queue"
-    && (builtins.elemAt userLists 2).list == "want-to-read"
-    && (builtins.elemAt userLists 2).media_types == ["ebook"]
+    && (builtins.elemAt userLists 1).reading_list.download-queue.type == "ebook"
+    && (builtins.elemAt userLists 2).reading_list.want-to-read.type == "ebook"
     && fromAudio.services.murid.config.calibre == null
     && fromAudio.services.murid.config.audiobookshelf.filetypes == ["m4b" "mp3"]
     && fromAudio.services.murid.config.audiobookshelf.staging_path == null
@@ -198,6 +214,26 @@
     }))
     && !(backendsValid (evaluate {config = audioConfig // {audiobookshelf = null;};}))
     && !(backendsValid (evaluate {config = inlineConfig // {calibre = null;};}))
+    && !(invalidHardcover ["!ENV HARDCOVER_API_KEY"]).success
+    && !(invalidHardcover [{api_key = "!ENV KEY";}]).success
+    && !(invalidHardcover [
+      {
+        api_key = "!ENV KEY";
+        reading_list = {};
+      }
+    ]).success
+    && !(invalidHardcover [
+      {
+        api_key = "!ENV KEY";
+        list = "want-to-read";
+      }
+    ]).success
+    && !(invalidHardcover [
+      {
+        api_key = "!ENV KEY";
+        media_types = ["ebook"];
+      }
+    ]).success
     && !(invalidMedia []).success
     && !(invalidMedia ["video"]).success
     && fileCommand == expectedFileCommand

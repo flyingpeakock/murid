@@ -1,20 +1,16 @@
 # Murid Configuration
 
-# One entry per Hardcover user. Token-only entries sync Want to Read.
-# Must start with "Bearer "
+# One entry per Hardcover user. API keys must start with "Bearer ".
+# Select lists explicitly using their URL slugs.
 hardcover_api_keys:
-  - !ENV HARDCOVER_API_KEY
-  # Group lists under one token using their URL slugs:
-  # - api_key: !ENV SECOND_HARDCOVER_API_KEY
-  #   reading_list:
-  #     want-to-read: {} # type defaults to ebook
-  #     books-to-download:
-  #       type: ebook
-  #     audiobooks:
-  #       type: audiobook
-  # Omitting reading_list defaults to Want to Read ebooks.
-  # type: [ebook, audiobook] requests both independently.
-  # Audiobook configuration is accepted, but execution is not yet supported.
+  - api_key: !ENV HARDCOVER_API_KEY
+    reading_list:
+      want-to-read: {} # type defaults to ebook
+      # books-to-download:
+      #   type: ebook
+      # audiobooks:
+      #   type: audiobook
+      # type: [ebook, audiobook] requests both independently.
 
 # Redact secrets from logs and config dumps
 redact_sensitive_data: true

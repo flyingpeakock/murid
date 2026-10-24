@@ -17,7 +17,10 @@ def records(result, kind):
 def configure_audio(workflow):
     workflow.config.pop("calibre")
     workflow.config["hardcover_api_keys"] = [
-        {"api_key": "Bearer integration-token", "media_types": ["audiobook"]},
+        {
+            "api_key": "Bearer integration-token",
+            "reading_list": {"want-to-read": {"type": ["audiobook"]}},
+        },
     ]
     workflow.config["audiobookshelf"] = {
         "url": "https://audio.example.com",
@@ -34,9 +37,12 @@ def test_audio_config_validates_without_calibre_or_mount(workflow):
 
 
 def test_grouped_ebook_lists_use_every_list(workflow):
-    workflow.config["hardcover_api_keys"] = [{
-        "api_key": "Bearer integration-token", "reading_list": {"want-to-read": {}},
-    }]
+    workflow.config["hardcover_api_keys"] = [
+        {
+            "api_key": "Bearer integration-token",
+            "reading_list": {"want-to-read": {}},
+        }
+    ]
     result = workflow.run("list-missing")
     assert result.code == 0, result.errors
     assert records(result, "missing_summary")[0]["count"] == 1
@@ -44,10 +50,12 @@ def test_grouped_ebook_lists_use_every_list(workflow):
 
 def test_grouped_audio_config_can_run_discovery_without_library_writes(workflow):
     configure_audio(workflow)
-    workflow.config["hardcover_api_keys"] = [{
-        "api_key": "Bearer integration-token",
-        "reading_list": {"audiobooks": {"type": "audiobook"}},
-    }]
+    workflow.config["hardcover_api_keys"] = [
+        {
+            "api_key": "Bearer integration-token",
+            "reading_list": {"audiobooks": {"type": "audiobook"}},
+        }
+    ]
     assert workflow.run("validate-config").code == 0
     result = workflow.run("run", "--dry-run")
     assert records(result, "sync_summary")[0]["missing"] == 1
@@ -62,7 +70,6 @@ def test_audio_print_config_json_always_hides_key(workflow):
     rendered = records(result, "config")[0]["config"]
     assert rendered["audiobookshelf"]["api_key"] == "**REDACTED**"
     assert "private-audio-key" not in str(result)
-
 
 
 def seed_library(workflow):
@@ -81,18 +88,27 @@ def seed_library(workflow):
 
 
 def seed_audio(workflow, tracks=1):
-    workflow.audio_items = [{
-        "id": "item-id", "libraryId": "audio-id", "mediaType": "book",
-        "isMissing": False, "isInvalid": False,
-        "media": {"numTracks": tracks, "numAudioFiles": tracks,
-                  "metadata": {"title": "Dune", "authors": [{"name": "Frank Herbert"}]},
-                  "tags": ["murid:hardcover:42"],
-                  "tracks": [{"duration": 100}] if tracks else []},
-    }]
+    workflow.audio_items = [
+        {
+            "id": "item-id",
+            "libraryId": "audio-id",
+            "mediaType": "book",
+            "isMissing": False,
+            "isInvalid": False,
+            "media": {
+                "numTracks": tracks,
+                "numAudioFiles": tracks,
+                "metadata": {"title": "Dune", "authors": [{"name": "Frank Herbert"}]},
+                "tags": ["murid:hardcover:42"],
+                "tracks": [{"duration": 100}] if tracks else [],
+            },
+        }
+    ]
 
 
 @pytest.mark.parametrize(
-    "ebook_present,audio_present", [(True, False), (False, True), (True, True)],
+    "ebook_present,audio_present",
+    [(True, False), (False, True), (True, True)],
 )
 def test_mixed_media_inspection_routes_each_request(workflow, ebook_present, audio_present):
     ebook_config = workflow.config["calibre"]
@@ -101,7 +117,6 @@ def test_mixed_media_inspection_routes_each_request(workflow, ebook_present, aud
     workflow.config["hardcover_api_keys"][0]["reading_list"] = {
         "want-to-read": {"type": ["ebook", "audiobook"]},
     }
-    workflow.config["hardcover_api_keys"][0].pop("media_types")
     if ebook_present:
         seed_library(workflow)
     if audio_present:
@@ -116,7 +131,8 @@ def test_mixed_media_inspection_routes_each_request(workflow, ebook_present, aud
     review = workflow.run("review-matches")
     assert review.code == 0, review.errors
     assert {r["media_type"]: r["matched"] for r in records(review, "match_review")} == {
-        "ebook": ebook_present, "audiobook": audio_present,
+        "ebook": ebook_present,
+        "audiobook": audio_present,
     }
     assert workflow.database.read_text() == before
     assert workflow.api.added_files == []
@@ -376,7 +392,7 @@ def test_print_config_includes_defaults_and_respects_redaction(workflow, redact)
     assert config["schedule"] == "0 * * * *"
     assert config["filetypes"] == ["epub", "mobi"]
     assert config["hardcover_api_keys"] == (
-        "**REDACTED**" if redact else ["Bearer integration-token"]
+        "**REDACTED**" if redact else workflow.config["hardcover_api_keys"]
     )
     assert config["mam_id"] == ("**REDACTED**" if redact else "integration-cookie")
     assert config["qbittorrent"]["password"] == ("**REDACTED**" if redact else "integration")

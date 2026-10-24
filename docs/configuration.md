@@ -11,7 +11,7 @@ Defaults below apply to the YAML configuration. Required values must be supplied
 
 | Option | Description | Default |
 | --- | --- | --- |
-| `hardcover_api_keys` | Hardcover tokens or mappings with `api_key` and optional `reading_list` (see below) | required |
+| `hardcover_api_keys` | Hardcover accounts with required `api_key` and `reading_list` (see below) | required |
 | `qbittorrent` | qBittorrent connection settings (see below) | required connection values |
 | `calibre` | Calibre settings (see below) | library required for ebooks |
 | `audiobookshelf` | Audiobook library settings (see below) | required for audiobooks |
@@ -27,8 +27,8 @@ Defaults below apply to the YAML configuration. Required values must be supplied
 
 ### Hardcover lists
 
-Each entry in `hardcover_api_keys` represents one user. A token alone continues to
-sync that user's **Want to Read** ebooks. Group lists under one API key:
+Each entry in `hardcover_api_keys` represents one user and requires an `api_key`
+and a non-empty `reading_list` mapping. Group lists under one API key:
 
 ```yaml
 hardcover_api_keys:
@@ -40,7 +40,8 @@ hardcover_api_keys:
       audiobooks:
         type: audiobook
   - api_key: !ENV SECOND_HARDCOVER_API_KEY
-    # reading_list omitted: Want to Read ebooks
+    reading_list:
+      want-to-read: {}
 ```
 
 Use the last part of your list URL: for
@@ -52,10 +53,10 @@ sync, regardless of their reading status. The list replaces Want to Read for
 that user unless `want-to-read` is also included. Missing or inaccessible lists cause an
 error rather than falling back to Want to Read. An empty list selects no books.
 
-Omit `reading_list` to request Want to Read ebooks. In a `reading_list` mapping,
+Include `want-to-read: {}` to request Want to Read ebooks. Within each list,
 omit `type` (use `{}` for an entry with no options) to default to ebook.
-Token-only entries and mappings can be mixed. Legacy `list` and `media_types`
-settings remain supported; do not combine them with `reading_list` in one entry.
+Token-only entries and the former `list` and `media_types` options are no longer
+accepted; convert them to explicit `reading_list` entries when upgrading.
 
 Set each list's `type` to `ebook` (the default), `audiobook`, or
 `[ebook, audiobook]`. Use singular `audiobook`, not `audiobooks`. Empty mappings,
