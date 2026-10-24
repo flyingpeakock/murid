@@ -1,4 +1,5 @@
 import json
+import multiprocessing
 import os
 from dataclasses import replace
 from unittest.mock import Mock
@@ -10,7 +11,7 @@ from murid.domain.book import Book
 from murid.domain.book_matcher import BookMatcher
 from murid.libraries.audiobook_store import AudiobookStore
 from murid.libraries.audiobookshelf import AudiobookLibraryConfig, AudiobookshelfLibrary
-from murid.libraries.import_filesystem import publish_directory
+from murid.libraries.import_filesystem import import_lock, publish_directory
 from murid.libraries.library import LibraryError, LibraryImportPending
 
 
@@ -285,6 +286,82 @@ def test_concurrent_import_is_rejected_before_copy(work):
             run(work)
     run(work)
     assert manifest(work)["phase"] == "verified"
+
+
+def _hold_import_lock(path, connection):
+    """Keep a lock in a separate process until released or terminated by the test."""
+    with import_lock(path):
+        connection.send("locked")
+        connection.recv()
+    connection.close()
+
+
+@pytest.mark.parametrize("crash", [False, True])
+def test_import_lock_contends_across_processes_and_recovers(tmp_path, crash):
+    path = tmp_path / "import.lock"
+    context = multiprocessing.get_context("spawn")
+    parent, child = context.Pipe()
+    process = context.Process(target=_hold_import_lock, args=(path, child))
+    process.start()
+    child.close()
+    try:
+        assert parent.poll(5), "Importer did not acquire its lock"
+        assert parent.recv() == "locked"
+        with pytest.raises(LibraryError, match="already active"):
+            with import_lock(path):
+                pytest.fail("Concurrent import entered its critical section")
+        if crash:
+            process.terminate()
+        else:
+            parent.send("release")
+        process.join(timeout=5)
+        assert not process.is_alive()
+        if not crash:
+            assert process.exitcode == 0
+        with import_lock(path):
+            assert path.is_file()
+    finally:
+        if process.is_alive():
+            process.terminate()
+        process.join(timeout=5)
+        parent.close()
+        process.close()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows manages lock-file cleanup differently")
+def test_import_lock_keeps_the_same_file_between_acquisitions(tmp_path):
+    path = tmp_path / "import.lock"
+    with import_lock(path):
+        inode = path.stat().st_ino
+    assert path.stat().st_ino == inode
+    with import_lock(path):
+        assert path.stat().st_ino == inode
+
+
+def test_import_lock_rejects_soft_fallback_and_releases_it(tmp_path, monkeypatch):
+    from filelock import SoftFileLock
+
+    from murid.libraries import import_filesystem
+
+    path = tmp_path / "import.lock"
+    monkeypatch.setattr(import_filesystem, "FileLock", SoftFileLock)
+    with pytest.raises(LibraryError, match="native filesystem locks"):
+        with import_lock(path):
+            pytest.fail("Import must not run with a crash-persistent soft lock")
+    with SoftFileLock(path, timeout=0):
+        assert path.is_file()
+
+
+def test_import_lock_rejects_symlinks_without_modifying_the_target(work):
+    book, _, _, store, _ = work
+    store.staging.mkdir()
+    target = store.staging / "unrelated.txt"
+    target.write_text("keep me")
+    (store.staging / f"{store.key(book)}.lock").symlink_to(target)
+    with pytest.raises(LibraryError, match="lock cannot be a symlink"):
+        run(work)
+    assert target.read_text() == "keep me"
+    assert list(store.library.iterdir()) == []
 
 
 def test_scan_permission_failure_copies_nothing(work):
