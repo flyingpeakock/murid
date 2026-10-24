@@ -228,7 +228,13 @@ class ServiceFactory:
 
     def recovery_book(self, book_id: int) -> Book | None:
         """Fetch a persisted work independently of its current reading-list membership."""
-        return self._hardcover_client(self.hardcover_lists[0]).get_book(book_id)
+        selected = getattr(self.args, "media_type", None)
+        entry = next(
+            (entry for entry in self.hardcover_lists if selected in entry["media_types"]),
+            # Recovery remains available after the last list for a medium is removed.
+            self.hardcover_lists[0],
+        )
+        return self._hardcover_client(entry).get_book(book_id)
 
     def retry_service(self):
         """Route persisted requests lazily, without initializing unrelated libraries."""

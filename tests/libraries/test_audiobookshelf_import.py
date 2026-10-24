@@ -114,6 +114,78 @@ def test_single_m4b_keeps_its_filename_and_sidecars(work):
     assert audio.read_bytes() == b"audio book"
 
 
+def test_numbered_multi_book_m4b_pack_is_rejected_before_publication(work):
+    _, source, backend, store, _ = work
+    for path in source.glob("*.mp3"):
+        path.unlink()
+    for filename in ("01 - Dune.m4b", "02 - Dune Messiah.m4b"):
+        (source / filename).write_bytes(b"complete audiobook")
+
+    with pytest.raises(LibraryError, match="multi-M4B"):
+        run(work)
+
+    assert list(store.library.iterdir()) == []
+    assert not list(store.staging.glob("*.json"))
+    assert not list(store.staging.glob("*.partial"))
+    backend.client.scan_library.assert_not_called()
+    backend.client.verify_import.assert_not_called()
+
+
+@pytest.mark.parametrize("extension", ["mp4", "aiff", "oga"])
+def test_unsupported_track_prevents_incomplete_publication(work, extension):
+    _, source, backend, store, _ = work
+    (source / "02.mp3").rename(source / f"02.{extension}")
+
+    with pytest.raises(LibraryError, match="unsupported audio formats"):
+        run(work)
+
+    assert list(store.library.iterdir()) == []
+    assert not list(store.staging.glob("*.json"))
+    assert not list(store.staging.glob("*.partial"))
+    backend.client.scan_library.assert_not_called()
+    backend.client.verify_import.assert_not_called()
+
+
+def test_single_m4b_can_share_a_parent_with_library_and_staging(work):
+    book, _, backend, store, _ = work
+    audio = store.library.parent / "Dune.m4b"
+    audio.write_bytes(b"complete audiobook")
+    cover = audio.with_suffix(".jpg")
+    cover.write_bytes(b"book cover")
+
+    backend.import_book(book, str(audio), BookMatcher())
+
+    target = destination(work)
+    assert manifest(work)["phase"] == "verified"
+    assert {entry["path"] for entry in manifest(work)["files"]} == {"Dune.m4b", "Dune.jpg"}
+    assert (target / audio.name).read_bytes() == audio.read_bytes()
+    assert (target / cover.name).read_bytes() == cover.read_bytes()
+    backend.client.scan_library.assert_called_once()
+
+
+@pytest.mark.parametrize("protected", ["library", "staging"])
+def test_directory_source_cannot_contain_import_directories(work, protected):
+    book, source, _, store, _ = work
+    nested = source / protected
+    nested.mkdir()
+    setattr(store, protected, nested)
+
+    with pytest.raises(LibraryError, match="must not contain destination or staging"):
+        store.plan(book, str(source), BookMatcher(), ["mp3"], "folder")
+
+
+@pytest.mark.parametrize("protected", ["library", "staging"])
+def test_single_m4b_source_cannot_be_inside_import_directories(work, protected):
+    book, _, _, store, _ = work
+    parent = getattr(store, protected)
+    parent.mkdir(exist_ok=True)
+    audio = parent / "Dune.m4b"
+    audio.write_bytes(b"complete audiobook")
+
+    with pytest.raises(LibraryError, match="must be outside"):
+        store.plan(book, str(audio), BookMatcher(), ["m4b"], "folder")
+
+
 def test_merges_tags_without_overwriting_supplied_audiobook_metadata(work):
     _, source, _, _, _ = work
     metadata = {
