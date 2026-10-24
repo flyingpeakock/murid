@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from murid.clients.calibre import Calibre, CalibreConfig, CalibreError
@@ -52,7 +54,8 @@ def test_contains_book_uses_match_rules_not_score_alone(tmp_path):
     calibre = Calibre(
         CalibreConfig(executable="calibredb", library=str(tmp_path)),
         run=lambda *args, **kwargs: Result(
-            '[{"id": 1, "title": "Dune", "authors": "Someone Else", "isbn": ""}]'
+            '[{"id": 1, "title": "Dune", "authors": "Someone Else", "isbn": ""'
+            ', "formats": ["/library/book.epub"]}]'
         ),
     )
     requested = Book(
@@ -82,6 +85,25 @@ def test_get_books_empty(tmp_path):
     assert books == set()
 
 
+@pytest.mark.parametrize("formats", [[], None])
+def test_metadata_only_record_does_not_count_as_present(tmp_path, formats):
+    record = {
+        "id": 1,
+        "title": "Dune",
+        "authors": "Frank Herbert",
+        "identifiers": {"hardcover": "42"},
+        "formats": formats,
+    }
+    calibre = Calibre(
+        CalibreConfig("calibredb", str(tmp_path)),
+        run=lambda *args, **kwargs: Result(json.dumps([record])),
+    )
+    requested = Book("Dune", ["Frank Herbert"], 42, [], "hardcover")
+
+    assert calibre.get_books() == set()
+    assert not calibre.contains_book(requested, BookMatcher())
+
+
 def test_get_books_single(tmp_path):
     db = tmp_path
 
@@ -91,7 +113,8 @@ def test_get_books_single(tmp_path):
             library=str(db),
         ),
         run=lambda *args, **kwargs: Result(
-            '[{"id": 1, "title": "Dune", "authors": "Frank Herbert", "isbn": "1234567890"}]'
+            '[{"id": 1, "title": "Dune", "authors": "Frank Herbert", "isbn": "1234567890"'
+            ', "formats": ["/library/book.epub"]}]'
         ),
     )
 
@@ -112,7 +135,8 @@ def test_get_books_includes_series_and_external_identifiers(tmp_path):
         return Result(
             '[{"id": 2, "title": "Dune", "authors": "Frank Herbert", "isbn": "", '
             '"identifiers": {"goodreads": "12345", "amazon": "B012345678"}, '
-            '"series": "Dune", "series_index": "1.5"}]'
+            '"series": "Dune", "series_index": "1.5"'
+            ', "formats": ["/library/book.epub"]}]'
         )
 
     calibre = Calibre(
@@ -125,7 +149,7 @@ def test_get_books_includes_series_and_external_identifiers(tmp_path):
     assert book.series == "Dune"
     assert book.series_number == 1.5
     assert book.identifiers == {"goodreads": "12345", "amazon": "B012345678"}
-    assert calls[-1][0][-1] == "id,title,authors,isbn,identifiers,series,series_index"
+    assert calls[-1][0][-1] == "id,title,authors,isbn,identifiers,series,series_index,formats"
 
 
 @pytest.mark.parametrize(
@@ -142,7 +166,8 @@ def test_contains_book_matches_joined_calibre_authors(tmp_path, calibre_authors)
         run=lambda *args, **kwargs: Result(
             '[{"id": 14, "title": "A Memory of Light", '
             f'"authors": "{calibre_authors}", "isbn": "", '
-            '"series": "The Wheel of Time", "series_index": 14}]'
+            '"series": "The Wheel of Time", "series_index": 14'
+            ', "formats": ["/library/book.epub"]}]'
         ),
     )
     hardcover_book = Book(
@@ -214,6 +239,8 @@ def test_add_book(tmp_path):
         "Dune",
         "--authors",
         "Frank Herbert",
+        "--automerge",
+        "ignore",
         "--identifier",
         "isbn:9780441172719",
         "/tmp/dune.epub",
@@ -354,7 +381,8 @@ def test_get_books_extra_data(tmp_path, caplog):
             library=str(db),
         ),
         run=lambda *args, **kwargs: Result(
-            '[{"id": 1, "title": "Dune", "authors": "Frank Herbert", "isbn": "1234567890"}]\nextra'
+            '[{"id": 1, "title": "Dune", "authors": "Frank Herbert", "isbn": "1234567890"'
+            ', "formats": ["/library/book.epub"]}]\nextra'
         ),
     )
 

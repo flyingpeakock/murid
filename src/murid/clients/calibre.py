@@ -59,13 +59,13 @@ class Calibre:
             raise CalibreError(f"Error running Calibre executable: {e}") from e
 
     def get_books(self) -> set[Book]:
-        """Retrieve a list of books from the Calibre database."""
+        """Retrieve books with formats, excluding metadata-only Calibre records."""
         try:
             stdout = self._calibredb(
                 "list",
                 "--for-machine",
                 "--fields",
-                "id,title,authors,isbn,identifiers,series,series_index",
+                "id,title,authors,isbn,identifiers,series,series_index,formats",
             )
         except subprocess.CalledProcessError as e:
             raise CalibreError(f"Error retrieving books from Calibre server: {e.stderr}") from e
@@ -85,7 +85,7 @@ class Calibre:
         if extra_data:
             logger.debug("Extra data after JSON response: %r", extra_data)
 
-        books = {self._book(book) for book in data}
+        books = {self._book(book) for book in data if book.get("formats")}
         logger.debug(
             "Loaded %d Calibre books (%d with identifiers, %d with series metadata)",
             len(books),
@@ -138,6 +138,8 @@ class Calibre:
             )
 
         args = ["add", "--title", book.title, "--authors", ", ".join(book.authors)]
+        # Fill metadata-only records without replacing formats already in the library.
+        args.extend(["--automerge", "ignore"])
 
         for name, value in self._import_identifiers(book).items():
             args.extend(["--identifier", f"{name}:{value}"])

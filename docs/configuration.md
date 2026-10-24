@@ -287,6 +287,10 @@ identifier values retain their original case. Existing library records are not
 updated during import. Retries recover metadata using the
 [torrent identity](#torrent-metadata-and-recovery).
 
+Calibre records without any formats count as missing. Imports use Calibre's
+`--automerge ignore` behavior to add missing formats to matching records while
+preserving existing format files.
+
 Calibre commands that exceed `calibre.command_timeout_seconds` stop with an error.
 An import timeout leaves the download tagged for investigation and `retry-import`.
 Check the library before retrying: Calibre may have written the book before the

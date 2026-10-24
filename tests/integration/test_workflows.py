@@ -102,6 +102,30 @@ def test_failed_import_can_be_retried_without_adding_another_torrent(workflow):
     assert not any("download.php" in url for _, url, _ in workflow.requests)
 
 
+def test_retry_does_not_clear_failure_for_a_metadata_only_record(workflow):
+    (workflow.library / "fail-import").touch()
+    assert workflow.run("run").code == 1
+    workflow.database.write_text(
+        json.dumps(
+            [
+                {
+                    "id": 1,
+                    "title": "Dune",
+                    "authors": "Frank Herbert",
+                    "identifiers": {"hardcover": "42"},
+                    "formats": [],
+                }
+            ]
+        )
+    )
+
+    retry = workflow.run("retry-import")
+
+    assert retry.code == 1
+    assert "murid-import-failed" in workflow.api.torrents[0].tags
+    assert not (workflow.library / "imports.jsonl").exists()
+
+
 def test_retry_automatically_migrates_existing_torrents_and_cleans_tag_definitions(workflow):
     tags = {
         "murid_pending",

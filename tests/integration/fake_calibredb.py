@@ -33,6 +33,7 @@ def main():
                 "title": args[args.index("--title") + 1],
                 "authors": args[args.index("--authors") + 1],
                 "identifiers": identifiers,
+                "formats": [args[-1]],
             }
         )
         database.write_text(json.dumps(books))

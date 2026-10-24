@@ -83,6 +83,7 @@ def seed_library(workflow):
                     "title": "Dune",
                     "authors": "Frank Herbert",
                     "identifiers": {"hardcover": "42"},
+                    "formats": ["/library/Dune.epub"],
                 }
             ]
         )
