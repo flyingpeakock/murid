@@ -418,6 +418,13 @@ def test_validate_config_loads_yaml_and_reports_invalid_values(workflow, valid):
 @pytest.mark.parametrize("redact", [False, True])
 def test_print_config_includes_defaults_and_respects_redaction(workflow, redact):
     workflow.config["redact_sensitive_data"] = redact
+    workflow.config["apprise"] = {
+        "urls": [
+            "tgram://123456:bot-secret/123456",
+            "https://hooks.example.com/webhook-secret",
+            "mailto://user:smtp-secret@example.com",
+        ]
+    }
 
     result = workflow.run("print-config")
 
@@ -431,6 +438,7 @@ def test_print_config_includes_defaults_and_respects_redaction(workflow, redact)
     )
     assert config["mam_id"] == ("**REDACTED**" if redact else "integration-cookie")
     assert config["qbittorrent"]["password"] == ("**REDACTED**" if redact else "integration")
+    assert config["apprise"] == ("**REDACTED**" if redact else workflow.config["apprise"])
     assert workflow.requests == []
 
 

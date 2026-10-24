@@ -345,6 +345,25 @@ def test_redact_list(build_config):
     ]
 
 
+@pytest.mark.parametrize("redact", [True, False])
+def test_str_redacts_apprise_credentials(build_config, redact):
+    apprise = {
+        "urls": [
+            "tgram://123456:bot-secret/123456",
+            "https://hooks.example.com/webhook-secret",
+            "mailto://user:smtp-secret@example.com",
+        ]
+    }
+    config = build_config(apprise=apprise, redact_sensitive_data=redact)
+
+    output = str(config)
+
+    assert yaml.safe_load(output)["apprise"] == ("**REDACTED**" if redact else apprise)
+    for secret in ("bot-secret", "webhook-secret", "smtp-secret"):
+        assert (secret not in output) == redact
+    assert config.get("apprise")["urls"] == apprise["urls"]
+
+
 def test_str_redacts_api_keys(build_config):
     config = build_config()
     output = str(config)

@@ -102,6 +102,7 @@ class Config:
             "password",
             "hardcover_api_keys",
             "server_password",
+            "apprise",  # Notification URLs can contain credentials in any component.
         ]
         if isinstance(data, dict):
             return {
