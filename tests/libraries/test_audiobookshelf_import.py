@@ -159,6 +159,23 @@ def test_dry_run_does_not_create_state_copy_or_scan(work):
     work[2].client.verify_import.assert_not_called()
 
 
+@pytest.mark.parametrize("journal_exists", [False, True])
+def test_resume_without_publication_waits_for_completed_source(work, monkeypatch, journal_exists):
+    book, source, backend, store, _ = work
+    if journal_exists:
+        with store.lock(book):
+            store.save(store.plan(book, str(source), BookMatcher(), ["mp3"], "folder"))
+    copy = Mock(side_effect=AssertionError("Incomplete torrent must not be copied"))
+    monkeypatch.setattr(AudiobookStore, "_copy", copy)
+
+    assert backend.resume_import(book, BookMatcher()) is False
+
+    copy.assert_not_called()
+    backend.client.scan_library.assert_not_called()
+    backend.client.verify_import.assert_not_called()
+    assert list(store.library.iterdir()) == []
+
+
 @pytest.mark.parametrize("empty", [False, True])
 def test_existing_unrelated_destinations_are_preserved(work, empty):
     book, source, backend, store, _ = work

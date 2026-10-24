@@ -25,7 +25,15 @@ class Library(Protocol):
     def contains_book(self, book: Book, matcher: BookMatcher) -> bool:
         """Check presence in this medium only."""
 
+    def resume_import(self, book: Book, matcher: BookMatcher) -> bool:
+        """Verify an existing published import; return False when source files are needed."""
+
     def import_book(
-        self, book: Book, path: str, matcher: BookMatcher, *, explicit_file: bool = False,
+        self,
+        book: Book,
+        path: str,
+        matcher: BookMatcher,
+        *,
+        explicit_file: bool = False,
     ) -> None:
         """Import a completed path, or a user-selected file overriding format preferences."""

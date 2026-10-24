@@ -363,6 +363,18 @@ Manual audiobook flags and full diagnostics/deployment support remain in step 7.
 Verification: all 856 Python tests passed. Ruff, the repository's Pylint hook,
 and whitespace checks passed. No NixOS options changed in this phase.
 
+**Recovery review correction (2026-10-24):** Torrent imports now resume an existing
+published audiobook before checking download completion. The journal's destination,
+ownership, fingerprints, and exact ingestion are verified even after the source is
+removed and qBittorrent reports zero progress. Recovery also handles publication
+that completed before the journal advanced from copying. Imports without a published
+destination still wait for source completion; dry runs do not resume or scan.
+
+Successful audiobook imports and resumes reuse their exact destination/track
+verification instead of following it with a full-library presence lookup. Calibre
+imports retain their post-import presence check. Regression coverage ensures both
+fresh audiobook imports and recovery avoid the redundant library traversal.
+
 - Persist media type and Hardcover identity when adding a torrent, alongside
   existing pending tags, so interrupted runs can recover the original request.
 - Retain recovery behavior for legacy ebook torrents.

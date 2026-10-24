@@ -123,10 +123,20 @@ class AudiobookshelfLibrary:
         explicit_file: bool = False,
     ) -> None:
         """Stage, publish, scan, and verify every track; interrupted state remains retryable."""
-        if not self.config.library_path:
-            raise LibraryError("Audiobook import requires a configured shared library_path")
         if explicit_file and Path(path).is_dir():
             raise LibraryError("An explicitly selected audio file cannot be a directory")
+        self._import(book, path, matcher)
+
+    def resume_import(self, book: Book, matcher: BookMatcher) -> bool:
+        """Verify a published destination even when its torrent is no longer complete."""
+        if not self.has_import_state(book):
+            return False
+        return self._import(book, None, matcher)
+
+    def _import(self, book: Book, path: str | None, matcher: BookMatcher) -> bool:
+        """A missing path permits recovery only when the journal's destination exists."""
+        if not self.config.library_path:
+            raise LibraryError("Audiobook import requires a configured shared library_path")
         store = AudiobookStore(
             self.config.library_path, self.client.library_id, self.config.staging_path
         )
@@ -135,6 +145,8 @@ class AudiobookshelfLibrary:
             self.client.require_scan_access()
             folder_id = self._folder(store)
             if self.config.dry_run:
+                if path is None:
+                    return False
                 manifest = store.load(book, folder_id) or store.plan(
                     book,
                     path,
@@ -143,9 +155,15 @@ class AudiobookshelfLibrary:
                     folder_id,
                 )
                 logger.info("%s: would import audio to %s", book, manifest["destination"])
-                return
+                return True
             with store.lock(book):
                 manifest = store.load(book, folder_id)
+                if path is None:
+                    if manifest is None:
+                        return False
+                    destination = store.library / manifest["destination"]
+                    if not destination.exists() and not destination.is_symlink():
+                        return False
                 if manifest is None:
                     manifest = store.plan(book, path, matcher, self.config.filetypes, folder_id)
                     store.save(manifest)
@@ -153,6 +171,7 @@ class AudiobookshelfLibrary:
                 self._verify(manifest)
                 manifest["phase"] = "verified"
                 store.save(manifest)
+                return True
         except AudiobookSelectionError as error:
             raise LibraryError(str(error)) from error
         except OSError as error:

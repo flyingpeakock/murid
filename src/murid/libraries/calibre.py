@@ -26,8 +26,17 @@ class CalibreLibrary:
         """Check for an existing ebook."""
         return self.client.contains_book(book, matcher)
 
+    def resume_import(self, book: Book, matcher: BookMatcher) -> bool:  # pylint: disable=unused-argument
+        """Calibre imports do not have a separate publication journal to resume."""
+        return False
+
     def import_book(
-        self, book: Book, path: str, matcher: BookMatcher, *, explicit_file: bool = False,
+        self,
+        book: Book,
+        path: str,
+        matcher: BookMatcher,
+        *,
+        explicit_file: bool = False,
     ) -> None:
         """Select one ebook, leaving all source files in place."""
         if explicit_file and not Path(path).is_file():
