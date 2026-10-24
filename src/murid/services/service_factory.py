@@ -19,6 +19,7 @@ from ..domain.torrent_selector import TorrentSelector
 from ..libraries.audiobookshelf import AudiobookLibraryConfig, AudiobookshelfLibrary
 from ..libraries.calibre import CalibreLibrary
 from ..libraries.library import Library
+from ..notifications.apprise import AppriseHandler
 from ..notifications.apprise import init_apprise as apprise
 from .retry_service import RetryRecovery, RetryService
 from .sync_service import SyncService
@@ -49,6 +50,10 @@ class ServiceFactory:
     def _init_apprise(self):
         """Initialize the Apprise notifier."""
         if not self.config.get("apprise", None):
+            for handler in list(logger.handlers):
+                if isinstance(handler, AppriseHandler):
+                    logger.removeHandler(handler)
+                    handler.close()
             return lambda *args, **kwargs: None
         try:
             return apprise(logger, self.config["apprise"])

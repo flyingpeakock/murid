@@ -1,3 +1,5 @@
+import logging
+from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -7,6 +9,7 @@ from murid.clients.calibre import CalibreConfig, CalibreError
 from murid.config import ConfigError
 from murid.domain.book import Book
 from murid.libraries.audiobookshelf import AudiobookshelfLibrary
+from murid.notifications.apprise import AppriseHandler
 from murid.services.service_factory import ServiceFactory
 
 
@@ -265,6 +268,42 @@ def test_notifier_enabled(args, config, monkeypatch):
     factory = ServiceFactory(args, config)
 
     assert factory.notifier() is notify_mock
+
+
+@pytest.mark.parametrize("remove_apprise", [False, True], ids=["null", "removed"])
+def test_reload_disabling_notifications_removes_and_closes_handler(
+    args, config, monkeypatch, remove_apprise
+):
+    logger = logging.Logger("test_reload_notifications")
+    output = StringIO()
+    other_handler = logging.StreamHandler(output)
+    logger.addHandler(other_handler)
+    monkeypatch.setattr("murid.services.service_factory.logger", logger)
+    transport = Mock()
+    monkeypatch.setattr("murid.notifications.apprise.apprise.Apprise", lambda **_: transport)
+    factory = ServiceFactory(args, config)
+    handler = next(h for h in logger.handlers if isinstance(h, AppriseHandler))
+    close = Mock(wraps=handler.close)
+    monkeypatch.setattr(handler, "close", close)
+    logger.error("before reload")
+    transport.notify.assert_called_once()
+    transport.notify.reset_mock()
+
+    reloaded_config = config.copy()
+    if remove_apprise:
+        reloaded_config.pop("apprise")
+    else:
+        reloaded_config["apprise"] = None
+    monkeypatch.setattr(factory, "_load_config", lambda: reloaded_config)
+
+    factory.reload()
+    logger.error("after reload")
+    assert factory.notifier()(title="disabled", body="disabled") is None
+
+    assert logger.handlers == [other_handler]
+    close.assert_called_once_with()
+    transport.notify.assert_not_called()
+    assert "after reload" in output.getvalue()
 
 
 def test_notifier_can_be_skipped_for_connection_check(args, config, monkeypatch):
