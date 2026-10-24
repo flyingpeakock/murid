@@ -16,18 +16,20 @@ import yaml
 from murid import ui
 from murid.clients.calibre import Calibre
 from murid.clients.myanonamouse import MyAnonamouse
+from murid.domain.torrent_metadata import TorrentMetainfo
 from murid.main import main
 
 
 class FakeQbittorrentAPI:
     """Share download and tag state across clients created by ServiceFactory."""
 
-    app = SimpleNamespace(version="5.0", web_api_version="2.11")
+    app = SimpleNamespace(version="5.2.0", web_api_version="2.12.1")
 
     def __init__(self, downloads):
         self.downloads = downloads
         self.torrents = []
         self.added_files = []
+        self.tag_definitions = set()
 
     def auth_log_in(self):
         pass
@@ -37,16 +39,18 @@ class FakeQbittorrentAPI:
 
     def torrents_add(self, *, torrent_files, category, tags):
         self.added_files.append(torrent_files)
+        metadata = TorrentMetainfo(torrent_files)
+        self.tag_definitions.update(tags.split(","))
         self.torrents.append(
             SimpleNamespace(
-                hash="test-hash",
+                hash=metadata.hashes[0],
                 name="Dune",
                 state="uploading",
                 category=category,
                 tags=tags,
                 progress=1.0,
                 content_path=f"/remote/downloads/{self.downloads.name}",
-                comment="https://www.myanonamouse.net/t/101 MID=101",
+                comment=metadata.comment,
             )
         )
         return "Ok."
@@ -57,10 +61,11 @@ class FakeQbittorrentAPI:
             for torrent in self.torrents
             if (category is None or torrent.category == category)
             and (tag is None or tag in torrent.tags.split(","))
-            and (torrent_hashes is None or torrent.hash == torrent_hashes)
+            and (torrent_hashes is None or torrent.hash in torrent_hashes.split("|"))
         ]
 
     def torrents_add_tags(self, *, tags, torrent_hashes):
+        self.tag_definitions.update(tags.split(","))
         for torrent in self.torrents_info(torrent_hashes=torrent_hashes):
             torrent.tags = ",".join(sorted(set(torrent.tags.split(",")) | {tags}))
 
@@ -68,9 +73,23 @@ class FakeQbittorrentAPI:
         for torrent in self.torrents_info(torrent_hashes=torrent_hashes):
             torrent.tags = ",".join(tag for tag in torrent.tags.split(",") if tag != tags)
 
+    def torrents_set_comment(self, *, comment, torrent_hashes):
+        for torrent in self.torrents_info(torrent_hashes=torrent_hashes):
+            torrent.comment = comment.strip()
+
+    def torrents_properties(self, *, torrent_hash):
+        torrent = self.torrents_info(torrent_hashes=torrent_hash)[0]
+        return SimpleNamespace(comment=getattr(torrent, "comment", ""))
+
+    def torrents_tags(self):
+        return sorted(self.tag_definitions)
+
+    def torrents_delete_tags(self, *, tags):
+        self.tag_definitions.difference_update(tags.split(","))
+
 
 @pytest.fixture
-def workflow(tmp_path, monkeypatch, capsys):
+def workflow(tmp_path, monkeypatch, capsys, torrent_file):
     library = tmp_path / "library with spaces"
     library.mkdir()
     database = library / "books.json"
@@ -267,7 +286,7 @@ def workflow(tmp_path, monkeypatch, capsys):
             assert _session.cookies.get("mam_id") == "integration-cookie"
             data = {"data": state.torrent_rows}
         elif url == f"{MyAnonamouse.DOWNLOAD_URL}/?tid=101":
-            response._content = b"fixture torrent bytes"
+            response._content = torrent_file
             return response
         elif url == "http://notifications.invalid/notify":
             state.notifications.append(json.loads(kwargs["data"]))

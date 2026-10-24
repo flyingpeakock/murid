@@ -76,7 +76,7 @@ def test_search_book_previews_selection_and_rejections(capsys):
     assert "Reason: match score below threshold 0.920" in output
     assert output.index("SELECTED:") < output.index("REJECTED:")
     discovery.find_torrents.assert_called_once_with(BookRequest(target))
-    discovery.mam_ids_with_tag.assert_called_once_with("murid_import_failed", "ebook")
+    discovery.mam_ids_with_tag.assert_called_once_with("murid-import-failed", "ebook")
     discovery.mam.download_torrent.assert_not_called()
 
 

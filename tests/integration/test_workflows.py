@@ -1,10 +1,13 @@
 """CLI workflows across configuration, clients, domain logic, and services."""
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
 from murid.clients.myanonamouse import MyAnonamouse
+from murid.domain.torrent_metadata import TorrentMetainfo
+from murid.domain.torrent_request import read_request
 
 pytestmark = pytest.mark.integration
 
@@ -24,11 +27,10 @@ def test_sync_imports_preferred_file_and_second_run_is_idempotent(workflow):
     assert books[0]["identifiers"]["hardcover"] == "42"
     imported = json.loads((workflow.library / "imports.jsonl").read_text())
     assert imported[-1] == str(workflow.downloads / "Dune.epub")
-    assert set(workflow.api.torrents[0].tags.split(",")) == {
-        "murid_media_ebook",
-        "murid_hardcover_42",
-    }
-    assert workflow.api.added_files == [b"fixture torrent bytes"]
+    assert workflow.api.torrents[0].tags == ""
+    assert read_request(workflow.api.torrents[0]) == ("ebook", 42)
+    assert len(workflow.api.added_files) == 1
+    assert TorrentMetainfo(workflow.api.added_files[0]).comment.startswith("MID=123\n")
 
     workflow.requests.clear()
     second = workflow.run("run")
@@ -83,10 +85,8 @@ def test_failed_import_can_be_retried_without_adding_another_torrent(workflow):
     assert result.code == 1
     assert summary(result)["failed"] == 1
     assert set(workflow.api.torrents[0].tags.split(",")) == {
-        "murid_pending",
-        "murid_import_failed",
-        "murid_media_ebook",
-        "murid_hardcover_42",
+        "murid",
+        "murid-import-failed",
     }
     assert workflow.database.read_text() == "[]"
 
@@ -96,12 +96,53 @@ def test_failed_import_can_be_retried_without_adding_another_torrent(workflow):
 
     assert retry.code == 0, retry.errors
     assert len(json.loads(workflow.database.read_text())) == 1
-    assert set(workflow.api.torrents[0].tags.split(",")) == {
-        "murid_media_ebook",
-        "murid_hardcover_42",
-    }
+    assert workflow.api.torrents[0].tags == ""
+    assert read_request(workflow.api.torrents[0]) == ("ebook", 42)
     assert len(workflow.api.added_files) == 1
     assert not any("download.php" in url for _, url, _ in workflow.requests)
+
+
+def test_retry_automatically_migrates_existing_torrents_and_cleans_tag_definitions(workflow):
+    tags = {
+        "murid_pending",
+        "murid_timeout",
+        "murid_import_failed",
+        "murid_media_ebook",
+        "murid_hardcover_42",
+        "murid_add_" + "a" * 32,
+        "user-tag",
+    }
+    torrent = SimpleNamespace(
+        hash="existing-hash",
+        name="Dune",
+        category="murid",
+        state="uploading",
+        progress=1,
+        tags=",".join(sorted(tags)),
+        comment="Original comment MID=101",
+        content_path=f"/remote/downloads/{workflow.downloads.name}",
+    )
+    workflow.api.torrents.append(torrent)
+    workflow.api.tag_definitions.update(tags | {"murid_add_" + "b" * 32})
+    result = workflow.run("retry-import")
+    assert result.code == 0, result.errors
+    assert torrent.tags == "user-tag"
+    assert read_request(torrent) == ("ebook", 42)
+    assert torrent.comment.startswith("Original comment MID=101\n[murid:1]")
+    assert workflow.api.tag_definitions == {
+        "murid",
+        "murid-timeout",
+        "murid-import-failed",
+        "user-tag",
+    }
+    assert workflow.api.added_files == []
+    assert len(json.loads(workflow.database.read_text())) == 1
+    assert not any("download.php" in url for _, url, _ in workflow.requests)
+
+    status = workflow.run("status")
+    assert status.code == 0, status.errors
+    item = next(record for record in status.records if record["type"] == "torrent")
+    assert (item["media_type"], item["hardcover_id"]) == ("ebook", 42)
 
 
 def test_hardcover_failure_aborts_sync_before_downloading(workflow):

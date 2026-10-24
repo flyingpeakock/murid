@@ -174,7 +174,7 @@ def seed_torrent(workflow, **overrides):
         "name": "Dune",
         "state": "uploading",
         "category": "murid",
-        "tags": "murid_timeout,murid_pending",
+        "tags": "murid-timeout,murid",
         "progress": 1.0,
         "content_path": "/remote/downloads/Dune",
         "comment": "MID=101",
@@ -183,6 +183,37 @@ def seed_torrent(workflow, **overrides):
     torrent = SimpleNamespace(**values)
     workflow.api.torrents.append(torrent)
     return torrent
+
+
+@pytest.mark.parametrize(
+    "tags,comment",
+    [
+        ("murid-import-failed,murid_media_audiobook", "MID=101"),
+        ("murid-import-failed", "MID=101\n[murid:1]invalid-json"),
+    ],
+)
+def test_search_preview_reports_invalid_torrent_identity_without_blocking_candidates(
+    workflow, tags, comment
+):
+    torrent = seed_torrent(workflow, tags=tags, comment=comment)
+    original = vars(torrent).copy()
+
+    preview = workflow.run("search-book", "Dune", "--ebooks")
+
+    assert preview.code == 0, preview.errors
+    assert any(item["selected"] for item in records(preview, "candidate"))
+    assert any("existing-hash" in error["message"] for error in preview.errors)
+    assert vars(torrent) == original
+    assert workflow.api.added_files == []
+    assert workflow.database.read_text() == "[]"
+
+    recovery = workflow.run("run")
+
+    assert recovery.code == 1
+    assert records(recovery, "sync_summary")[0]["skipped"] == 1
+    assert vars(torrent) == original
+    assert workflow.api.added_files == []
+    assert workflow.database.read_text() == "[]"
 
 
 @pytest.mark.parametrize("present", [False, True])
@@ -230,7 +261,7 @@ def test_review_matches_applies_filters_and_reports_evidence(workflow, present, 
 
 
 def test_status_reports_only_configured_category_and_attention(workflow):
-    seed_torrent(workflow, tags="murid_import_failed,murid_timeout")
+    seed_torrent(workflow, tags="murid-import-failed,murid-timeout")
     seed_torrent(workflow, hash="other-hash", category="other", name="Unrelated")
 
     result = workflow.run("status")
@@ -340,7 +371,9 @@ def test_retry_import_handles_existing_download_without_adding(workflow, progres
     assert outcome["imported"] == int(progress == 1)
     assert outcome["pending"] == int(progress < 1)
     assert len(json.loads(workflow.database.read_text())) == int(progress == 1)
-    assert torrent.tags == ("murid_timeout,murid_pending" if progress < 1 else "")
+    assert set(filter(None, torrent.tags.split(","))) == (
+        {"murid-timeout", "murid"} if progress < 1 else set()
+    )
     assert workflow.api.added_files == []
     assert not any("download.php" in url for _, url, _ in workflow.requests)
 

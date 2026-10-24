@@ -7,10 +7,10 @@ def test_status_reports_issues_first_and_progress(capsys):
     torrents = [
         SimpleNamespace(name="Ready", progress=1.0, state="uploading", tags=""),
         SimpleNamespace(
-            name="Dune", progress=0.5, state="downloading", tags="other, murid_timeout"
+            name="Dune", progress=0.5, state="downloading", tags="other, murid-timeout"
         ),
         SimpleNamespace(
-            name="Foundation", progress=1.0, state="stalledUP", tags="murid_import_failed"
+            name="Foundation", progress=1.0, state="stalledUP", tags="murid-import-failed"
         ),
     ]
     client = SimpleNamespace(category="murid", get_torrents=lambda: torrents)

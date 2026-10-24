@@ -150,7 +150,7 @@ def test_audio_status_identifies_media_destination_and_conflicting_tags(workflow
             category="murid",
             progress=1,
             state="uploading",
-            tags="murid_pending,murid_media_audiobook,murid_hardcover_42",
+            tags="murid,murid_media_audiobook,murid_hardcover_42",
         )
     ]
     result = workflow.run("status")
@@ -183,7 +183,7 @@ def test_audio_summary_and_notification_include_the_actual_destination(workflow)
             state="uploading",
             comment="",
             content_path=str(source),
-            tags="murid_pending,murid_media_audiobook,murid_hardcover_42",
+            tags="murid,murid_media_audiobook,murid_hardcover_42",
         )
     ]
     result = workflow.run("run")
@@ -199,7 +199,7 @@ def test_audio_retry_dry_run_retains_torrent_tags_and_library(workflow):
     from types import SimpleNamespace
 
     source = audio_setup(workflow)
-    tags = "murid_pending,murid_media_audiobook,murid_hardcover_42"
+    tags = "murid,murid_media_audiobook,murid_hardcover_42"
     workflow.api.torrents = [
         SimpleNamespace(
             hash="existing",
@@ -243,7 +243,7 @@ def test_filtered_audio_recovery_skips_unrelated_hardcover_account(workflow, com
             state="uploading",
             comment="",
             content_path=str(source),
-            tags="murid_pending,murid_media_audiobook,murid_hardcover_42",
+            tags="murid,murid_media_audiobook,murid_hardcover_42",
         )
     ]
 
@@ -266,7 +266,7 @@ def test_filtered_audio_recovery_skips_unrelated_hardcover_account(workflow, com
         kwargs["headers"]["Authorization"] == "Bearer integration-token"
         for kwargs in hardcover_calls
     )
-    assert "murid_pending" not in workflow.api.torrents[0].tags
+    assert "murid" not in workflow.api.torrents[0].tags
     assert workflow.api.added_files == []
 
 
@@ -313,7 +313,8 @@ def test_filtered_inspection_ignores_unavailable_other_library(
 
 
 @pytest.mark.parametrize("command", ["run", "retry-import"])
-def test_ebook_filter_preserves_pending_audio_and_avoids_audio_backend(workflow, command):
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_ebook_filter_preserves_pending_audio_and_avoids_audio_backend(workflow, command, dry_run):
     from types import SimpleNamespace
 
     source = audio_setup(workflow)
@@ -331,13 +332,17 @@ def test_ebook_filter_preserves_pending_audio_and_avoids_audio_backend(workflow,
             category="murid",
             progress=1,
             state="uploading",
-            comment="",
+            comment="Original audio comment MID=101",
             content_path=str(source),
             tags=tags,
         )
     ]
-    result = workflow.run(command, "--ebooks", "--dry-run")
+    original = vars(workflow.api.torrents[0]).copy()
+    args = [command, "--ebooks"]
+    if dry_run:
+        args.append("--dry-run")
+    result = workflow.run(*args)
     assert result.code == 0, result.errors
-    assert workflow.api.torrents[0].tags == tags
+    assert vars(workflow.api.torrents[0]) == original
     assert not any(url.startswith("https://audio.example.com/") for _, url, _ in workflow.requests)
-    assert workflow.api.added_files == []
+    assert len(workflow.api.added_files) == int(command == "run" and not dry_run)

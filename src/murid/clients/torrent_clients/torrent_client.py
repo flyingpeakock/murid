@@ -15,7 +15,7 @@ class TorrentClient(ABC):
     def add_torrent(
         self, torrent_file: bytes, book: Book, *, media_type: MediaType = "ebook"
     ) -> str | None:
-        """Add a torrent with a persistent murid_pending tag and return its ID."""
+        """Add a torrent with a persistent murid tag and return its ID."""
 
     @abstractmethod
     def get_completed_path(self, torrent_id: str) -> str | None:
@@ -36,5 +36,5 @@ class TorrentClient(ABC):
         """Get a list of torrent ID's that have the specified tag"""
 
     @abstractmethod
-    def get_torrents(self) -> list:
-        """Return torrents in Murid's configured category."""
+    def get_torrents(self, *, migrate: bool = False, media_type: MediaType | None = None) -> list:
+        """Read and optionally migrate selected media in Murid's configured category."""

@@ -13,7 +13,7 @@ class BookSearchError(Exception):
 
 def _print_candidates(book, torrents, matcher, discovery, media_type):
     """Print candidates in selection and score order; return the selected torrent."""
-    failed_ids = discovery.mam_ids_with_tag("murid_import_failed", media_type)
+    failed_ids = discovery.mam_ids_with_tag("murid-import-failed", media_type)
     selector = discovery.torrent_selectors[media_type]
     available = {torrent for torrent in torrents if str(torrent.book.id) not in failed_ids}
     selected = selector.select(book, available, matcher) if available else None

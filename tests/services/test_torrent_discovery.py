@@ -249,7 +249,7 @@ def test_submit_downloads_skips_torrent_tagged_import_failed(mam, matcher):
 
     torrent_client = Mock()
     torrent_client.get_torrents_with_tag.side_effect = lambda tag: (
-        [SimpleNamespace(comment="MyAnonamouse MID=123")] if tag == "murid_import_failed" else []
+        [SimpleNamespace(comment="MyAnonamouse MID=123")] if tag == "murid-import-failed" else []
     )
     service = TorrentDiscoveryService(mam, {"ebook": None}, torrent_client)
     service.torrent_selectors["ebook"] = SimpleNamespace(
@@ -264,7 +264,7 @@ def test_submit_downloads_skips_torrent_tagged_import_failed(mam, matcher):
     with ThreadPoolExecutor(max_workers=1) as executor:
         result = service.submit_downloads(executor, {search_future: BookRequest(book)}, matcher)
 
-    torrent_client.get_torrents_with_tag.assert_called_once_with("murid_import_failed")
+    torrent_client.get_torrents_with_tag.assert_called_once_with("murid-import-failed")
     service.torrent_selectors["ebook"].select.assert_called_once_with(
         book, {available_torrent}, matcher
     )
@@ -509,8 +509,10 @@ def test_failed_import_filter_is_scoped_to_media(mam, medium):
     from murid.domain.book import Book
 
     tagged = [
-        SimpleNamespace(comment="MID=100", tags="murid_media_audiobook,murid_import_failed"),
-        SimpleNamespace(comment="MID=200", tags="murid_import_failed"),
+        SimpleNamespace(
+            comment="MID=100", tags="murid_media_audiobook,murid_hardcover_42,murid-import-failed"
+        ),
+        SimpleNamespace(comment="MID=200", tags="murid-import-failed"),
     ]
     torrent_client = Mock()
     torrent_client.get_torrents_with_tag.return_value = tagged
@@ -524,3 +526,35 @@ def test_failed_import_filter_is_scoped_to_media(mam, medium):
         assert service.submit_downloads(executor, {search: request}, Mock()) == {}
     selected_ids = {torrent.book.id for torrent in selector.select.call_args.args[1]}
     assert selected_ids == ({200} if medium == "audiobook" else {100})
+
+
+@pytest.mark.parametrize("medium,expected_ids", [("ebook", {"200"}), ("audiobook", {"300"})])
+@pytest.mark.parametrize(
+    "tags,comment",
+    [
+        ("murid-import-failed,murid_media_audiobook", "MID=100"),
+        ("murid-import-failed", "MID=100\n[murid:1]invalid-json"),
+    ],
+)
+def test_failed_import_filter_reports_invalid_identity_and_keeps_valid_ids(
+    mam, caplog, medium, expected_ids, tags, comment
+):
+    invalid = SimpleNamespace(hash="invalid-torrent", tags=tags, comment=comment)
+    original = vars(invalid).copy()
+    client = Mock()
+    client.get_torrents_with_tag.return_value = [
+        invalid,
+        SimpleNamespace(tags="murid-import-failed", comment="MID=200"),
+        SimpleNamespace(
+            tags="murid-import-failed,murid_media_audiobook,murid_hardcover_42", comment="MID=300"
+        ),
+    ]
+    service = TorrentDiscoveryService(mam, {}, client)
+
+    assert service.mam_ids_with_tag("murid-import-failed", medium) == expected_ids
+
+    assert "invalid-torrent" in caplog.text
+    assert "invalid" in caplog.text.lower()
+    assert vars(invalid) == original
+    client.add_tag.assert_not_called()
+    client.remove_tag.assert_not_called()
