@@ -24,7 +24,7 @@ class AppriseHandler(logging.Handler):
 
 
 def init_apprise(
-    logger: logging.Logger, config: dict
+    logger: logging.Logger, config: dict | list[str]
 ) -> Callable[[str, str, apprise.NotifyType], None]:
     """Initialize Apprise with the provided configuration and return a notify function."""
     logger.debug("Initializing Apprise notifications")
@@ -38,10 +38,14 @@ def init_apprise(
     )
 
     apprise_conf = apprise.AppriseConfig()
-    apprise_conf.add_config(yaml.dump(config), format="yaml")
+    if isinstance(config, list):
+        config = {"urls": config}
+    apprise_conf.add_config(yaml.safe_dump(config), format="yaml")
 
     apprise_obj = apprise.Apprise(asset=asset)
     apprise_obj.add(apprise_conf)
+    if len(apprise_obj) == 0:
+        raise ValueError("Apprise configuration did not load any notification destinations")
 
     for handler in list(logger.handlers):
         if isinstance(handler, AppriseHandler):

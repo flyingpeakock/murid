@@ -1,5 +1,7 @@
 import logging
 
+import pytest
+
 from murid.notifications.apprise import AppriseHandler, init_apprise, send_test_notification
 
 
@@ -72,14 +74,29 @@ def test_send_test_notification():
     assert call["body"] == "Hello from Murid!"
 
 
-def test_init_apprise_adds_handler():
-    logger = logging.getLogger("test_apprise")
-    logger.handlers.clear()
+@pytest.mark.parametrize(
+    "config",
+    [
+        ["json://localhost:9999"],
+        {"urls": ["json://localhost:9999"]},
+    ],
+)
+def test_init_apprise_loads_destinations_and_adds_handler(config):
+    logger = logging.Logger("test_apprise")
 
-    notify = init_apprise(
-        logger,
-        {"urls": ["mailto://test@example.com"]},
-    )
+    notify = init_apprise(logger, config)
 
     assert callable(notify)
-    assert any(isinstance(h, AppriseHandler) for h in logger.handlers)
+    handler = next(h for h in logger.handlers if isinstance(h, AppriseHandler))
+    assert len(handler.apprise) == 1
+    assert notify.__self__ is handler.apprise
+
+
+@pytest.mark.parametrize("config", [{"urls": []}, ["invalid-notification-url"]])
+def test_init_apprise_rejects_configuration_without_usable_destinations(config):
+    logger = logging.Logger("test_invalid_apprise")
+
+    with pytest.raises(ValueError, match="did not load any notification destinations"):
+        init_apprise(logger, config)
+
+    assert logger.handlers == []

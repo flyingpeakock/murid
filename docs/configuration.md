@@ -297,3 +297,8 @@ Check the library before retrying: Calibre may have written the book before the
 command timed out. Increase the timeout for large files or slow content servers.
 
 For optional notifications, configure destination URLs using [Apprise](https://appriseit.com/getting-started/configuration/).
+
+Set `apprise` to a list of destination URLs, as shown in the example configuration,
+or an Apprise configuration mapping containing `urls`. Omit `apprise` or set it to
+`null` to disable notifications. A nonempty configuration that loads no usable
+destinations is rejected during initialization.

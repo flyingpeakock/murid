@@ -444,8 +444,10 @@ def test_print_config_includes_defaults_and_respects_redaction(workflow, redact)
 
 
 @pytest.mark.parametrize("status", [200, 503])
-def test_notification_uses_apprise_transport_and_reports_delivery(workflow, status):
-    workflow.config["apprise"] = {"urls": ["json://notifications.invalid/notify"]}
+@pytest.mark.parametrize("config_style", ["list", "mapping"])
+def test_notification_uses_apprise_transport_and_reports_delivery(workflow, status, config_style):
+    urls = ["json://notifications.invalid/notify"]
+    workflow.config["apprise"] = urls if config_style == "list" else {"urls": urls}
     workflow.notification_status = status
 
     result = workflow.run("test-notification")
@@ -467,6 +469,27 @@ def test_notification_reports_missing_destinations(workflow):
 
     assert result.code == 1
     assert "no Apprise destinations configured" in result.errors[0]["message"]
+    assert workflow.notifications == []
+
+
+@pytest.mark.parametrize("disabled_config", [None, [], {}])
+def test_sync_allows_disabled_notifications(workflow, disabled_config):
+    workflow.config["apprise"] = disabled_config
+
+    result = workflow.run("run")
+
+    assert result.code == 0, result.errors
+    assert workflow.notifications == []
+
+
+def test_notification_rejects_unusable_configuration(workflow):
+    workflow.config["apprise"] = {"urls": ["invalid-notification-url"]}
+
+    with pytest.raises(SystemExit) as error:
+        workflow.run("test-notification")
+
+    assert error.value.code == 1
+    assert "did not load any notification destinations" in str(error.value.__cause__)
     assert workflow.notifications == []
 
 

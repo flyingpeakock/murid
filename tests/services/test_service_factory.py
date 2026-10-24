@@ -1,7 +1,7 @@
 import logging
 from io import StringIO
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
@@ -162,7 +162,7 @@ def config():
             "verify_cert": False,
             "category": "books",
         },
-        "apprise": {"urls": ["discord://foo"]},
+        "apprise": None,
     }
 
 
@@ -246,7 +246,16 @@ def test_myanonamouse(args, config, monkeypatch):
     assert factory.myanonamouse() == ("mam", "mam-cookie")
 
 
-def test_notifier_disabled(args, config):
+@pytest.mark.parametrize("disabled_config", [None, [], {}])
+def test_notifier_disabled(args, config, disabled_config):
+    config["apprise"] = disabled_config
+
+    factory = ServiceFactory(args, config)
+
+    assert factory.notifier()("a", "b") is None
+
+
+def test_notifier_omitted(args, config):
     config.pop("apprise")
 
     factory = ServiceFactory(args, config)
@@ -258,6 +267,7 @@ def test_notifier_disabled(args, config):
 
 
 def test_notifier_enabled(args, config, monkeypatch):
+    config["apprise"] = {"urls": ["json://notifications.invalid/notify"]}
     notify_mock = Mock()
 
     monkeypatch.setattr(
@@ -274,12 +284,14 @@ def test_notifier_enabled(args, config, monkeypatch):
 def test_reload_disabling_notifications_removes_and_closes_handler(
     args, config, monkeypatch, remove_apprise
 ):
+    config["apprise"] = {"urls": ["json://notifications.invalid/notify"]}
     logger = logging.Logger("test_reload_notifications")
     output = StringIO()
     other_handler = logging.StreamHandler(output)
     logger.addHandler(other_handler)
     monkeypatch.setattr("murid.services.service_factory.logger", logger)
-    transport = Mock()
+    transport = MagicMock()
+    transport.__len__.return_value = 1
     monkeypatch.setattr("murid.notifications.apprise.apprise.Apprise", lambda **_: transport)
     factory = ServiceFactory(args, config)
     handler = next(h for h in logger.handlers if isinstance(h, AppriseHandler))
