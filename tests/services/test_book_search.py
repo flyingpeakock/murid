@@ -196,3 +196,92 @@ def test_search_book_explains_vip_rejection_and_does_not_download(capsys):
 
     assert "Reason: VIP" in capsys.readouterr().out
     discovery.mam.download_torrent.assert_not_called()
+
+
+@pytest.mark.parametrize("add", [False, True])
+def test_explicit_selection_chooses_lower_ranked_candidate(add, capsys):
+    selected = torrent(102)
+    factory, discovery = make_factory({book(1)}, {torrent(101), selected})
+    factory.library("ebook").contains_book.return_value = False
+    discovery.mam.download_torrent.return_value = b"selected torrent"
+
+    search_book("Dune", factory, torrent_id=102, add=add)
+
+    assert "SELECTED: Dune by Frank Herbert\n  ID 102" in capsys.readouterr().out
+    if add:
+        discovery.mam.download_torrent.assert_called_once_with(selected)
+    else:
+        discovery.mam.download_torrent.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("candidate", "failed_ids", "reason"),
+    [
+        (torrent(102, language="GER"), set(), "language"),
+        (torrent(102, file_types=["pdf"]), set(), "file type"),
+        (torrent(104), set(), "blacklisted ID"),
+        (torrent(102), {"102"}, "previously failed import"),
+        (torrent(102, title="Foundation"), set(), "match score below threshold"),
+    ],
+)
+@pytest.mark.parametrize("add", [False, True])
+def test_explicit_selection_preserves_rejections(candidate, failed_ids, reason, add):
+    factory, discovery = make_factory({book(1)}, {torrent(101), candidate}, failed_ids)
+
+    with pytest.raises(BookSearchError, match=reason):
+        search_book("Dune", factory, torrent_id=candidate.book.id, add=add)
+
+    discovery.mam.download_torrent.assert_not_called()
+    factory.torrent_import().import_torrents.assert_not_called()
+
+
+@pytest.mark.parametrize("results", [set(), {torrent(101)}])
+def test_explicit_selection_requires_id_in_results(results):
+    factory, discovery = make_factory({book(1)}, results)
+    with pytest.raises(BookSearchError, match="102 was not found in search results"):
+        search_book("Dune", factory, torrent_id=102, add=True)
+    discovery.mam.download_torrent.assert_not_called()
+
+
+@pytest.mark.parametrize("torrent_id", [0, -1])
+def test_explicit_selection_requires_positive_id(torrent_id):
+    factory, discovery = make_factory({book(1)}, {torrent(101)})
+    with pytest.raises(BookSearchError, match="positive integer"):
+        search_book("Dune", factory, torrent_id=torrent_id)
+    discovery.find_torrents.assert_not_called()
+
+
+def test_explicit_selection_preserves_vip_restriction():
+    candidate = torrent(102)
+    candidate.metadata.vip = True
+    factory, discovery = make_factory({book(1)}, {torrent(101), candidate})
+    discovery.torrent_selectors["ebook"].exclude_vip = True
+    with pytest.raises(BookSearchError, match="VIP"):
+        search_book("Dune", factory, torrent_id=102, add=True)
+    discovery.mam.download_torrent.assert_not_called()
+
+
+def test_explicit_audiobook_selection_json_dry_run(monkeypatch, capsys):
+    from murid import ui
+
+    monkeypatch.setattr(ui, "OUTPUT_FORMAT", "json")
+    selected = torrent(102, file_types=["m4b"])
+    factory, discovery = make_factory({book(1)}, {torrent(101), selected})
+    discovery.torrent_selectors["audiobook"] = TorrentSelector(
+        {"ENG"}, ["m4b"], media_type="audiobook"
+    )
+    factory.args = SimpleNamespace(dry_run=True)
+    library = factory.library("audiobook")
+    library.name = "Audiobookshelf"
+    library.contains_book.return_value = False
+    discovery.mam.download_torrent.return_value = b"selected audio torrent"
+
+    search_book("Dune", factory, torrent_id=102, media_type="audiobook", add=True)
+
+    discovery.find_torrents.assert_called_once_with(BookRequest(book(1), "audiobook"))
+    discovery.mam.download_torrent.assert_called_once_with(selected)
+    records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    candidates = [record for record in records if record["type"] == "candidate"]
+    assert [record["book"]["id"] for record in candidates if record["selected"]] == [102]
+    assert all(record["media_type"] == "audiobook" for record in candidates)
+    assert any(record["type"] == "planned" for record in records)

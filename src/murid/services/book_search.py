@@ -11,15 +11,17 @@ class BookSearchError(Exception):
     """The requested torrent could not be added and imported."""
 
 
-def _print_candidates(book, torrents, matcher, discovery, media_type):
+def _print_candidates(request, torrents, matcher, discovery, *, torrent_id=None):
     """Print candidates in selection and score order; return the selected torrent."""
-    failed_ids = discovery.mam_ids_with_tag("murid-import-failed", media_type)
-    selector = discovery.torrent_selectors[media_type]
+    failed_ids = discovery.mam_ids_with_tag("murid-import-failed", request.media_type)
+    selector = discovery.torrent_selectors[request.media_type]
     available = {torrent for torrent in torrents if str(torrent.book.id) not in failed_ids}
-    selected = selector.select(book, available, matcher) if available else None
+    if torrent_id is not None:
+        available = {torrent for torrent in available if torrent.book.id == torrent_id}
+    selected = selector.select(request.book, available, matcher) if available else None
 
     def describe(torrent):
-        score = matcher.similarity(book, torrent.book)
+        score = matcher.similarity(request.book, torrent.book)
         reasons = []
         if str(torrent.book.id) in failed_ids:
             reasons.append("previously failed import")
@@ -27,7 +29,7 @@ def _print_candidates(book, torrents, matcher, discovery, media_type):
         if not reasons and score < matcher.threshold:
             reasons.append(f"match score below threshold {matcher.threshold:.3f}")
         if not reasons:
-            rejection = matcher.rejection_reason(book, torrent.book)
+            rejection = matcher.rejection_reason(request.book, torrent.book)
             if rejection:
                 reasons.append(rejection)
 
@@ -43,7 +45,6 @@ def _print_candidates(book, torrents, matcher, discovery, media_type):
         )
     )
     for torrent, score, reasons in candidates:
-        file_types = ", ".join(torrent.file_types or []) or "unknown"
         output(
             labeled(
                 (
@@ -59,8 +60,8 @@ def _print_candidates(book, torrents, matcher, discovery, media_type):
             kind="candidate",
             data={
                 "book": book_data(torrent.book),
-                "media_type": media_type,
-                "destination": "Audiobookshelf" if media_type == "audiobook" else "Calibre",
+                "media_type": request.media_type,
+                "destination": "Audiobookshelf" if request.media_type == "audiobook" else "Calibre",
                 "score": score,
                 "threshold": matcher.threshold,
                 "selected": torrent is selected,
@@ -76,7 +77,8 @@ def _print_candidates(book, torrents, matcher, discovery, media_type):
             output(
                 Text(
                     f"  ID {torrent.book.id} · score {score:.3f} / {matcher.threshold:.3f}"
-                    f" · {torrent.language or 'unknown'} · {file_types}"
+                    f" · {torrent.language or 'unknown'}"
+                    f" · {', '.join(torrent.file_types or []) or 'unknown'}"
                     f" · {torrent.metadata.seeders} seeders"
                 )
             )
@@ -85,11 +87,27 @@ def _print_candidates(book, torrents, matcher, discovery, media_type):
             elif torrent is not selected:
                 output("  Eligible; another torrent was selected.")
             output(Text(f"  {torrent}"))
+    if torrent_id is not None and selected is None:
+        requested = [item for item in candidates if item[0].book.id == torrent_id]
+        if not requested:
+            raise BookSearchError(f"Torrent {torrent_id} was not found in search results")
+        raise BookSearchError(
+            f"Torrent {torrent_id} cannot be selected: {'; '.join(requested[0][2])}"
+        )
     return selected
 
 
-def search_book(name: str, factory, *, add: bool = False, media_type: MediaType = "ebook") -> None:
+def search_book(
+    name: str,
+    factory,
+    *,
+    add: bool = False,
+    media_type: MediaType = "ebook",
+    torrent_id: int | None = None,
+) -> None:
     """Show search candidates and optionally import the selected torrent."""
+    if torrent_id is not None and torrent_id <= 0:
+        raise BookSearchError("Torrent ID must be a positive integer")
     destination = "Audiobookshelf" if media_type == "audiobook" else "Calibre"
     book = find_hardcover_book(name, factory)
     matcher = factory.matcher()
@@ -119,11 +137,15 @@ def search_book(name: str, factory, *, add: bool = False, media_type: MediaType 
     )
     if not torrents:
         output("[bold yellow]No torrents found.[/]")
+        if torrent_id is not None:
+            raise BookSearchError(f"Torrent {torrent_id} was not found in search results")
         if add:
             raise BookSearchError("No torrent was selected")
         return
 
-    selected = _print_candidates(book, torrents, matcher, discovery, media_type)
+    selected = _print_candidates(
+        BookRequest(book, media_type), torrents, matcher, discovery, torrent_id=torrent_id
+    )
 
     if selected is None:
         output("[bold yellow]No torrent would be selected.[/]")

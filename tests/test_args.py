@@ -255,3 +255,16 @@ def test_media_flags_and_defaults(command):
     if command in {"search-book", "add-book"}:
         with pytest.raises(SystemExit):
             parser.parse_args(arguments + ["--audiobooks", "--media-type", "ebook"])
+
+
+def test_search_book_explicit_torrent_id():
+    args = MuridArgumentParser("test").parse_args(
+        ["search-book", "Dune", "--torrent-id", "102", "--add"]
+    )
+    assert args.torrent_id == 102
+    assert args.add is True
+
+
+def test_search_book_torrent_id_rejects_non_integer():
+    with pytest.raises(SystemExit):
+        MuridArgumentParser("test").parse_args(["search-book", "Dune", "--torrent-id", "invalid"])

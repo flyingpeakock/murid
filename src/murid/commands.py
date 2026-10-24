@@ -90,6 +90,7 @@ def _run_work_command(args: Namespace) -> int:
                     args.name,
                     ServiceFactory(args),
                     add=args.add,
+                    torrent_id=getattr(args, "torrent_id", None),
                     media_type=getattr(args, "media_type", "ebook"),
                 )
             except (BookLookupError, BookSearchError) as error:

@@ -53,7 +53,7 @@ def test_shows_status(monkeypatch):
 
 
 def test_searches_book(monkeypatch):
-    args = SimpleNamespace(command="search-book", name="Dune", add=True)
+    args = SimpleNamespace(command="search-book", name="Dune", add=True, torrent_id=102)
     factory = object()
     calls = []
     monkeypatch.setattr("murid.commands.ServiceFactory", lambda parsed: factory)
@@ -62,7 +62,7 @@ def test_searches_book(monkeypatch):
     )
 
     assert run_command(args) == 0
-    assert calls == [(("Dune", factory), {"add": True, "media_type": "ebook"})]
+    assert calls == [(("Dune", factory), {"add": True, "media_type": "ebook", "torrent_id": 102})]
 
 
 def test_retries_imports(monkeypatch, capsys):

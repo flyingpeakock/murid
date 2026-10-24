@@ -163,6 +163,19 @@ imported into Calibre, use `--add`:
 murid search-book "Children of Dune" --add --config ./config.yaml
 ```
 
+To choose a different eligible candidate, use its MyAnonamouse ID from the preview:
+
+```bash
+murid search-book "Children of Dune" --torrent-id 123456
+murid search-book "Children of Dune" --torrent-id 123456 --add
+```
+
+`--torrent-id` selects from the current search results and works for both media
+types, including with `--dry-run`. Matching rules, language and format filters,
+blacklists, VIP restrictions, and failed-import exclusions still apply. An absent
+or rejected ID returns an error without selecting another torrent. Without
+`--add`, selection only previews the candidate.
+
 Murid refuses to add the book if it is already in Calibre. If the torrent does not
 finish within the configured timeout, Murid tags it for a later import attempt.
 

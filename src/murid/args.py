@@ -113,6 +113,11 @@ class MuridArgumentParser(argparse.ArgumentParser):
         )
         sub_parsers["search-book"].add_argument("name", help="Name of the book on Hardcover")
         sub_parsers["search-book"].add_argument(
+            "--torrent-id",
+            type=int,
+            help="Select a MyAnonamouse ID from search results; all safety checks still apply",
+        )
+        sub_parsers["search-book"].add_argument(
             "--add",
             action="store_true",
             help="Download and import the selected torrent into its media library",
