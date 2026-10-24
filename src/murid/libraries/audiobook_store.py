@@ -4,14 +4,16 @@ import hashlib
 import json
 import os
 import re
-import tempfile
 from dataclasses import asdict
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path
+
+from pydantic import ValidationError
 
 from ..domain.audiobook_files import AUDIO_EXTENSIONS, IMPORT_MARKER, select_audiobook
 from ..domain.book import Book
 from ..domain.book_matcher import BookMatcher
 from .import_filesystem import (
+    atomic_write,
     durable_mkdir,
     ensure_shared_directory,
     import_lock,
@@ -19,18 +21,9 @@ from .import_filesystem import (
     sync_directory,
     write_json,
 )
+from .import_manifest import ImportManifest
+from .import_manifest import relative_path as _relative
 from .library import LibraryError
-
-
-def _relative(value: str) -> Path:
-    if not isinstance(value, str) or not value or "\0" in value:
-        raise LibraryError("Import journal contains an unsafe relative path")
-    path = PurePosixPath(value)
-    if not path.parts or path.is_absolute() or path.as_posix() != value:
-        raise LibraryError("Import journal contains an unsafe relative path")
-    if ".." in path.parts or "\\" in value or PureWindowsPath(value).drive:
-        raise LibraryError("Import journal contains an unsafe relative path")
-    return Path(*path.parts)
 
 
 def _component(value: str) -> str:
@@ -147,35 +140,11 @@ class AudiobookStore:
             raise LibraryError(
                 "Import journal identity or folder mapping changed; inspect it before retrying"
             )
-        if manifest.get("phase") not in {"copying", "copied", "verified"}:
-            raise LibraryError("Import journal has an unknown phase")
-        _relative(manifest.get("destination", ""))
-        if not isinstance(manifest.get("files"), list) or not manifest["files"]:
-            raise LibraryError("Import journal has no expected files")
-        for entry in manifest["files"]:
-            if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
-                raise LibraryError("Import journal contains invalid file paths")
-            _relative(entry["path"])
-            valid_size = (
-                isinstance(entry.get("size"), int)
-                and not isinstance(entry["size"], bool)
-                and entry["size"] >= 0
-            )
-            valid_digest = isinstance(entry.get("sha256"), str) and re.fullmatch(
-                r"[0-9a-f]{64}", entry["sha256"]
-            )
-            if not valid_size or not valid_digest or not isinstance(entry.get("audio"), bool):
-                raise LibraryError("Import journal has invalid file fingerprints")
-        if not any(entry.get("audio") for entry in manifest["files"]):
-            raise LibraryError("Import journal has no expected audio")
-        if len({entry["path"] for entry in manifest["files"]}) != len(manifest["files"]):
-            raise LibraryError("Import journal contains duplicate file paths")
-        if (
-            not isinstance(manifest.get("source_root"), str)
-            or not Path(manifest["source_root"]).is_absolute()
-            or not isinstance(manifest.get("metadata"), dict)
-        ):
-            raise LibraryError("Import journal contains invalid source or metadata")
+        try:
+            ImportManifest.model_validate(manifest)
+        except ValidationError:
+            raise LibraryError("Invalid import journal; inspect it before retrying") from None
+        # Keep the original dictionary, including informational and unknown fields.
         return manifest
 
     def plan(
@@ -309,29 +278,18 @@ class AudiobookStore:
     def _copy(source: Path, target: Path, entry: dict) -> None:
         if source.is_symlink() or not source.is_file():
             raise LibraryError(f"Source track or sidecar is unavailable: {source}")
-        temporary = None
-        try:
-            with tempfile.NamedTemporaryFile(
-                dir=target.parent, prefix=".murid-copy-", suffix=".tmp", delete=False
-            ) as stream:
-                temporary = Path(stream.name)
-                digest = hashlib.sha256()
-                with source.open("rb") as incoming:
-                    while chunk := incoming.read(1024 * 1024):
-                        stream.write(chunk)
-                        digest.update(chunk)
-                stream.flush()
-                os.chmod(temporary, 0o644)
-                os.fsync(stream.fileno())
-            if temporary.stat().st_size != entry["size"] or digest.hexdigest() != entry["sha256"]:
+        with atomic_write(
+            target, mode=0o644, binary=True, prefix=".murid-copy-", suffix=".tmp"
+        ) as stream:
+            digest = hashlib.sha256()
+            with source.open("rb") as incoming:
+                while chunk := incoming.read(1024 * 1024):
+                    stream.write(chunk)
+                    digest.update(chunk)
+            if stream.tell() != entry["size"] or digest.hexdigest() != entry["sha256"]:
                 raise LibraryError(
                     "Audio source changed after planning; inspect it before retrying"
                 )
-            os.replace(temporary, target)
-            sync_directory(target.parent)
-        finally:
-            if temporary is not None:
-                temporary.unlink(missing_ok=True)
 
     def publish(self, manifest: dict) -> Path:
         """Resume our staged files, then publish a complete folder without replacement."""
