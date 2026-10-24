@@ -2,24 +2,145 @@
 
 [Back to README](../README.md)
 
-Murid uses a command followed by its options. Run `murid --help` to list commands,
-or `murid <command> --help` for command-specific options. Put `--config` after the
-command, as in the examples below.
+Set your config once, then run commands with options after the command name:
 
-| Command | Purpose |
-| --- | --- |
-| `run` | Sync once and exit |
-| `schedule` | Sync repeatedly using the configured cron schedule |
-| `list-missing` | List Hardcover requests missing from their respective libraries, with media type and destination |
-| `review-matches` | Inspect library matches and scores for each medium; use `--matched` or `--unmatched` to filter |
-| `search-book NAME` | Preview torrent candidates for a Hardcover book; use `--add` to download and import the selected torrent |
-| `add-book NAME PATH` | Import a local ebook, or an audiobook with `--audiobooks` |
-| `status` | Show Murid torrents and their download and import status |
-| `retry-import` | Retry imports for tagged downloads |
-| `test-connection` | Check access to each configured service |
-| `test-notification` | Send a test notification through Apprise |
-| `validate-config` | Validate a configuration file |
-| `print-config` | Print the parsed configuration, with secrets redacted by default |
+```bash
+export MURID_CONFIG_FILE=/path/to/config.yaml
+murid run --dry-run
+murid run
+murid schedule
+```
+
+`--config /path/to/config.yaml` overrides the environment variable.
+Use `murid <command> --help` for all options.
+
+## Find, download, or import a book
+
+```bash
+murid list-missing
+murid review-matches --unmatched
+murid search-book "Children of Dune"         # Preview scores and rejection reasons
+murid search-book "Children of Dune" --add   # Download, wait, and import
+murid add-book "Children of Dune" /downloads/children-of-dune.epub
+```
+
+Manual commands resolve the title against your configured Hardcover lists,
+including alternate titles and close spellings. They stop on ambiguous names or
+an existing library match. Search previews do not fetch `.torrent` files;
+`--add --dry-run` can fetch them without adding downloads.
+
+To choose a candidate from the preview, use its MyAnonamouse ID:
+
+```bash
+murid search-book "Children of Dune" --torrent-id 123456
+murid search-book "Children of Dune" --torrent-id 123456 --add
+```
+
+`--torrent-id` works for ebooks and audiobooks, including with `--dry-run`.
+Candidates must still pass matching and configured filters. An absent or rejected
+ID returns an error; without `--add`, the command only previews the selection.
+
+An explicit ebook file overrides `filetypes` preferences; Calibre decides whether
+it supports the format. Automatic imports still apply the format filter.
+
+Inspection is read-only. Each requested medium is checked against its own library;
+a library lookup error stops the command rather than treating the library as empty.
+
+Inspection is read-only. Each requested medium is checked against its own library;
+a library lookup error stops the command rather than treating the library as empty.
+
+Inspection is read-only. Each requested medium is checked against its own library;
+a library lookup error stops the command rather than treating the library as empty.
+
+## Choose ebooks or audiobooks
+
+Use `--ebooks` or `--audiobooks` to restrict `list-missing`, `review-matches`,
+`run`, `schedule`, `retry-import`, `status`, or `test-connection` to one medium.
+Without either flag, these commands operate across configured media. The flags are mutually exclusive.
+
+```bash
+murid list-missing --audiobooks
+murid review-matches --ebooks --unmatched
+murid run --audiobooks --dry-run
+```
+
+Media filters also apply to retries. Connection checks still include shared
+services such as Hardcover and qBittorrent.
+
+`search-book` and `add-book` also accept these flags and default to ebooks when
+neither is given. `--media-type ebook|audiobook` remains supported on these two
+commands as an alternative to the flags.
+
+## Audiobook commands
+
+Manual commands look up titles across your configured Hardcover lists. The media
+flag chooses the destination and torrent preferences, independently of the list's
+automatic media setting. The corresponding library must be configured.
+
+```bash
+murid search-book "Book title" --audiobooks --config ./config.yaml
+murid search-book "Book title" --audiobooks --add --dry-run --config ./config.yaml
+murid add-book "Book title" "/downloads/Book title" --audiobooks --dry-run --config ./config.yaml
+murid add-book "Book title" "/downloads/Book title" --audiobooks --config ./config.yaml
+```
+
+Use one M4B file or a complete single-book MP3/M4B folder. A complete audiobook
+stored as one MP3 must be placed in its own title-matched folder. Track/disc
+structure is retained; supported disc folders are described in the
+[configuration reference](configuration.md). Sources stay available for seeding.
+If an import remains pending, repeat `add-book` to check it again without another
+copy. The title must still be on a configured Hardcover list.
+
+Run `test-connection` as the service user before scheduling imports, then test a
+real import to confirm Audiobookshelf can read the shared files.
+
+## Preview changes
+
+`run`, `schedule`, `search-book`, `add-book`, and `retry-import` accept `--dry-run`.
+Previews may fetch `.torrent` files, but do not add downloads, import books, scan
+libraries, or change import tags.
+
+## Inspect downloads and retry imports
+
+```bash
+murid status
+murid retry-import
+murid test-connection
+murid test-notification
+murid run --log-level debug
+```
+
+`retry-import` checks pending, timed-out, and failed downloads once, imports those
+that are complete, and leaves unresolved downloads tagged. It never adds torrents.
+`test-connection` checks each configured service independently and fails if any
+check fails. `test-notification` sends through Apprise and fails if no destinations
+are configured or delivery fails. Debug logging includes tracebacks.
+
+## Scheduling
+
+Start a persistent process to sync on the cron schedule in your configuration:
+
+```bash
+murid schedule --config ./config.yaml
+```
+
+The default is every hour. Configuration is reloaded before each scheduled run. Configuration is reloaded before each scheduled run. Configuration is reloaded before each scheduled run.
+Set `schedule` in your YAML to change the interval:
+
+Scheduled runs revisit unfinished downloads and imports, including those left by
+an interrupted run. Use `status` to inspect them and `retry-import` after fixing
+an import failure. See [recovery](configuration.md#torrent-metadata-and-recovery)
+for tags and troubleshooting.
+
+If several requested books share one torrent, use `add-book` to import additional
+books from the completed download.
+
+| Expression    | Meaning        |
+| ------------- | -------------- |
+| `0 * * * *`   | Every hour     |
+| `0 */6 * * *` | Every 6 hours  |
+| `0 3 * * *`   | Daily at 03:00 |
+| `0 0 * * 0`   | Weekly         |
 
 ## Output formats
 
@@ -30,6 +151,8 @@ emits JSON Lines: one object per result or summary on stdout, with diagnostics o
 stderr (also JSON Lines). Each object has a `type` and readable `message`; result
 objects also carry fields such as book metadata, scores, progress, and outcome
 counts. Consumers should select records by `type` and ignore unfamiliar fields.
+Search, import, and status records include `media_type` and `destination`; sync
+and retry summaries include counts under `by_media`.
 `print-config --format json` emits a `config` record containing the parsed,
 redacted configuration. `NO_COLOR` and `--no-color` also apply to terminal help.
 
@@ -50,208 +173,22 @@ continue to the next scheduled cycle. `test-notification` reports delivery succe
 or failure; no configured Apprise destinations is a failure. Detailed tracebacks
 are available with `--log-level debug`.
 
-Murid replaces punctuation and search operators in generated queries with spaces,
-preserving Unicode letters, numbers, and combining marks. Queries without
-searchable words are skipped. Rejected title queries are reported
-as warnings; alternate titles and other books can still be processed. Books whose
-title queries all fail are counted as search failures, rather than empty results.
-Authentication and connection failures still stop the sync.
+A rejected search query produces a warning; Murid can still try alternate titles
+and other books. Authentication and connection failures stop the sync.
 
-## Review matches and validate configuration
+## Command reference
 
-For example, inspect book matches or validate a configuration before syncing:
-
-```bash
-murid review-matches --unmatched --config ./config.yaml
-murid validate-config --config ./config.yaml
-```
-
-`list-missing` and `review-matches` compare ebook requests with Calibre and
-audiobook requests with Audiobookshelf. A book requested in both formats is
-checked independently in each library. Inspection is read-only, and a library
-lookup error stops the command rather than reporting that library as empty.
-
-## Choose ebooks or audiobooks
-
-Use `--ebooks` or `--audiobooks` to restrict `list-missing`, `review-matches`,
-`run`, `schedule`, `retry-import`, `status`, or `test-connection` to one medium.
-Without either flag, these commands retain their existing behavior across configured
-media. The flags are mutually exclusive.
-
-```bash
-murid list-missing --audiobooks
-murid review-matches --ebooks --unmatched
-murid run --audiobooks --dry-run
-murid retry-import --audiobooks
-murid status --ebooks
-murid test-connection --audiobooks
-```
-
-Filtered sync and inspection fetch only reading lists requesting that medium and
-use only its library. Retry leaves torrents for the other medium untouched.
-Legacy torrents without media tags are ebooks. Invalid torrent identities still
-appear in status and require resolution before sync or retry can report success.
-Connection checks restrict the library check while still checking shared services.
-
-`search-book` and `add-book` also accept these flags and default to ebooks when
-neither is given. `--media-type ebook|audiobook` remains supported on these two
-commands as an alternative to the flags.
-
-## Import a local ebook
-
-To import a file that Murid could not select automatically, give the book name from your
-Hardcover Want to Read list and the path to the ebook file:
-
-```bash
-murid add-book "Children of Dune" /path/to/children-of-dune.epub --config ./config.yaml
-```
-
-Murid matches the name against your Hardcover books, including close spellings and alternate
-titles, then uses the matched title, authors, and series when adding the file to Calibre.
-It stops if the name is ambiguous or the book already exists in Calibre.
-The explicit file overrides automatic `filetypes` preferences; Calibre determines
-whether it supports the selected format. Automatic torrent imports still apply
-the configured format filter.
-
-## Inspect downloads and retry imports
-
-To inspect downloads in Murid's configured qBittorrent category, including torrents
-tagged for a timeout or failed Calibre import, run:
-
-```bash
-murid status --config ./config.yaml
-```
-
-To retry importing completed Murid downloads tagged as pending, timed out, or failed,
-without searching for or adding new torrents, run:
-
-```bash
-murid retry-import --config ./config.yaml
-```
-
-It checks tagged torrents once, reports downloads still in progress, and leaves failed
-imports tagged for further investigation. It exits with a nonzero status if any
-tagged torrent still needs attention.
-
-## Check connections
-
-To check access to Hardcover, Calibre, MyAnonamouse, and qBittorrent, run:
-
-```bash
-murid test-connection --config ./config.yaml
-```
-
-Each service is checked independently. The command exits with a nonzero status if
-any check fails.
-
-## Preview and download a book
-
-To preview MyAnonamouse results for a book on your Hardcover reading list and see
-which torrent Murid would select, run:
-
-```bash
-murid search-book "Children of Dune" --config ./config.yaml
-```
-
-This shows candidate scores and rejection reasons without downloading a torrent or
-adding anything to qBittorrent or Calibre.
-
-To add the selected torrent to qBittorrent and wait for its completed ebook to be
-imported into Calibre, use `--add`:
-
-```bash
-murid search-book "Children of Dune" --add --config ./config.yaml
-```
-
-To choose a different eligible candidate, use its MyAnonamouse ID from the preview:
-
-```bash
-murid search-book "Children of Dune" --torrent-id 123456
-murid search-book "Children of Dune" --torrent-id 123456 --add
-```
-
-`--torrent-id` selects from the current search results and works for both media
-types, including with `--dry-run`. Matching rules, language and format filters,
-blacklists, VIP restrictions, and failed-import exclusions still apply. An absent
-or rejected ID returns an error without selecting another torrent. Without
-`--add`, selection only previews the candidate.
-
-Murid refuses to add the book if it is already in Calibre. If the torrent does not
-finish within the configured timeout, Murid tags it for a later import attempt.
-
-## Scheduling
-
-Start a persistent process to sync on the cron schedule in your configuration:
-
-```bash
-murid schedule --config ./config.yaml
-```
-
-The default is every hour. For a single sync, use `murid run`; add `--dry-run` to
-preview matches and fetch selected `.torrent` files without adding torrents or
-downloading books. See the [quick start](../README.md#quick-start) for initial setup.
-
-Downloads receive a persistent `murid` tag when added to qBittorrent.
-Each scheduled run checks pending and timed-out torrents again, including downloads
-left behind by an interrupted run. Once the book is confirmed in its destination library,
-Murid clears its lifecycle tags. Downloads exceeding the wait limit receive
-`murid-timeout`; completed downloads that fail to import receive
-`murid-import-failed`. Use `retry-import` after investigating a failure.
-Recovery reads the media type and Hardcover ID from the torrent comment and fetches
-the work directly, even if it has since left your reading lists. Original comments
-and MaM IDs are preserved. See
-[torrent metadata and recovery](configuration.md#torrent-metadata-and-recovery)
-for details, including automatic conversion of older tags.
-
-Legacy ebooks without a recorded Hardcover ID still use the MaM ID in the comment
-and require a unique match in the configured Hardcover lists. Unresolved or
-conflicting identities remain tagged for attention and block sync discovery.
-
-If two requested works resolve to the same torrent hash in a batch, Murid rejects
-the conflicting request and stops the batch before imports begin.
-Use `add-book` to import another book from the completed download.
-
-| Expression    | Meaning        |
-| ------------- | -------------- |
-| `0 * * * *`   | Every hour     |
-| `0 */6 * * *` | Every 6 hours  |
-| `0 3 * * *`   | Daily at 03:00 |
-| `0 0 * * 0`   | Weekly         |
-
-## Audiobook commands
-
-Manual commands look up titles across your configured Hardcover lists. The media
-flag chooses the destination and torrent preferences, independently of the list's
-automatic media setting. It defaults to `ebook`; the corresponding library must
-be configured.
-
-```bash
-murid search-book "Book title" --audiobooks --config ./config.yaml
-murid search-book "Book title" --audiobooks --add --dry-run --config ./config.yaml
-murid add-book "Book title" "/downloads/Book title" --audiobooks --dry-run --config ./config.yaml
-murid add-book "Book title" "/downloads/Book title" --audiobooks --config ./config.yaml
-```
-
-Use one M4B file or a complete single-book MP3/M4B folder. A complete audiobook
-stored as one MP3 must be placed in its own title-matched folder. Track/disc
-structure is retained; supported disc folders are described in the
-[configuration reference](configuration.md). Sources stay available for seeding.
-If ingestion is delayed, `add-book` reports pending and exits with status 1;
-repeating it checks the existing journal/destination without another copy, even
-when that original source path no longer exists. The title must still resolve
-against your configured lists. Torrent recovery can resolve removed-list works
-by their saved Hardcover ID.
-
-`run`, `schedule`, `search-book`, `add-book`, and `retry-import` support `--dry-run`.
-Search and sync previews may fetch `.torrent` data but never add torrents, import
-files, scan libraries, or clear lifecycle tags. JSON search/import/status records
-include `media_type` and `destination`; status also includes the saved Hardcover ID
-and flags conflicting request tags. Sync and retry summaries include `by_media`
-counts so a pending audiobook cannot be mistaken for an ebook failure.
-
-`test-connection` checks each configured or required library. Audiobookshelf checks
-cover server version, admin/root access, usable items, folder selection, shared
-library access, staging placement, and its existing writable ancestor. These are
-read-only checks. A successful diagnostic does not prove physical bind-mount aliases
-or replace a real ingestion test. Run it with the actual service user's credentials
-and environment before enabling scheduled imports.
+| Command | Purpose |
+| --- | --- |
+| `run` | Sync once and exit |
+| `schedule` | Sync repeatedly using the configured cron schedule |
+| `list-missing` | List Hardcover requests missing from their respective libraries, with media type and destination |
+| `review-matches` | Inspect library matches and scores for each medium; use `--matched` or `--unmatched` to filter |
+| `search-book NAME` | Preview torrent candidates for a Hardcover book; use `--add` to download and import the selected torrent |
+| `add-book NAME PATH` | Import a local ebook, or an audiobook with `--audiobooks` |
+| `status` | Show Murid torrents and their download and import status |
+| `retry-import` | Retry imports for tagged downloads |
+| `test-connection` | Check access to each configured service |
+| `test-notification` | Send a test notification through Apprise |
+| `validate-config` | Validate a configuration file |
+| `print-config` | Print the parsed configuration, with secrets redacted by default |

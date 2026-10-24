@@ -5,7 +5,55 @@
 Use [config.example.yaml](../config.example.yaml) as the complete configuration reference. Set `calibre.library` to either a local Calibre library path or a Calibre content server URL.
 If upgrading an existing config, rename `calibre.library_path` or `calibre.server_url` to `calibre.library`.
 
+## Environment variables
+
+The example config reads secrets from environment variables. The Hardcover token must include the `Bearer ` prefix.
+
+```bash
+export HARDCOVER_API_KEY="Bearer ..."
+export MAM_ID="..."
+export CALIBRE_PASSWORD="..."
+export QBITTORRENT_PASSWORD="..."
+```
+
+In PowerShell, set them with `$env:HARDCOVER_API_KEY = "Bearer ..."` and the equivalent `$env:NAME = "..."` for the others.
+
+Set these variables in the environment that runs Murid. Default config locations:
+
+| Platform | Path |
+| --- | --- |
+| Linux | `$XDG_CONFIG_HOME/murid/config.yaml` (or `~/.config/murid/config.yaml`) |
+| macOS | `~/Library/Application Support/murid/config.yaml` |
+| Windows | `%APPDATA%\murid\config.yaml` (or `~/AppData/Roaming/murid/config.yaml`) |
+
+To use a config file elsewhere without passing `--config` on every command, set `MURID_CONFIG_FILE`:
+
+```bash
+export MURID_CONFIG_FILE=/path/to/config.yaml
+```
+
+`--config` can point to a config file anywhere and takes precedence over `MURID_CONFIG_FILE`.
+
+Get your [Hardcover token](https://hardcover.app/account/api) and
+[MyAnonamouse cookie](https://www.myanonamouse.net/preferences/index.php?view=security)
+from account settings.
+
+## Path mapping
+
+Map the same download directory as seen by each process:
+
+```yaml
+qbittorrent:
+  mapping:
+    qbit_path: /downloads
+    murid_path: /mnt/media/downloads
+```
+
 ## Configuration reference
+
+[Hardcover lists](#hardcover-lists) · [Audiobookshelf](#audiobookshelf) ·
+[Calibre](#calibre) · [qBittorrent](#qbittorrent) ·
+[Recovery](#torrent-metadata-and-recovery) · [Notifications](#notifications)
 
 Defaults below apply to the YAML configuration. Required values must be supplied.
 
@@ -66,15 +114,6 @@ Overlapping users and lists represent one
 request per Hardcover book ID and media type; requesting both means acquiring
 both independently.
 
-`run`, `schedule`, and `retry-import` route ebook and audiobook requests to
-Calibre and Audiobookshelf independently. Inspection output includes media and
-destination. Ebook-only Audiobookshelf items do not satisfy audio requests, and
-library lookup failures abort the cycle. Manual `search-book` and `add-book` accept
-`--media-type audiobook`; omitting it retains ebook behavior. `test-connection`
-checks configured/required libraries and the API, shared-path, and staging access
-needed for imports without copying or scanning. Before scheduling, verify access
-as the actual service user; see [shared library setup](installation.md#shared-audiobook-libraries-on-nixos).
-
 ```yaml
 hardcover_api_keys:
   - api_key: !ENV HARDCOVER_API_KEY
@@ -90,6 +129,8 @@ audiobookshelf:
 ```
 
 ### Audiobookshelf
+
+[Shared library permissions on NixOS](installation.md#shared-audiobook-libraries-on-nixos)
 
 These options belong under `audiobookshelf`. Omit this section for ebook-only
 configurations; omit Calibre for audio-only configuration validation.
@@ -114,49 +155,46 @@ Configuration validation does not contact the server or require the shared mount
 to exist yet. At runtime, the folder must be writable by Murid and readable by
 Audiobookshelf; mount paths can differ. The integration has been verified against
 Audiobookshelf v2.37.1.
-The top-level `filetypes` continues to control ebook preferences only. Discovery
-uses separate audiobook preferences from `audiobookshelf.filetypes`. Main title,
-alternate title, and author fallback searches are scoped to MaM main category 14
-for ebooks or 13 for audiobooks. Manual commands select the medium with
-`--media-type ebook|audiobook`.
+Use `filetypes` for ebook preferences and `audiobookshelf.filetypes` for audiobook
+preferences.
 
-Library inspection uses paginated item listing and fetches expanded details for
-audio candidates to preserve author names and verify playable tracks. It sends
-read-only API requests and neither copies files nor requests scans. Work tags
-(`murid:hardcover:<id>`) and title/author metadata support matching; audiobook
-edition ISBNs and ASINs are excluded from matching against Hardcover ebook metadata.
+#### Accepted files
 
-The import backend accepts one M4B file, or a title-matched folder of numbered or
-book-named M4B/MP3 tracks. Folders with multiple M4Bs require every file's title to
-match the requested book; numbering alone cannot distinguish tracks from a series
-pack. One level of disc folders named `CD1`, `Disc 2`, or
+```text
+Dune.m4b                     # One complete M4B
+Dune/                        # Or one complete book folder
+  CD1/                       # Optional disc level
+    01.mp3
+    02.mp3
+  CD2/
+    01.mp3
+```
+
+Use one M4B file, or a title-matched folder of numbered or book-named M4B/MP3
+tracks. A single MP3 must be inside its own title-matched folder. For folders with
+multiple M4Bs, every filename must match the requested book title. One level of disc folders named `CD1`, `Disc 2`, or
 `Disk 003` (one to three digits, case insensitive) is supported; filenames and
 repeated track basenames across discs are preserved. Underscores, hyphens, and
-nested disc folders must be reorganized before import because the target server
-does not group them into one book. Mixed encodings and ambiguous multi-book packs
-require selecting one complete book/encoding first. Folders containing recognized
+nested disc folders must be reorganized before import. For mixed encodings or
+multi-book packs, select one complete book in one encoding first. Folders containing recognized
 unsupported audio formats, including MP4, AIFF, and OGA, are rejected in full.
-Sources remain intact for seeding; Murid copies supported sidecars and merges its
-identity tag into the copied `metadata.json` without adding ebook ISBNs.
+Sources remain intact for seeding. Supported sidecar files are copied too.
 
-Copies are staged privately, then published atomically into
+#### Staging and recovery
+
+Books are copied into
 `<library_path>/<author>/<title> [hardcover-<id>]/`. Existing unrelated destinations
 are never overwritten. The staging directory must be writable by Murid and on
 the same filesystem as the library; ensure it is physically outside **all**
-Audiobookshelf scanned roots, including bind-mount aliases. Murid checks local
-filesystem placement and visible server root paths, but cannot prove that two
-mount aliases expose the same directory. If `library_path` itself is a mount
+Audiobookshelf scanned roots, including bind-mount aliases. If `library_path` itself is a mount
 point, its default sibling may be on a different filesystem; set `staging_path`
 explicitly on the shared volume. Audiobookshelf needs read/traverse permissions
 on the destination and its parent directories. Keep the staging directory private
-to Murid: its journals contain source paths and book metadata.
+to Murid.
 
-A scan acknowledgement does not confirm ingestion. Murid verifies the selected
-folder ID, destination path, every track's relative path/size and playable duration,
-and the Hardcover identity tag. Timeout or scan failure leaves the completed copy
-and durable journal available for retry. Keep staging journals, partial folders,
-and destination `.murid-import.json` markers; retries use them to resume safely.
-A delayed scan does not require another copy.
+If a scan times out or fails, retry the import; a delayed scan does not require
+another copy. Keep staging journals, partial folders, and destination
+`.murid-import.json` markers until the import succeeds.
 
 ### Calibre
 
@@ -187,89 +225,29 @@ These options belong under `qbittorrent`.
 
 ### Torrent metadata and recovery
 
-Murid uses only three qBittorrent tags: `murid` for pending imports,
-`murid-import-failed`, and `murid-timeout`. The configured category still defaults
-to `murid`. Media type and Hardcover work ID are stored in a versioned
-`[murid:1]` JSON line appended to the torrent comment before its initial add.
-The original tracker comment, including the MaM ID, is retained. Only outer
-metainfo changes; the encoded `info` dictionary and download hashes stay intact.
-Murid tracks adds by info hash, without temporary per-download tags.
-
-Syncs, retries, and torrent adds convert older Murid tags to this format within
-the configured category and selected medium. This requires qBittorrent's
-`setComment` endpoint (Web API 2.12.1 or newer). Murid verifies the new metadata
-before removing old tags and preserves unrelated tags. Failed conversions retain
-the old tags for retry. Read-only commands and dry runs leave metadata unchanged.
-
-Restarts fetch works directly from Hardcover by the ID in their comments, so
-recovery does not require continued reading-list membership or a MaM comment.
-Keep a valid Hardcover API key configured. Legacy torrents without work identity
-remain ebooks and use their MaM comment plus a unique current Hardcover-list match.
-Missing or conflicting request identity blocks new discovery until resolved, rather
-than risking a duplicate download or an import into the wrong library.
-
-A delayed audiobook scan remains pending for the next run; an import failure keeps
-its lifecycle tags and suppresses another download of that work and medium while
-recovery is unresolved. `retry-import` retries once and never adds torrents. It
-clears pending/timeout/failure tags only after success in the correct library.
-For audio this includes verification of the persisted destination and tracks;
-a general title match cannot clear a copied-but-unverified import. Dry runs retain
-all tags and comments and perform no imports or scans.
-
-## Environment variables
-
-The example config reads secrets from environment variables. The Hardcover token must include the `Bearer ` prefix.
+| qBittorrent tag | Meaning |
+| --- | --- |
+| `murid` | Import pending |
+| `murid-timeout` | Download exceeded the wait limit |
+| `murid-import-failed` | Import failed |
 
 ```bash
-export HARDCOVER_API_KEY="Bearer ..."
-export MAM_ID="..."
-export CALIBRE_PASSWORD="..."
-export QBITTORRENT_PASSWORD="..."
+murid status
+murid retry-import
 ```
 
-In PowerShell, set them with `$env:HARDCOVER_API_KEY = "Bearer ..."` and the equivalent `$env:NAME = "..."` for the others.
+Murid clears these tags after a successful import. Unresolved imports are retried
+without downloading the book again. Dry runs leave tags and comments unchanged.
 
-Set these variables in the environment that runs Murid. The default config location depends on your operating system. To use a config file elsewhere without passing `--config` on every command, set `MURID_CONFIG_FILE`:
+Keep Murid's torrent comments: they identify the book and medium for recovery,
+even after a book leaves your reading lists. A valid Hardcover API key is still
+required. Missing or conflicting identities block new discovery; inspect the
+affected torrents with `status` before retrying.
 
-```bash
-export MURID_CONFIG_FILE=/path/to/config.yaml
-```
-
-`--config` can point to a config file anywhere and takes precedence over `MURID_CONFIG_FILE`.
-
-## Credentials
-
-### Hardcover API Key
-
-Generate one in your account settings:  
-<https://hardcover.app/account/api>
-
-### MyAnonamouse Cookie (mam_id)
-
-Found in your MyAnonamouse security settings:  
-<https://www.myanonamouse.net/preferences/index.php?view=security>
-
-## Path mapping
-
-If qBittorrent and Murid see the download directory under different paths (for example,
-when one or both are running in containers with different volume mounts), configure a path mapping.
-
-Set:
-
-- `qbittorrent.mapping.qbit_path` to the download path as seen by qBittorrent
-- `qbittorrent.mapping.murid_path` to the corresponding path as seen by Murid
-
-For example, qBittorrent may save files to `/downloads` inside a container,
-while Murid accesses the same files at `/mnt/media/downloads` on the host. In that case:
-
-```yaml
-qbittorrent:
-  mapping:
-    qbit_path: /downloads
-    murid_path: /mnt/media/downloads
-```
-
-This allows Murid to correctly locate files reported by qBittorrent.
+Older torrents are migrated automatically during sync, retry, or torrent adds.
+Migration requires qBittorrent Web API 2.12.1 or newer. Legacy torrents without a
+saved Hardcover ID are treated as ebooks and need their original MyAnonamouse
+comment plus a unique match in your current Hardcover lists.
 
 ## Torrent preferences and imported metadata
 
@@ -280,24 +258,18 @@ seeders, higher match scores, earlier formats in `filetypes`, freeleech, and mor
 order. Ties use the torrent ID for reproducible selection. Unseeded torrents remain
 eligible when no seeded match is available.
 
-New downloads and `search-book --add` use the requested Hardcover book's metadata
-when importing into Calibre. Imports preserve title, authors, series (including
-position zero), the first valid ISBN, the Hardcover book ID, and the first nonempty
-identifier per catalog type. Calibre supports one value per identifier type;
-identifier values retain their original case. Existing library records are not
-updated during import. Retries recover metadata using the
-[torrent identity](#torrent-metadata-and-recovery).
-
-Calibre records without any formats count as missing. Imports use Calibre's
-`--automerge ignore` behavior to add missing formats to matching records while
-preserving existing format files.
+Calibre imports use Hardcover titles, authors, series, and identifiers. Existing
+metadata and format files are preserved; missing formats can be added to matching
+records. Records without any formats count as missing.
 
 Calibre commands that exceed `calibre.command_timeout_seconds` stop with an error.
 An import timeout leaves the download tagged for investigation and `retry-import`.
 Check the library before retrying: Calibre may have written the book before the
 command timed out. Increase the timeout for large files or slow content servers.
 
-For optional notifications, configure destination URLs using [Apprise](https://appriseit.com/getting-started/configuration/).
+## Notifications
+
+Configure destination URLs using [Apprise](https://appriseit.com/getting-started/configuration/).
 
 Set `apprise` to a list of destination URLs, as shown in the example configuration,
 or an Apprise configuration mapping containing `urls`. Omit `apprise` or set it to

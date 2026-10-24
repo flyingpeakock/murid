@@ -2,6 +2,9 @@
 
 [Back to README](../README.md)
 
+[Linux / macOS](#linux--macos) · [Windows](#windows) · [NixOS](#nixos-flake) ·
+[Shell completion](#shell-completion) · [Development](#development)
+
 ## Linux / macOS
 
 ```bash
@@ -25,77 +28,6 @@ python -m venv .venv
 
 pip install .
 ```
-
-## Development
-
-### With Python
-
-```bash
-git clone https://github.com/flyingpeakock/murid.git
-cd murid
-
-python -m venv .venv
-source .venv/bin/activate
-
-pip install -e ".[dev]"
-```
-
-### With Nix
-
-With Nix flakes enabled, enter the development shell from your checkout:
-
-```bash
-git clone https://github.com/flyingpeakock/murid.git
-cd murid
-nix develop
-```
-
-The shell provides Python and Murid's dependencies, Calibre, pytest, Ruff, and
-Pylint, and installs the configured pre-commit hooks. No virtual environment is
-needed. To run the source in your checkout and check your changes:
-
-```bash
-PYTHONPATH=src python -m murid.main --help
-pytest
-ruff check .
-```
-
-The `murid` command in the shell runs the Nix-built package. Use the Python command
-above to run local edits, or `nix build` to rebuild the package. Run
-`nix flake check` for the flake checks, including the NixOS module test on Linux.
-
-### Continuous integration
-
-The [CI workflow](../.github/workflows/ci.yml) runs on pull requests, pushes to
-`main`, and manual dispatch. It checks Ruff and Pylint, runs tests with
-coverage on Linux with Python 3.12, 3.13, and 3.14, and on Windows and macOS with
-Python 3.14. The full test suite, including offline integration tests, runs on
-each platform. Linux jobs also build a source distribution and wheel, smoke-test
-the installed wheel, run the Nix flake checks, and build the Nix package.
-
-To run the Python checks locally after installing the development dependencies:
-
-```bash
-ruff check src tests
-pylint src --ignore=_version.py
-python -m pytest --cov=murid --cov-report=term-missing
-```
-
-The default test run includes offline integration tests in `tests/integration`.
-They exercise the CLI with real configuration, clients, matching, and services,
-using fake HTTP responses, a stateful qBittorrent API stand-in, and a `calibredb`
-stand-in launched through Python in a real subprocess. They require no shell,
-credentials, or running external services.
-Run only these tests with `python -m pytest -m integration`,
-or exclude them with `python -m pytest -m 'not integration'`.
-
-Every CLI command has integration coverage, including search previews and imports,
-match review filters, status and retry handling, configuration validation and
-redaction, connection checks, and Apprise notification delivery. Scheduler tests
-use a controlled clock to verify configuration reloads and recovery after a failed
-cycle without waiting for cron intervals.
-
-GitHub Actions are pinned to commits; Dependabot checks for updates weekly.
 
 ## NixOS Flake
 
@@ -164,53 +96,7 @@ completed-download mount when needed. Mount dependencies order startup but do no
 create directories or grant access.
 
 Run connection diagnostics with the actual service user and service environment
-before enabling the schedule. An interactive user's successful import does not
-establish that the service user can read the same downloads or write the mount.
-The module does not change Audiobookshelf's mount configuration or API permissions.
-
-### NixOS containers
-
-Apply the service configuration inside `containers.<name>.config`, and use paths
-as seen inside that container. The host must bind-mount a common parent containing
-both the library and its private staging directory, and expose the completed
-downloads as well. Mounting only the scanned library root cannot supply an
-outside staging directory on the same filesystem.
-
-For a container exposing the host's media volume as `/data`, an illustrative setup is:
-
-```nix
-containers.server = {
-  bindMounts."/data" = {
-    hostPath = "/opt/container/data";
-    isReadOnly = false;
-  };
-  config = { ... }: {
-    services.murid = {
-      enable = true;
-      user = "calibre";
-      group = "multimedia";
-      configFile = "/etc/murid.yaml";
-      environmentFile = "/secrets/murid";
-      requiresMountsFor = [ "/data" ];
-    };
-    systemd.tmpfiles.rules = [
-      "d /data/.murid-staging-audiobooks 0700 calibre multimedia -"
-    ];
-  };
-};
-```
-
-In that container's YAML, use `library_path: /data/media/audiobooks` and
-`staging_path: /data/.murid-staging-audiobooks`; adapt paths and accounts to the
-actual deployment. Keep `qbittorrent.mapping` consistent with the container's
-view of completed downloads. A host-side localhost API check does not test access
-from a container with private networking.
-
-Keep staging owned by the account that runs imports. Journals are private files
-and contain absolute source/library paths. A journal created by a host user is
-not portable to a different container path or service account; use a separate
-service-owned staging directory or explicitly migrate verified state during a
-planned deployment. Completed library items remain discoverable by their work tags.
+before enabling the schedule.
 
 ## Shell completion
 
@@ -235,3 +121,57 @@ For a direct path such as `./result/bin/murid`, register that path in your curre
 source ./result/share/zsh/site-functions/_murid
 compdef -p _python_argcomplete '*/murid'
 ```
+
+## Development
+
+### With Python
+
+```bash
+git clone https://github.com/flyingpeakock/murid.git
+cd murid
+
+python -m venv .venv
+source .venv/bin/activate
+
+pip install -e ".[dev]"
+```
+
+### With Nix
+
+With Nix flakes enabled, enter the development shell from your checkout:
+
+```bash
+git clone https://github.com/flyingpeakock/murid.git
+cd murid
+nix develop
+```
+
+The shell provides Python and Murid's dependencies, Calibre, pytest, Ruff, and
+Pylint, and installs the configured pre-commit hooks. No virtual environment is
+needed. To run the source in your checkout and check your changes:
+
+```bash
+PYTHONPATH=src python -m murid.main --help
+pytest
+ruff check .
+```
+
+The `murid` command in the shell runs the Nix-built package. Use the Python command
+above to run local edits, or `nix build` to rebuild the package. Run
+`nix flake check` for the flake checks, including the NixOS module test on Linux.
+
+### Checks and CI
+
+```bash
+ruff check src tests
+pylint src --ignore=_version.py
+python -m pytest --cov=murid --cov-report=term-missing
+```
+
+Tests include offline CLI integration tests; no credentials or running services
+are needed. Use `python -m pytest -m integration` to run only those tests, or
+`python -m pytest -m 'not integration'` to exclude them.
+
+[CI](../.github/workflows/ci.yml) runs lint, the full test suite on Linux
+(Python 3.12–3.14), Windows and macOS (3.14), package build/install smoke checks,
+and Nix package/module checks.

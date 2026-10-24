@@ -2,8 +2,20 @@
 
 [Back to README](../README.md)
 
-Murid compares Hardcover books with your Calibre library using identifiers first,
-then title, author, and series metadata:
+```bash
+murid review-matches --unmatched
+murid search-book "Book title"
+```
+
+Use these to inspect library matches or torrent scores and rejection reasons.
+`matcher_threshold` defaults to `0.92`; lowering it does not bypass the safeguards
+below.
+
+Murid compares identifiers first, then title, author, and series metadata.
+Calibre uses the rules below; Audiobookshelf also uses Hardcover work tags and
+excludes audiobook edition ISBNs and ASINs from ebook-metadata comparisons.
+
+## Scoring
 
 - **Identifiers:** A shared valid ISBN or external catalog ID gives a score of
   `1.0`. ISBN checksums are validated, and ISBN-10 values are converted to ISBN-13.
@@ -36,6 +48,3 @@ each book used at most once. Unmatched Hardcover books are searched on
 MyAnonamouse. Torrent candidates use the same matching rules, together with the
 configured language, file type, and blacklist filters; see
 [torrent preferences](configuration.md#torrent-preferences-and-imported-metadata) for ranking.
-
-Use `murid review-matches` to inspect Calibre match scores and supporting metadata,
-or `murid search-book "Book title"` to inspect torrent scores and rejection reasons.
