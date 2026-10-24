@@ -103,13 +103,7 @@
               { };
 
           pre-commit.settings.hooks = {
-            treefmt = {
-              enable = true;
-              settings.formatters = [
-                pkgs.nixfmt
-                pkgs.ruff
-              ];
-            };
+            nixfmt.enable = true;
             deadnix.enable = true;
             flake-checker.enable = true;
             pylint = {
