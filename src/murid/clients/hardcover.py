@@ -297,17 +297,12 @@ class Hardcover:
         if not editions:
             return []
 
-        isbns = []
-        for edition in editions:
-            isbn13 = edition.get("isbn_13")
-            isbn10 = edition.get("isbn_10")
-
-            if isbn13:
-                isbns.append(isbn13)
-            if isbn10:
-                isbns.append(isbn10)
-
-        return isbns
+        return [
+            isbn
+            for edition in editions
+            for isbn in (edition.get("isbn_13"), edition.get("isbn_10"))
+            if isbn
+        ]
 
     @classmethod
     def _extract_text_values(cls, value, lang_codes: list[str] | None = None) -> list[str]:
@@ -440,16 +435,13 @@ class Hardcover:
 
     def get_books(self) -> set[Book]:
         """Fetch the user's selected list as a set of Book objects."""
-        books: set[Book] = set()
-
         try:
             data = self.fetch_data()
             items = data.get("data", {}).get("user_books", [])
         except HardcoverError as error:
             raise HardcoverError(f"Cannot fetch books for {self.user.name}: {error}") from error
 
-        for item in items:
-            books.add(self._book(item.get("book", {})))
+        books = {self._book(item.get("book", {})) for item in items}
 
         if not books:
             logger.warning("No books found for user %s", self.user.name)

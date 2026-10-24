@@ -242,16 +242,15 @@ class SyncService:
 
     def review_matches(self, matcher: BookMatcher, matched: bool | None = None) -> None:
         """Print comparisons, optionally filtering by whether a candidate is accepted."""
-        reviews = []
         # Complete all lookups before printing, so a failed backend is never shown as missing.
-        for media, requests, library in self._library_groups():
-            reviews.extend(
-                (book, candidates, media, library.name)
-                for book, candidates in matcher.review_matches(
-                    library.get_books(),
-                    [request.book for request in requests],
-                )
+        reviews = [
+            (book, candidates, media, library.name)
+            for media, requests, library in self._library_groups()
+            for book, candidates in matcher.review_matches(
+                library.get_books(),
+                [request.book for request in requests],
             )
+        ]
         output(f"[bold cyan]Match threshold:[/] {matcher.threshold:.3f}")
 
         shown = 0
