@@ -125,7 +125,6 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
                 pending.pop(tid, None)
 
             if pending:
-                logger.debug("%d torrents still active", len(pending))
                 time.sleep(self.torrent_client.poll_interval)
 
             if self._is_timeout(start_time, pending):
