@@ -59,20 +59,20 @@ Token-only entries and the former `list` and `media_types` options are no longer
 accepted; convert them to explicit `reading_list` entries when upgrading.
 
 Set each list's `type` to `ebook` (the default), `audiobook`, or
-`[ebook, audiobook]`. Use singular `audiobook`, not `audiobooks`. Empty mappings,
-empty type lists, and
-unknown media types are rejected. Overlapping users and lists represent one
+`[ebook, audiobook]`. Use singular `audiobook`, not `audiobooks`. An empty
+`reading_list`, empty type lists, and unknown media types are rejected.
+Overlapping users and lists represent one
 request per Hardcover book ID and media type; requesting both means acquiring
 both independently.
 
-`run`, `schedule`, and `retry-import` now route ebook and audiobook requests to
+`run`, `schedule`, and `retry-import` route ebook and audiobook requests to
 Calibre and Audiobookshelf independently. Inspection output includes media and
 destination. Ebook-only Audiobookshelf items do not satisfy audio requests, and
 library lookup failures abort the cycle. Manual `search-book` and `add-book` accept
 `--media-type audiobook`; omitting it retains ebook behavior. `test-connection`
 checks configured/required libraries and the API, shared-path, and staging access
 needed for imports without copying or scanning. Before scheduling, verify access
-as the actual service user; see [the integration notes](audiobookshelf-integration.md).
+as the actual service user; see [shared library setup](installation.md#shared-audiobook-libraries-on-nixos).
 
 ```yaml
 hardcover_api_keys:
@@ -102,7 +102,7 @@ configurations; omit Calibre for audio-only configuration validation.
 | `staging_path` | Absolute private staging/state directory on the library filesystem, outside every scanned root | sibling `.murid-staging-<library directory name>` |
 | `folder_id` | Audiobookshelf folder ID corresponding to `library_path`; required for multiple library roots | sole library folder |
 | `scan_timeout_seconds` | Positive integer limiting scan verification, separately from download timeout | `120` |
-| `filetypes` | Accepted audiobook formats in preference order; only `m4b` and `mp3` supported initially | `[m4b, mp3]` |
+| `filetypes` | Accepted audiobook formats in preference order; `m4b` and `mp3` supported | `[m4b, mp3]` |
 
 Set `AUDIOBOOKSHELF_API_KEY` in Murid's environment and reference it with `!ENV`.
 Supply the key itself; Murid will supply the Authorization Bearer prefix.
@@ -111,13 +111,13 @@ even when `redact_sensitive_data` is false. Other secrets follow that flag.
 
 Configuration validation does not contact the server or require the shared mount
 to exist yet. At runtime, the folder must be writable by Murid and readable by
-Audiobookshelf; mount paths can differ. The current contract targets v2.37.1;
-see [integration verification and pending live checks](audiobookshelf-integration.md).
+Audiobookshelf; mount paths can differ. The integration has been verified against
+Audiobookshelf v2.37.1.
 The top-level `filetypes` continues to control ebook preferences only. Discovery
 uses separate audiobook preferences from `audiobookshelf.filetypes`. Main title,
 alternate title, and author fallback searches are scoped to MaM main category 14
-for ebooks or 13 for audiobooks. Automatic import and restart recovery are connected;
-manual commands select the medium with `--media-type ebook|audiobook`.
+for ebooks or 13 for audiobooks. Manual commands select the medium with
+`--media-type ebook|audiobook`.
 
 Library inspection uses paginated item listing and fetches expanded details for
 audio candidates to preserve author names and verify playable tracks. It sends
@@ -155,44 +155,7 @@ folder ID, destination path, every track's relative path/size and playable durat
 and the Hardcover identity tag. Timeout or scan failure leaves the completed copy
 and durable journal available for retry. Keep staging journals, partial folders,
 and destination `.murid-import.json` markers; retries use them to resume safely.
-A delayed scan does not require another copy. See the
-[integration verification record](audiobookshelf-integration.md) for live ingestion
-results and remaining service-user/deployment checks.
-
-Murid uses only three qBittorrent tags: `murid` for pending imports,
-`murid-import-failed`, and `murid-timeout`. The configured category still defaults
-to `murid`. Media type and Hardcover work ID are stored in a versioned
-`[murid:1]` JSON line appended to the torrent comment before its initial add.
-The original tracker comment, including the MaM ID, is retained. Only outer
-metainfo changes; the encoded `info` dictionary and download hashes stay intact.
-Murid tracks adds by info hash, without temporary per-download tags.
-
-Syncs, retries, and torrent adds automatically migrate old identity and lifecycle
-tags in the configured category, restricted to the selected medium when filtered.
-Migration writes the comment and verifies it through qBittorrent before removing
-identity tags. Replacement lifecycle tags are
-also verified before removing their old names. Interrupted migrations resume on
-the next run. Unused legacy tag definitions, including old `murid_add_<uuid>` tags,
-are deleted only after checking all categories for remaining uses. Other tags and
-torrents outside the configured category are preserved. Migration of existing
-torrents requires the `setComment` endpoint (Web API 2.12.1 or newer); an unsuccessful
-write stops the operation with the old tags retained. Status, search previews,
-connection checks, and dry runs do not migrate or change tags.
-
-Restarts fetch works directly from Hardcover by the ID in their comments, so
-recovery does not require continued reading-list membership or a MaM comment.
-Keep a valid Hardcover API key configured. Legacy torrents without work identity
-remain ebooks and use their MaM comment plus a unique current Hardcover-list match.
-Missing or conflicting request identity blocks new discovery until resolved, rather
-than risking a duplicate download or an import into the wrong library.
-
-A delayed audiobook scan remains pending for the next run; an import failure keeps
-its lifecycle tags and suppresses another download of that work and medium while
-recovery is unresolved. `retry-import` retries once and never adds torrents. It
-clears pending/timeout/failure tags only after success in the correct library.
-For audio this includes verification of the persisted destination and tracks;
-a general title match cannot clear a copied-but-unverified import. Dry runs retain
-all tags and comments and perform no imports or scans.
+A delayed scan does not require another copy.
 
 ### Calibre
 
@@ -220,6 +183,37 @@ These options belong under `qbittorrent`.
 | `category` | Category assigned to Murid torrents | `murid` |
 | `mapping.qbit_path` | Download path as seen by qBittorrent; see [path mapping](#path-mapping) | `null` |
 | `mapping.murid_path` | Corresponding download path as seen by Murid | `null` |
+
+### Torrent metadata and recovery
+
+Murid uses only three qBittorrent tags: `murid` for pending imports,
+`murid-import-failed`, and `murid-timeout`. The configured category still defaults
+to `murid`. Media type and Hardcover work ID are stored in a versioned
+`[murid:1]` JSON line appended to the torrent comment before its initial add.
+The original tracker comment, including the MaM ID, is retained. Only outer
+metainfo changes; the encoded `info` dictionary and download hashes stay intact.
+Murid tracks adds by info hash, without temporary per-download tags.
+
+Syncs, retries, and torrent adds convert older Murid tags to this format within
+the configured category and selected medium. This requires qBittorrent's
+`setComment` endpoint (Web API 2.12.1 or newer). Murid verifies the new metadata
+before removing old tags and preserves unrelated tags. Failed conversions retain
+the old tags for retry. Read-only commands and dry runs leave metadata unchanged.
+
+Restarts fetch works directly from Hardcover by the ID in their comments, so
+recovery does not require continued reading-list membership or a MaM comment.
+Keep a valid Hardcover API key configured. Legacy torrents without work identity
+remain ebooks and use their MaM comment plus a unique current Hardcover-list match.
+Missing or conflicting request identity blocks new discovery until resolved, rather
+than risking a duplicate download or an import into the wrong library.
+
+A delayed audiobook scan remains pending for the next run; an import failure keeps
+its lifecycle tags and suppresses another download of that work and medium while
+recovery is unresolved. `retry-import` retries once and never adds torrents. It
+clears pending/timeout/failure tags only after success in the correct library.
+For audio this includes verification of the persisted destination and tracks;
+a general title match cannot clear a copied-but-unverified import. Dry runs retain
+all tags and comments and perform no imports or scans.
 
 ## Environment variables
 
@@ -290,8 +284,8 @@ when importing into Calibre. Imports preserve title, authors, series (including
 position zero), the first valid ISBN, the Hardcover book ID, and the first nonempty
 identifier per catalog type. Calibre supports one value per identifier type;
 identifier values retain their original case. Existing library records are not
-updated during import. Retries of earlier downloads still recover metadata from
-MyAnonamouse.
+updated during import. Retries recover metadata using the
+[torrent identity](#torrent-metadata-and-recovery).
 
 Calibre commands that exceed `calibre.command_timeout_seconds` stop with an error.
 An import timeout leaves the download tagged for investigation and `retry-import`.
