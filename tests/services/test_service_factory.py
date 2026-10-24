@@ -19,7 +19,8 @@ def test_wanted_requests_normalize_and_combine_lists(args, config, monkeypatch):
     book = Book("Title", ["Author"], 42, [], "Hardcover")
     clients = []
 
-    def create(token, list_slug):
+    def create(token, list_slug, lang_codes):
+        assert lang_codes == ["eng"]
         client = Mock()
         client.get_books.return_value = [book]
         clients.append((token, list_slug))
@@ -50,8 +51,8 @@ def test_grouped_lists_expand_to_independent_requests(args, config, monkeypatch)
         (42, "ebook"),
         (42, "audiobook"),
     }
-    constructor.assert_any_call("Bearer key", list_slug="want-to-read")
-    constructor.assert_any_call("Bearer key", list_slug="audio")
+    constructor.assert_any_call("Bearer key", list_slug="want-to-read", lang_codes=["eng"])
+    constructor.assert_any_call("Bearer key", list_slug="audio", lang_codes=["eng"])
 
 
 def test_grouped_ebook_lists_all_reach_legacy_workflow(args, config, monkeypatch):
@@ -67,8 +68,8 @@ def test_grouped_ebook_lists_all_reach_legacy_workflow(args, config, monkeypatch
     constructor = Mock(side_effect=lambda *args, **kwargs: Mock())
     monkeypatch.setattr("murid.services.service_factory.Hardcover", constructor)
     assert len(ServiceFactory(args, config, initialize_notifier=False).hardcover()) == 2
-    constructor.assert_any_call("Bearer key", list_slug="want-to-read")
-    constructor.assert_any_call("Bearer key", list_slug="a")
+    constructor.assert_any_call("Bearer key", list_slug="want-to-read", lang_codes=["eng"])
+    constructor.assert_any_call("Bearer key", list_slug="a", lang_codes=["eng"])
 
 
 def test_audio_only_factory_does_not_initialize_calibre(args, config, monkeypatch):
@@ -206,8 +207,9 @@ def test_hardcover(args, config, monkeypatch):
 
     created = []
 
-    def fake_hardcover(api_key):
-        # created.append((api_key, user_id))
+    def fake_hardcover(api_key, list_slug, lang_codes):
+        assert list_slug == "want-to-read"
+        assert lang_codes == ["eng"]
         created.append(api_key)
         return f"user-{api_key}"
 
@@ -350,10 +352,9 @@ def test_hardcover_per_user_list_settings(args, config, monkeypatch):
     monkeypatch.setattr("murid.services.service_factory.Hardcover", constructor)
     clients = ServiceFactory(args, config, initialize_notifier=False).hardcover()
     assert len(clients) == 3
-    constructor.assert_any_call("Bearer legacy")
-    constructor.assert_any_call("Bearer custom", list_slug="download-queue")
-    constructor.assert_any_call("Bearer default", list_slug="want-to-read")
-    assert all(client.lang_codes == ["eng"] for client in clients)
+    constructor.assert_any_call("Bearer legacy", list_slug="want-to-read", lang_codes=["eng"])
+    constructor.assert_any_call("Bearer custom", list_slug="download-queue", lang_codes=["eng"])
+    constructor.assert_any_call("Bearer default", list_slug="want-to-read", lang_codes=["eng"])
 
 
 def test_audio_sync_import_and_retry_do_not_construct_calibre(args, config, monkeypatch):
@@ -404,7 +405,8 @@ def test_wanted_requests_filter_before_fetching_unrelated_lists(args, config, mo
     book = Book("Title", ["Author"], 42, [], "Hardcover")
     called = []
 
-    def create(_token, list_slug):
+    def create(_token, list_slug, lang_codes):
+        assert lang_codes == ["eng"]
         called.append(list_slug)
         return Mock(get_books=lambda: [book])
 
@@ -421,3 +423,38 @@ def test_media_filter_with_no_matching_lists_does_not_initialize_clients(args, c
     monkeypatch.setattr("murid.services.service_factory.Hardcover", client)
     assert ServiceFactory(args, config, initialize_notifier=False).wanted_requests() == set()
     client.assert_not_called()
+
+
+@pytest.mark.parametrize("grouped", [False, True])
+def test_factory_snapshots_list_settings_until_reload(args, config, monkeypatch, grouped):
+    media = ["ebook"]
+    entry = {"api_key": "Bearer first"}
+    if grouped:
+        entry["reading_list"] = {"selected": {"type": media}}
+    else:
+        entry.update(list="selected", media_types=media)
+    config["hardcover_api_keys"] = [entry]
+    factory = ServiceFactory(args, config, initialize_notifier=False)
+    media.append("audiobook")
+    entry["api_key"] = "Bearer changed"
+    book = Book("Title", ["Author"], 42, [], "hardcover")
+    client = Mock()
+    client.get_books.return_value = [book]
+    client.get_book.return_value = book
+    constructor = Mock(return_value=client)
+    monkeypatch.setattr("murid.services.service_factory.Hardcover", constructor)
+
+    assert factory.hardcover() == {client}
+    assert {request.identity for request in factory.wanted_requests()} == {(42, "ebook")}
+    assert factory.recovery_book(42) is book
+    constructor.assert_called_with("Bearer first", list_slug="selected", lang_codes=["eng"])
+
+    monkeypatch.setattr(factory, "_load_config", lambda: config)
+    monkeypatch.setattr(factory, "_init_apprise", lambda: None)
+    factory.reload()
+
+    assert {request.identity for request in factory.wanted_requests()} == {
+        (42, "ebook"), (42, "audiobook"),
+    }
+    assert factory.recovery_book(42) is book
+    constructor.assert_called_with("Bearer changed", list_slug="selected", lang_codes=["eng"])

@@ -80,17 +80,21 @@ def hardcover_list_settings(entries: list) -> list[dict]:
                     {
                         "api_key": entry["api_key"],
                         "list": slug,
-                        "media_types": [media] if isinstance(media, str) else media,
+                        "media_types": [media] if isinstance(media, str) else list(media),
                     }
                 )
         else:
-            settings.append({"list": "want-to-read", "media_types": ["ebook"], **entry})
+            settings.append({
+                "api_key": entry["api_key"],
+                "list": entry.get("list", "want-to-read"),
+                "media_types": list(entry.get("media_types", ["ebook"])),
+            })
     return settings
 
 
-def requested_media_types(entries: list) -> set[str]:
-    """Return the libraries required by the configured lists."""
-    return {media for entry in hardcover_list_settings(entries) for media in entry["media_types"]}
+def requested_media_types(entries: list[dict]) -> set[str]:
+    """Return the libraries required by normalized Hardcover list settings."""
+    return {media for entry in entries for media in entry["media_types"]}
 
 
 def env_constructor(loader: yaml.SafeLoader, node: yaml.Node) -> str:
@@ -172,6 +176,7 @@ class Config:
         Ensure all required fields are present and correctly formatted."""
         self._ensure_not_missing(self._config)
         self._ensure_hardcover_api_keys(self.get("hardcover_api_keys"))
+        self.hardcover_lists = hardcover_list_settings(self.get("hardcover_api_keys"))
         self._ensure_type(self.get("redact_sensitive_data"), bool, "redact_sensitive_data")
         self._ensure_type(self.get("matcher_threshold"), float, "matcher_threshold")
         threshold = self.get("matcher_threshold")
@@ -185,7 +190,7 @@ class Config:
         self._ensure_type(self.get("torrent_timeout_seconds"), int, "torrent_timeout_seconds")
         if self.get("torrent_timeout_seconds") <= 0:
             raise ConfigError("Config item 'torrent_timeout_seconds' must be greater than 0")
-        media_types = requested_media_types(self.get("hardcover_api_keys"))
+        media_types = requested_media_types(self.hardcover_lists)
         calibre = self.get("calibre")
         self._ensure_type(calibre, dict, "calibre")
         if "ebook" in media_types or calibre.get("library") is not None:
