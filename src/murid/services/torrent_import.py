@@ -168,10 +168,10 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
                     book,
                     self.library.name,
                 )
-                self.torrent_client.add_tag(torrent_id, "murid_import_failed")
+                self.torrent_client.add_tag(torrent_id, "murid-import-failed")
         except LibraryImportPending as error:
             self.last_outcome = "pending"
-            self.torrent_client.add_tag(torrent_id, "murid_pending")
+            self.torrent_client.add_tag(torrent_id, "murid")
             logger.warning("%s: %s; ingestion will be checked next run", book, error)
         except LibraryError as error:
             self.last_outcome = "failed"
@@ -181,7 +181,7 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
                 book,
                 error,
             )
-            self.torrent_client.add_tag(torrent_id, "murid_import_failed")
+            self.torrent_client.add_tag(torrent_id, "murid-import-failed")
 
         return True
 
@@ -212,6 +212,6 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
                         "torrent client for issues."
                     ),
                 )
-                self.torrent_client.add_tag(tid, "murid_timeout")
+                self.torrent_client.add_tag(tid, "murid-timeout")
             return True
         return False

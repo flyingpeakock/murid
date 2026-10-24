@@ -150,8 +150,12 @@ outside every scanned root. Source files are never moved, linked, or modified.
 
 Initial torrent adds persist media and Hardcover work identity. Offline tests cover
 recovery after list removal, independent ebook/audio routing, retained pending and
-failed state, malformed/conflicting tags, and aborting a batch when a shared hash
-acquires multiple request identities. The real shared-folder backend is exercised
+failed state, malformed/conflicting identity, and aborting a batch when a shared hash
+is requested for different works. New adds store identity in the original metainfo's
+comment and track its unchanged info hash. Offline tests also cover automatic
+migration from legacy identity tags, verified comment writes before tag removal,
+partial migrations, lifecycle renaming, and cleanup of unused tag definitions without
+affecting torrents in other categories. The real shared-folder backend is exercised
 through torrent import/retry with delayed ingestion, removal of the original source,
 and a later successful verification without another copy or torrent add. Legacy
 ebook recovery, dry runs, and mixed sync with only one missing medium also pass.

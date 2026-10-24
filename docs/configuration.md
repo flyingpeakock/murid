@@ -159,11 +159,29 @@ A delayed scan does not require another copy. See the
 [integration verification record](audiobookshelf-integration.md) for live ingestion
 results and remaining service-user/deployment checks.
 
-Murid adds `murid_media_ebook` or `murid_media_audiobook` and
-`murid_hardcover_<id>` with the initial torrent add, alongside `murid_pending`.
-These identity tags remain after success. Restarts fetch tagged works directly
-from Hardcover by ID, so recovery does not require continued reading-list membership
-or a MaM comment. Keep a valid Hardcover API key configured. Untagged legacy torrents
+Murid uses only three qBittorrent tags: `murid` for pending imports,
+`murid-import-failed`, and `murid-timeout`. The configured category still defaults
+to `murid`. Media type and Hardcover work ID are stored in a versioned
+`[murid:1]` JSON line appended to the torrent comment before its initial add.
+The original tracker comment, including the MaM ID, is retained. Only outer
+metainfo changes; the encoded `info` dictionary and download hashes stay intact.
+Murid tracks adds by info hash, without temporary per-download tags.
+
+Syncs, retries, and torrent adds automatically migrate old identity and lifecycle
+tags in the configured category, restricted to the selected medium when filtered.
+Migration writes the comment and verifies it through qBittorrent before removing
+identity tags. Replacement lifecycle tags are
+also verified before removing their old names. Interrupted migrations resume on
+the next run. Unused legacy tag definitions, including old `murid_add_<uuid>` tags,
+are deleted only after checking all categories for remaining uses. Other tags and
+torrents outside the configured category are preserved. Migration of existing
+torrents requires the `setComment` endpoint (Web API 2.12.1 or newer); an unsuccessful
+write stops the operation with the old tags retained. Status, search previews,
+connection checks, and dry runs do not migrate or change tags.
+
+Restarts fetch works directly from Hardcover by the ID in their comments, so
+recovery does not require continued reading-list membership or a MaM comment.
+Keep a valid Hardcover API key configured. Legacy torrents without work identity
 remain ebooks and use their MaM comment plus a unique current Hardcover-list match.
 Missing or conflicting request identity blocks new discovery until resolved, rather
 than risking a duplicate download or an import into the wrong library.
@@ -174,7 +192,7 @@ recovery is unresolved. `retry-import` retries once and never adds torrents. It
 clears pending/timeout/failure tags only after success in the correct library.
 For audio this includes verification of the persisted destination and tracks;
 a general title match cannot clear a copied-but-unverified import. Dry runs retain
-all tags and perform no imports or scans.
+all tags and comments and perform no imports or scans.
 
 ### Calibre
 

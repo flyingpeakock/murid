@@ -5,7 +5,7 @@ from rich.text import Text
 
 from ..clients.torrent_clients.qbittorrent import Qbittorrent
 from ..domain.book_request import MediaType
-from ..domain.torrent_request import read_request_tags
+from ..domain.torrent_request import TAG_ALIASES, read_request
 from ..ui import interactive, labeled, output, terminal_width
 
 _STATES = {
@@ -35,9 +35,8 @@ _STATES = {
 
 
 def _request_info(torrent) -> dict:
-    tags = {tag.strip() for tag in (torrent.tags or "").split(",")}
     try:
-        media, work_id = read_request_tags(tags)
+        media, work_id = read_request(torrent)
     except ValueError as error:
         return {
             "media_type": None,
@@ -73,13 +72,15 @@ def print_status(torrent_client: Qbittorrent, media_type: MediaType | None = Non
         return
 
     def issues(torrent) -> list[str]:
-        tags = {tag.strip() for tag in (torrent.tags or "").split(",")}
+        tags = {
+            TAG_ALIASES.get(tag.strip(), tag.strip()) for tag in (torrent.tags or "").split(",")
+        }
         result = ["invalid request identity"] if _request_info(torrent)["identity_error"] else []
-        if "murid_import_failed" in tags:
+        if "murid-import-failed" in tags:
             result.append("import failed")
-        if "murid_timeout" in tags:
+        if "murid-timeout" in tags:
             result.append("timed out")
-        elif "murid_pending" in tags:
+        elif "murid" in tags:
             result.append("import pending")
         if torrent.state in {"error", "missingFiles"}:
             result.append(_STATES[torrent.state])

@@ -138,7 +138,7 @@ def test_json_status_contains_numeric_progress_and_issues(capsys):
                 name="[bold] Dune",
                 progress=0.5,
                 state="stalledDL",
-                tags="murid_timeout",
+                tags="murid-timeout",
                 hash="abc",
             )
         ],
@@ -165,7 +165,7 @@ def test_status_terminal_layout_preserves_title_and_issue(monkeypatch, width):
             category="murid",
             get_torrents=lambda: [
                 SimpleNamespace(
-                    name=title, progress=0.5, state="stalledUP", tags="murid_import_failed"
+                    name=title, progress=0.5, state="stalledUP", tags="murid-import-failed"
                 )
             ],
         )

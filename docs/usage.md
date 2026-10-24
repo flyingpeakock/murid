@@ -178,20 +178,24 @@ The default is every hour. For a single sync, use `murid run`; add `--dry-run` t
 preview matches and fetch selected `.torrent` files without adding torrents or
 downloading ebooks. See the [quick start](../README.md#quick-start) for initial setup.
 
-Downloads receive a persistent `murid_pending` tag when added to qBittorrent.
+Downloads receive a persistent `murid` tag when added to qBittorrent.
 Each scheduled run checks pending and timed-out torrents again, including downloads
 left behind by an interrupted run. Once the book is confirmed in Calibre, Murid
-clears the pending and timeout tags. If a completed download fails to import, Murid
-marks it `murid_import_failed`; use `retry-import` after investigating the failure.
-Recovery uses the MyAnonamouse ID in the torrent comment to identify the download,
-then matches its title, authors, and identifiers against the configured Hardcover
-Want to Read lists. A unique match supplies the Hardcover ID and book metadata
-used for file selection and import. Books missing from those lists or matching
-multiple Hardcover works are reported as skipped and remain tagged for attention;
-check the reading lists or import an individual ebook with `add-book`.
+clears its lifecycle tags. Downloads exceeding the wait limit receive
+`murid-timeout`; completed downloads that fail to import receive
+`murid-import-failed`. Use `retry-import` after investigating a failure.
+Recovery reads the media type and Hardcover ID from the torrent comment and fetches
+the work directly, even if it has since left your reading lists. Older identity
+tags automatically migrate during sync, retry, or torrent add; no migration command
+is required. Original comments and MaM IDs are preserved. See
+[torrent metadata and migration](configuration.md#audiobookshelf) for details.
 
-If two requested books resolve to the same torrent hash in a batch, Murid imports
-the first book and reports the second as a failure instead of replacing the first.
+Legacy ebooks without a recorded Hardcover ID still use the MaM ID in the comment
+and require a unique match in the configured Hardcover lists. Unresolved or
+conflicting identities remain tagged for attention and block sync discovery.
+
+If two requested works resolve to the same torrent hash in a batch, Murid rejects
+the conflicting request and stops the batch before imports begin.
 Use `add-book` to import another book from the completed download.
 
 | Expression    | Meaning        |

@@ -11,6 +11,7 @@ from ..domain.book import Book
 from ..domain.book_matcher import BookMatcher
 from ..domain.book_request import BookRequest, MediaType
 from ..domain.torrent import Torrent
+from ..domain.torrent_request import read_request
 from ..domain.torrent_selector import TorrentSelector
 
 logger = logging.getLogger("murid")
@@ -39,8 +40,16 @@ class TorrentDiscoveryService:
         mam_ids = set()
         tagged_torrents = self.torrent_client.get_torrents_with_tag(tag)
         for torrent in tagged_torrents:
-            tags = {tag.strip() for tag in (getattr(torrent, "tags", "") or "").split(",")}
-            medium = "audiobook" if "murid_media_audiobook" in tags else "ebook"
+            try:
+                medium, _ = read_request(torrent)
+            except ValueError as error:
+                logger.warning(
+                    "Torrent %s: invalid Murid request identity: %s; skipping failed-import "
+                    "filter for this torrent; inspect it with murid status",
+                    getattr(torrent, "hash", "unknown"),
+                    error,
+                )
+                continue
             if medium != media_type:
                 continue
             comment = getattr(torrent, "comment", None) or ""
@@ -161,7 +170,7 @@ class TorrentDiscoveryService:
 
         download_futures = {}
         failed_import_mam_ids = {
-            media: self.mam_ids_with_tag("murid_import_failed", media)
+            media: self.mam_ids_with_tag("murid-import-failed", media)
             for media in {request.media_type for request in search_futures.values()}
         }
 

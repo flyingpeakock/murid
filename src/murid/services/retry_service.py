@@ -9,11 +9,11 @@ from ..clients.myanonamouse import MAMError, MyAnonamouse, MyAnonamouseQuery
 from ..clients.torrent_clients import TorrentClient
 from ..domain.book import Book
 from ..domain.book_request import BookRequest, MediaType
-from ..domain.torrent_request import IMPORT_TAGS, read_request_tags
+from ..domain.torrent_request import IMPORT_TAGS, TAG_ALIASES, read_request
 from .torrent_import import TorrentImportService
 
 logger = logging.getLogger("murid")
-_IMPORT_TAGS = set(IMPORT_TAGS)
+_IMPORT_TAGS = set(IMPORT_TAGS) | TAG_ALIASES.keys()
 
 
 @dataclass(frozen=True)
@@ -74,8 +74,8 @@ class RetryService:
             self._import_services[media] = self._recovery.importer(media)
         return self._import_services[media]
 
-    def _request(self, torrent, tags: set[str]) -> BookRequest | None:
-        media, work_id = read_request_tags(tags)
+    def _request(self, torrent) -> BookRequest | None:
+        media, work_id = read_request(torrent)
         if work_id is None:
             mam_id = self._mam_id(torrent)
             book = self.get_book_by_mam_id(mam_id) if mam_id is not None else None
@@ -94,19 +94,22 @@ class RetryService:
         incomplete = set()
         counts = dict.fromkeys(("imported", "already_present", "pending", "failed", "skipped"), 0)
         by_media = {}
-        for torrent in self.torrent_client.get_torrents():
+        selected_media = self._recovery.media_type if self._recovery else None
+        for torrent in self.torrent_client.get_torrents(migrate=True, media_type=selected_media):
             tags = {tag.strip() for tag in (torrent.tags or "").split(",")}
             relevant = tags & _IMPORT_TAGS
             if not relevant:
                 continue
             try:
-                media, _ = read_request_tags(tags)
+                media, _ = read_request(torrent)
                 if self._recovery and self._recovery.media_type not in {None, media}:
                     continue
-                request = self._request(torrent, tags)
+                request = self._request(torrent)
             except ValueError as error:
                 logger.error(
-                    "Torrent %s: %s; inspect its Murid tags before retrying", torrent.hash, error
+                    "Torrent %s: %s; inspect its Murid metadata before retrying",
+                    torrent.hash,
+                    error,
                 )
                 request = None
             if request is None:
@@ -130,7 +133,7 @@ class RetryService:
             if outcome in {"pending", "failed"}:
                 incomplete.add(request)
             elif not importer.dry_run:
-                for tag in IMPORT_TAGS:
+                for tag in (*IMPORT_TAGS, *TAG_ALIASES):
                     if tag in relevant:
                         self.torrent_client.remove_tag(torrent.hash, tag)
         self.last_result = RetryImportResult(**counts, by_media=by_media)

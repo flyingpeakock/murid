@@ -14,7 +14,14 @@ from murid.clients.torrent_clients.qbittorrent import (
 from murid.domain.book import Book
 from murid.domain.book_matcher import BookMatcher
 from murid.domain.book_request import BookRequest
-from murid.domain.torrent_request import IMPORT_TAGS, read_request_tags, request_tags
+from murid.domain.torrent_metadata import TorrentMetainfo
+from murid.domain.torrent_request import (
+    IMPORT_TAGS,
+    read_request,
+    read_request_tags,
+    request_tags,
+    write_request_comment,
+)
 from murid.libraries.audiobook_store import AudiobookStore
 from murid.libraries.audiobookshelf import AudiobookLibraryConfig, AudiobookshelfLibrary
 from murid.libraries.library import LibraryImportPending
@@ -28,21 +35,19 @@ def book():
 
 
 @pytest.mark.parametrize("media", ["ebook", "audiobook"])
-def test_initial_add_persists_identity_before_tracking_is_lost(book, media):
-    api = Mock()
-    api.torrents_add.return_value = SimpleNamespace(added_torrent_ids=["hash"])
-    api.torrents_info.return_value = [
-        SimpleNamespace(
-            tags=f"murid_pending,murid_media_{media},murid_hardcover_42",
-        )
-    ]
-    client = Qbittorrent(QbittorrentConfig(api, "murid", False))
-    client.remove_tag = Mock(side_effect=KeyboardInterrupt)
+def test_initial_add_persists_identity_before_tracking_is_lost(book, media, qbit_api, torrent_file):
+    add = qbit_api.torrents_add.side_effect
+
+    def interrupted(**kwargs):
+        add(**kwargs)
+        raise KeyboardInterrupt
+
+    qbit_api.torrents_add.side_effect = interrupted
+    client = Qbittorrent(QbittorrentConfig(qbit_api, "murid", False))
     with pytest.raises(KeyboardInterrupt):
-        client.add_torrent(b"torrent", book, media_type=media)
-    tags = set(api.torrents_add.call_args.kwargs["tags"].split(","))
-    assert {"murid_pending", f"murid_media_{media}", "murid_hardcover_42"} <= tags
-    assert read_request_tags(tags) == (media, 42)
+        client.add_torrent(torrent_file, book, media_type=media)
+    assert qbit_api.items[0].tags == "murid"
+    assert read_request(qbit_api.items[0]) == (media, 42)
 
 
 @pytest.mark.parametrize(
@@ -64,7 +69,7 @@ def test_invalid_identity_is_not_silently_treated_as_an_ebook(tags):
         SimpleNamespace(
             hash="hash",
             comment="MID=123",
-            tags=",".join(tags | {"murid_pending"}),
+            tags=",".join(tags | {"murid"}),
         )
     ]
     importer, lookup, mam = Mock(), Mock(), Mock()
@@ -78,13 +83,17 @@ def test_invalid_identity_is_not_silently_treated_as_an_ebook(tags):
 
 @pytest.mark.parametrize("media", ["ebook", "audiobook"])
 @pytest.mark.parametrize("outcome", ["imported", "pending", "failed"])
-def test_removed_list_entries_recover_by_id_and_keep_unresolved_tags(book, media, outcome):
+@pytest.mark.parametrize("storage", ["comment", "legacy_tags"])
+def test_removed_list_entries_recover_by_id_and_keep_unresolved_tags(book, media, outcome, storage):
     client = Mock()
-    tags = {"murid_pending", "murid_timeout", "murid_import_failed"} | request_tags(
-        BookRequest(book, media)
-    )
+    tags = {"murid", "murid-timeout", "murid-import-failed"}
+    comment = ""
+    if storage == "legacy_tags":
+        tags |= request_tags(BookRequest(book, media))
+    else:
+        comment = write_request_comment("", (media, 42))
     client.get_torrents.return_value = [
-        SimpleNamespace(hash="hash", tags=",".join(tags), comment="")
+        SimpleNamespace(hash="hash", tags=",".join(tags), comment=comment)
     ]
     importer = Mock(dry_run=False, last_outcome=outcome)
     importer.library.contains_book.return_value = False
@@ -111,7 +120,7 @@ def test_removed_list_entries_recover_by_id_and_keep_unresolved_tags(book, media
 @pytest.mark.parametrize("media", ["ebook", "audiobook"])
 def test_recovery_dry_run_never_imports_or_clears_state(book, media):
     client = Mock()
-    tags = request_tags(BookRequest(book, media)) | {"murid_pending"}
+    tags = request_tags(BookRequest(book, media)) | {"murid"}
     client.get_torrents.return_value = [SimpleNamespace(hash="hash", tags=",".join(tags))]
     importer = Mock(dry_run=True)
     importer.library.contains_book.return_value = False
@@ -143,7 +152,7 @@ def test_delayed_audio_ingestion_stays_pending_without_download_timeout(book, mo
     result = importer.import_torrents([(b"torrent", book)])
     assert (result.added, result.imported, result.pending, result.failed) == (1, 0, 1, 0)
     client.remove_tag.assert_not_called()
-    client.add_tag.assert_called_once_with("hash", "murid_pending")
+    client.add_tag.assert_called_once_with("hash", "murid")
     library.contains_book.assert_not_called()
     notify.assert_not_called()
 
@@ -151,7 +160,7 @@ def test_delayed_audio_ingestion_stays_pending_without_download_timeout(book, mo
 @pytest.mark.parametrize("progress", [1, 0])
 @pytest.mark.parametrize("phase", ["copied", "copying"])
 def test_real_audio_backend_restarts_with_missing_source_and_no_second_download(
-    book, tmp_path, monkeypatch, progress, phase
+    book, tmp_path, monkeypatch, progress, phase, qbit_api, torrent_file
 ):
     library_path = tmp_path / "library"
     library_path.mkdir()
@@ -175,27 +184,16 @@ def test_real_audio_backend_restarts_with_missing_source_and_no_second_download(
             scan_timeout_seconds=1,
         ),
     )
-    torrents = []
-    api = Mock()
+    api = qbit_api
+    torrents = api.items
+    add = api.torrents_add.side_effect
 
-    def add(**kwargs):
-        torrents.append(
-            SimpleNamespace(
-                hash="hash", comment="", tags=kwargs["tags"], progress=1, content_path=str(source)
-            )
-        )
-        return SimpleNamespace(added_torrent_ids=["hash"])
+    def add_with_source(**kwargs):
+        result = add(**kwargs)
+        torrents[0].content_path = str(source)
+        return result
 
-    def remove(*, tags, torrent_hashes):
-        torrents[0].tags = ",".join(tag for tag in torrents[0].tags.split(",") if tag != tags)
-
-    def tag(*, tags, torrent_hashes):
-        torrents[0].tags = ",".join(sorted(set(torrents[0].tags.split(",")) | {tags}))
-
-    api.torrents_add.side_effect = add
-    api.torrents_remove_tags.side_effect = remove
-    api.torrents_add_tags.side_effect = tag
-    api.torrents_info.side_effect = lambda **kwargs: torrents
+    api.torrents_add.side_effect = add_with_source
     client = Qbittorrent(QbittorrentConfig(api, "murid", False))
 
     def importer(media):
@@ -210,7 +208,7 @@ def test_real_audio_backend_restarts_with_missing_source_and_no_second_download(
             )
         )
 
-    first = importer("audiobook").import_torrents([(b"torrent", book)])
+    first = importer("audiobook").import_torrents([(torrent_file, book)])
     assert first.pending == 1 and first.failed == 0
     # Publication may finish before its new journal phase is persisted.
     store = AudiobookStore(str(library_path), "library", str(tmp_path / "staging"))
@@ -225,10 +223,11 @@ def test_real_audio_backend_restarts_with_missing_source_and_no_second_download(
     recovery = RetryRecovery(importer, lambda work_id: book)
     restarted = RetryService(client, None, Mock(), lambda: [], recovery=recovery)
     assert restarted.retry_torrents() == {BookRequest(book, "audiobook")}
-    assert "murid_pending" in torrents[0].tags
+    assert "murid" in torrents[0].tags
     clock["ingested"] = True
     assert restarted.retry_imports().imported == 1
-    assert set(torrents[0].tags.split(",")) == {"murid_media_audiobook", "murid_hardcover_42"}
+    assert torrents[0].tags == ""
+    assert read_request(torrents[0]) == ("audiobook", 42)
     assert len(list(library_path.rglob(".murid-import.json"))) == 1
     assert restarted.retry_imports().imported == 0
     api.torrents_add.assert_called_once()
@@ -263,39 +262,41 @@ def test_verified_audio_import_does_not_check_general_library_presence(book, mon
 @pytest.mark.parametrize(
     "other_tags",
     [
-        "murid_pending,murid_media_audiobook,murid_media_ebook,murid_hardcover_42",
-        "murid_pending,murid_media_audiobook,murid_hardcover_42,murid_hardcover_99",
-        "murid_pending,murid_media_audiobook",
-        "murid_pending,murid_hardcover_42",
+        "murid,murid_media_audiobook,murid_media_ebook,murid_hardcover_42",
+        "murid,murid_media_audiobook,murid_hardcover_42,murid_hardcover_99",
+        "murid,murid_media_audiobook",
+        "murid,murid_hardcover_42",
     ],
 )
-def test_adding_shared_or_unidentified_torrent_cannot_start_import(book, other_tags):
-    api = Mock()
-    api.torrents_add.return_value = SimpleNamespace(added_torrent_ids=["hash"])
-    api.torrents_info.return_value = [SimpleNamespace(tags=other_tags)]
+def test_adding_shared_or_unidentified_torrent_cannot_start_import(
+    book, other_tags, qbit_api, torrent_file
+):
+    api = qbit_api
+    api.items = [
+        SimpleNamespace(
+            hash=TorrentMetainfo(torrent_file).hashes[0],
+            category="murid",
+            comment="",
+            tags=other_tags,
+        )
+    ]
     client = Qbittorrent(QbittorrentConfig(api, "murid", False))
     with pytest.raises(QbittorrentError):
-        client.add_torrent(b"torrent", book, media_type="audiobook")
-    api.torrents_remove_tags.assert_not_called()
+        client.add_torrent(torrent_file, book, media_type="audiobook")
+    api.torrents_add.assert_not_called()
 
 
-def test_conflicting_shared_hash_aborts_batch_before_importing_either_work(book):
-    api = Mock()
-    persisted = set()
-
-    def add(**kwargs):
-        persisted.update(kwargs["tags"].split(","))
-        return SimpleNamespace(added_torrent_ids=["shared"])
-
-    api.torrents_add.side_effect = add
-    api.torrents_info.side_effect = lambda **kwargs: [SimpleNamespace(tags=",".join(persisted))]
-    api.torrents_remove_tags.side_effect = lambda **kwargs: persisted.discard(kwargs["tags"])
+def test_conflicting_shared_hash_aborts_batch_before_importing_either_work(
+    book, qbit_api, torrent_file
+):
+    api = qbit_api
     client = Qbittorrent(QbittorrentConfig(api, "murid", False))
     library = Mock()
     importer = TorrentImportService(TorrentImportConfig(client, library, BookMatcher(), Mock()))
     other = Book("Dune Messiah", book.authors, 99, [], "hardcover")
-    with pytest.raises(QbittorrentError, match="conflicting Hardcover"):
-        importer.import_torrents([(b"pack", book), (b"pack", other)])
+    with pytest.raises(QbittorrentError, match="conflicting"):
+        importer.import_torrents([(torrent_file, book), (torrent_file, other)])
     library.import_book.assert_not_called()
-    assert "murid_pending" in persisted
-    assert {"murid_hardcover_42", "murid_hardcover_99"} <= persisted
+    assert api.items[0].tags == "murid"
+    assert read_request(api.items[0]) == ("ebook", 42)
+    api.torrents_add.assert_called_once()

@@ -2,16 +2,24 @@
 
 import logging
 import ntpath
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from uuid import uuid4
 
 import qbittorrentapi
 
 from ...domain.book import Book
 from ...domain.book_request import BookRequest, MediaType
-from ...domain.torrent_request import read_request_tags, request_tags
+from ...domain.torrent_metadata import TorrentMetainfo
+from ...domain.torrent_request import (
+    TAG_ALIASES,
+    read_request,
+    read_request_comment,
+    request_identity,
+    torrent_tags,
+    write_request_comment,
+)
 from .torrent_client import TorrentClient
 
 logger = logging.getLogger("murid")
@@ -41,6 +49,7 @@ class Qbittorrent(TorrentClient):
         self.poll_interval = poll_interval
         self.dry_run = config.dry_run
         self.mapping = config.mapping
+        self._cleaned_tags = False
         self._validate()
 
     def _validate(self) -> None:
@@ -58,39 +67,40 @@ class Qbittorrent(TorrentClient):
         self, torrent_file: bytes, book: Book, *, media_type: MediaType = "ebook"
     ) -> str | None:
         """Add a torrent to qBittorrent and return its ID."""
-        tracking_tag = f"murid_add_{uuid4().hex}"
-        identity_tags = request_tags(BookRequest(book, media_type))
+        if self.dry_run:
+            return None
+        identity = request_identity(BookRequest(book, media_type))
+        try:
+            metainfo = TorrentMetainfo(torrent_file)
+            torrent_file = metainfo.with_identity(identity)
+        except ValueError as error:
+            raise QbittorrentError(f"Invalid torrent metainfo: {error}") from error
+        if not self._cleaned_tags:
+            self.get_torrents(migrate=True, media_type=media_type)
+        hashes = "|".join(metainfo.hashes)
+        existing = self._existing_torrent(hashes, identity)
+        if existing is not None:
+            return existing
         try:
             tinfo = self.client.torrents_add(
                 torrent_files=torrent_file,
                 category=self.category,
-                tags=",".join([tracking_tag, "murid_pending", *sorted(identity_tags)]),
+                tags="murid",
             )
 
             if isinstance(tinfo, str):
                 if tinfo.strip() != "Ok.":
                     logger.error("%s: failed to add to qBittorrent: %s", book, tinfo)
                     return None
-                # Older APIs acknowledge the add without returning its hash. A unique
-                # tag identifies this request even when other downloads arrive concurrently.
-                torrent_ids = []
-                for _ in range(10):
-                    torrents = self.client.torrents_info(category=self.category, tag=tracking_tag)
-                    torrent_ids = [torrent.hash for torrent in torrents]
-                    if torrent_ids:
-                        break
-                    time.sleep(self.poll_interval)
-            else:
-                torrent_ids = tinfo.added_torrent_ids
-
-            if len(torrent_ids) != 1:
+            elif len(tinfo.added_torrent_ids) != 1:
                 logger.error("%s: could not identify the added torrent", book)
                 return None
-            torrent_id = torrent_ids[0]
-            self._verify_identity(torrent_id, media_type, identity_tags)
-            self.remove_tag(torrent_id, tracking_tag)
-            logger.info("%s: added to qBittorrent", book)
-            return torrent_id
+
+            torrent_id = self._await_torrent(hashes, identity)
+            if torrent_id is not None:
+                logger.info("%s: added to qBittorrent", book)
+                return torrent_id
+            logger.error("%s: could not identify the added torrent", book)
 
         except qbittorrentapi.UnsupportedMediaType415Error:
             logger.error("%s: failed to add to qBittorrent: unsupported media type", book)
@@ -102,20 +112,112 @@ class Qbittorrent(TorrentClient):
             logger.error("%s: failed to add to qBittorrent: torrent already downloaded", book)
         return None
 
-    def _verify_identity(self, torrent_id, media_type, expected_tags) -> None:
-        """Abort the batch if a shared hash acquired conflicting request identity."""
-        torrents = self.client.torrents_info(category=self.category, torrent_hashes=torrent_id)
-        if len(torrents) != 1 or not isinstance(torrents[0].tags, str):
-            raise QbittorrentError(f"Could not verify persisted request tags for {torrent_id}")
-        tags = {tag.strip() for tag in torrents[0].tags.split(",")}
+    def _existing_torrent(self, hashes, identity) -> str | None:
+        """Reuse a matching request without overwriting another book or category."""
+        existing = self.client.torrents_info(torrent_hashes=hashes)
+        if not existing:
+            return None
+        if len(existing) != 1:
+            raise QbittorrentError("Multiple torrents match the request's info hashes")
+        torrent = existing[0]
+        self._load_comment(torrent)
         try:
-            medium, _ = read_request_tags(tags)
+            if read_request(torrent) != identity or (
+                read_request_comment(torrent.comment) is None
+                and not any(tag.startswith("murid_media_") for tag in torrent_tags(torrent))
+            ):
+                raise ValueError("Torrent has conflicting or missing Murid request identity")
         except ValueError as error:
-            raise QbittorrentError(
-                f"{error}; inspect torrent {torrent_id} before retrying"
-            ) from None
-        if medium != media_type or not expected_tags <= tags or "murid_pending" not in tags:
-            raise QbittorrentError(f"Request tags were not persisted; inspect torrent {torrent_id}")
+            raise QbittorrentError(f"{error}; inspect torrent {torrent.hash}") from error
+        if torrent.category != self.category:
+            raise QbittorrentError(f"Torrent {torrent.hash} already belongs to another category")
+        self._migrate_torrent(torrent)
+        self.add_tag(torrent.hash, "murid")
+        return torrent.hash
+
+    def _await_torrent(self, hashes, identity) -> str | None:
+        """Resolve adds by their exact hash, including APIs that only return 'Ok.'."""
+        for attempt in range(10):
+            torrents = self.client.torrents_info(category=self.category, torrent_hashes=hashes)
+            if torrents:
+                if len(torrents) != 1:
+                    raise QbittorrentError("Multiple torrents match the added request")
+                torrent = torrents[0]
+                self._load_comment(torrent)
+                try:
+                    if (
+                        read_request_comment(torrent.comment) != identity
+                        or read_request(torrent) != identity
+                        or "murid" not in torrent_tags(torrent)
+                    ):
+                        raise ValueError("Request identity was not persisted")
+                except ValueError as error:
+                    raise QbittorrentError(f"{error}; inspect torrent {torrent.hash}") from error
+                return torrent.hash
+            if attempt < 9:
+                time.sleep(self.poll_interval)
+        return None
+
+    def _load_comment(self, torrent) -> None:
+        """Older list endpoints omit comments; read the torrent's properties instead."""
+        if not isinstance(getattr(torrent, "comment", None), str):
+            torrent.comment = self.client.torrents_properties(torrent_hash=torrent.hash).comment
+
+    @staticmethod
+    def _obsolete_tag(tag: str) -> bool:
+        return tag in TAG_ALIASES or bool(
+            re.fullmatch(
+                r"murid_(?:add_[0-9a-f]{32}|hardcover_[1-9][0-9]*|media_(?:ebook|audiobook))", tag
+            )
+        )
+
+    def _migrate_torrent(self, torrent) -> None:
+        """Publish and verify identity before removing its legacy representation."""
+        tags = torrent_tags(torrent)
+        identity_tags = {
+            tag for tag in tags if tag.startswith(("murid_media_", "murid_hardcover_"))
+        }
+        identity = read_request(torrent)
+        if identity_tags or tags & (set(TAG_ALIASES) | set(TAG_ALIASES.values())):
+            comment = write_request_comment(torrent.comment, identity)
+            if comment != torrent.comment:
+                self.client.torrents_set_comment(comment=comment, torrent_hashes=torrent.hash)
+                persisted = self.client.torrents_properties(torrent_hash=torrent.hash).comment
+                if persisted != comment.strip() or read_request_comment(persisted) != identity:
+                    raise QbittorrentError(
+                        f"Comment migration was not persisted for torrent {torrent.hash}; "
+                        "qBittorrent must support Web API 2.12.1 or newer"
+                    )
+                torrent.comment = persisted
+        for old, new in TAG_ALIASES.items():
+            if old in tags:
+                self.add_tag(torrent.hash, new)
+                tags.add(new)
+        required = {new for old, new in TAG_ALIASES.items() if old in tags}
+        if required:
+            persisted = self.client.torrents_info(torrent_hashes=torrent.hash)
+            if len(persisted) != 1 or not required <= torrent_tags(persisted[0]):
+                raise QbittorrentError(
+                    f"Lifecycle tag migration was not persisted for {torrent.hash}"
+                )
+        obsolete = identity_tags | {
+            tag
+            for tag in tags
+            if tag in TAG_ALIASES or re.fullmatch(r"murid_add_[0-9a-f]{32}", tag)
+        }
+        for tag in sorted(obsolete):
+            self.remove_tag(torrent.hash, tag)
+        torrent.tags = ",".join(sorted(tags - obsolete))
+
+    def _cleanup_tags(self) -> None:
+        """Delete only unused legacy definitions, checking torrents in all categories."""
+        obsolete = {tag for tag in self.client.torrents_tags() if self._obsolete_tag(tag)}
+        if obsolete:
+            used = set().union(*(torrent_tags(t) for t in self.client.torrents_info()))
+            unused = obsolete - used
+            if unused:
+                self.client.torrents_delete_tags(tags=",".join(sorted(unused)))
+        self._cleaned_tags = True
 
     def get_completed_path(self, torrent_id: str) -> str | None:
         """Get the completed path of a torrent by its ID, or None if it's not yet completed."""
@@ -150,21 +252,40 @@ class Qbittorrent(TorrentClient):
 
     def add_tag(self, torrent_id: str, tag: str) -> None:
         """Add a tag to a torrent by its ID."""
-        self.client.torrents_add_tags(tags=tag, torrent_hashes=torrent_id)
+        if not self.dry_run:
+            self.client.torrents_add_tags(tags=TAG_ALIASES.get(tag, tag), torrent_hashes=torrent_id)
 
     def remove_tag(self, torrent_id: str, tag: str) -> None:
         """Remove a tag from a torrent by its ID."""
-        self.client.torrents_remove_tags(tags=tag, torrent_hashes=torrent_id)
+        if not self.dry_run:
+            self.client.torrents_remove_tags(tags=tag, torrent_hashes=torrent_id)
 
     def get_torrents_with_tag(self, tag: str) -> list:
         """Get a list of torrent IDs that have the specified tag."""
+        canonical = TAG_ALIASES.get(tag, tag)
         torrents = [
             t
-            for t in self.client.torrents_info(category=self.category, tag=tag)
-            if tag in {value.strip() for value in (t.tags or "").split(",")}
+            for t in self.client.torrents_info(category=self.category)
+            if canonical in {TAG_ALIASES.get(value, value) for value in torrent_tags(t)}
         ]
+        for torrent in torrents:
+            self._load_comment(torrent)
         return torrents
 
-    def get_torrents(self) -> list:
-        """Return torrents in Murid's configured qBittorrent category."""
-        return self.client.torrents_info(category=self.category)
+    def get_torrents(self, *, migrate: bool = False, media_type: MediaType | None = None) -> list:
+        """Read and optionally migrate selected media, retaining invalid identity for reporting."""
+        torrents = self.client.torrents_info(category=self.category)
+        selected = []
+        for torrent in torrents:
+            self._load_comment(torrent)
+            try:
+                if media_type is not None and read_request(torrent)[0] != media_type:
+                    continue
+                if migrate and not self.dry_run:
+                    self._migrate_torrent(torrent)
+            except ValueError as error:
+                logger.error("Torrent %s: invalid request metadata: %s", torrent.hash, error)
+            selected.append(torrent)
+        if migrate and not self.dry_run:
+            self._cleanup_tags()
+        return selected if media_type is not None else torrents
