@@ -26,6 +26,7 @@ dependencies = [
   "croniter",
   "apprise",
   "pydantic>=2,<3",
+  "pycountry",
 ]
 
 dynamic = [ "version" ]

@@ -12,6 +12,62 @@ def hardcover():
     return Hardcover("api-key", HardcoverUser(id=123, name="Test User"))
 
 
+@pytest.mark.parametrize("language,codes,expected", [
+    ("en-US", ["ENG"], True),
+    ("en_GB", ["eng"], True),
+    (" English ", [" ENG "], True),
+    ({"language": "Swedish"}, ["SWE"], True),
+    ("German", ["GER"], True),
+    ("de", ["DEU"], True),
+    ("de-DE", ["GER"], True),
+    ("ger", ["DEU"], True),
+    ("deu", ["GER"], True),
+    ("French", ["FRE"], True),
+    ("Welsh", ["WEL"], True),
+    ("cy", ["CYM"], True),
+    ("sq", ["ALB"], True),
+    ("Albanian", ["SQI"], True),
+    ("Albanian", ["ENG"], False),
+    ("Greek", ["ENG"], False),
+    ("Greek", ["ELL"], True),
+    ("Greek", ["GRE"], True),
+    ("Malay", ["ENG"], False),
+    ("Malay", ["MSA"], True),
+    ({"language": "Malay"}, ["MAY"], True),
+    ("sv-SE", ["ENG"], False),
+    ("SWE", ["ENG"], False),
+    ("Swedish", ["ENG"], False),
+    ("not-a-language", ["ENG"], None),
+    ("", ["ENG"], None),
+    (None, ["ENG"], None),
+    ({"id": 1}, ["ENG"], None),
+])
+def test_language_matching_uses_iso_codes_names_and_bibliographic_aliases(
+    language, codes, expected
+):
+    assert Hardcover._language_value_matches(language, codes) is expected
+
+
+def test_search_titles_filter_known_languages_and_preserve_unknown_metadata():
+    book = {
+        "title": "Dune",
+        "alternative_titles": {
+            "en-US": "Dune: English title",
+            "sv-SE": "Dune: Swedish title",
+            "zz-ZZ": "Dune: Unknown language",
+        },
+    }
+    editions = [
+        {"title": "Dune: German edition", "language": {"language": "German"}},
+        {"title": "Dune: Greek edition", "language": "Greek"},
+        {"title": "Dune: Malay edition", "language": {"language": "Malay"}},
+        {"title": "Dune: Unknown edition", "language": "not-a-language"},
+    ]
+    assert Hardcover._extract_alternative_titles(book, editions, ["ENG"]) == [
+        "Dune: English title", "Dune: Unknown language", "Dune: Unknown edition",
+    ]
+
+
 def test_extract_isbn_none():
     assert Hardcover._extract_isbn(None) == []
 
