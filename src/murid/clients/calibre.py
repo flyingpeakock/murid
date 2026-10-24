@@ -97,7 +97,7 @@ class Calibre:
     @staticmethod
     def _book(book: dict) -> Book:
         """Map Calibre metadata to a book, normalizing identifiers and series position."""
-        identifiers = book.get("identifiers") or {}
+        identifiers = book.get("identifiers")
         if not isinstance(identifiers, dict):
             identifiers = {}
 

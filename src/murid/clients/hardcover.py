@@ -431,7 +431,7 @@ class Hardcover:
             for mapping in edition.get("book_mappings") or []:
                 add((mapping.get("platform") or {}).get("name"), mapping.get("external_id"))
 
-        return dict(identifiers)
+        return identifiers
 
     def get_books(self) -> set[Book]:
         """Fetch the user's selected list as a set of Book objects."""
