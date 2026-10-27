@@ -20,12 +20,12 @@ from ...domain.torrent_request import (
     torrent_tags,
     write_request_comment,
 )
-from .torrent_client import TorrentClient
+from .torrent_client import TorrentClient, TorrentClientError
 
 logger = logging.getLogger("murid")
 
 
-class QbittorrentError(Exception):
+class QbittorrentError(TorrentClientError):
     """A qBittorrent operation failed before it could start."""
 
 

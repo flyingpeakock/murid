@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from murid.clients.calibre import CalibreError
+from murid.clients.torrent_clients.qbittorrent import QbittorrentError
 from murid.domain.book import Book
 from murid.domain.book_matcher import BookMatcher
 from murid.libraries.calibre import CalibreLibrary
@@ -87,6 +88,24 @@ def test_successful_import(service, torrent_client, calibre, matcher, book):
     torrent_client.add_torrent.assert_called_once()
     calibre.add_book.assert_called_once_with(book, str(Path("/downloads/dune")))
     assert (result.added, result.imported, result.pending, result.failed) == (1, 1, 0, 0)
+
+
+def test_rejected_torrent_does_not_abort_other_imports(
+    service, torrent_client, calibre, book, caplog
+):
+    torrent_client.add_torrent.side_effect = [
+        "accepted",
+        QbittorrentError("Conflicting request identity; inspect torrent rejected"),
+        "also-accepted",
+    ]
+    torrent_client.get_completed_path.return_value = "/downloads/dune"
+
+    result = service.import_torrents([(b"torrent", book)] * 3)
+
+    assert (result.added, result.imported, result.failed) == (2, 2, 1)
+    assert calibre.add_book.call_count == 2
+    assert "inspect torrent rejected" in caplog.text
+    assert "Dune" in caplog.text
 
 
 def test_import_selects_requested_file_from_completed_pack(

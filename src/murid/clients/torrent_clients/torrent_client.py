@@ -6,6 +6,10 @@ from ...domain.book import Book
 from ...domain.book_request import MediaType
 
 
+class TorrentClientError(Exception):
+    """A torrent operation was rejected and requires attention."""
+
+
 class TorrentClient(ABC):
     """Abstract base class for torrent clients."""
 

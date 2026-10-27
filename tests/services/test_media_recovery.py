@@ -286,17 +286,17 @@ def test_adding_shared_or_unidentified_torrent_cannot_start_import(
     api.torrents_add.assert_not_called()
 
 
-def test_conflicting_shared_hash_aborts_batch_before_importing_either_work(
+def test_conflicting_shared_hash_rejects_only_conflicting_work(
     book, qbit_api, torrent_file
 ):
     api = qbit_api
     client = Qbittorrent(QbittorrentConfig(api, "murid", False))
     library = Mock()
+    library.resume_import.return_value = False
     importer = TorrentImportService(TorrentImportConfig(client, library, BookMatcher(), Mock()))
     other = Book("Dune Messiah", book.authors, 99, [], "hardcover")
-    with pytest.raises(QbittorrentError, match="conflicting"):
-        importer.import_torrents([(torrent_file, book), (torrent_file, other)])
-    library.import_book.assert_not_called()
-    assert api.items[0].tags == "murid"
+    result = importer.import_torrents([(torrent_file, book), (torrent_file, other)])
+    assert (result.added, result.imported, result.failed) == (1, 1, 1)
+    library.import_book.assert_called_once_with(book, "/downloads/Dune", importer.matcher)
     assert read_request(api.items[0]) == ("ebook", 42)
     api.torrents_add.assert_called_once()

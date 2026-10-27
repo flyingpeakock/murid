@@ -7,7 +7,7 @@ from typing import Callable, Iterable
 
 import apprise
 
-from ..clients.torrent_clients.torrent_client import TorrentClient
+from ..clients.torrent_clients.torrent_client import TorrentClient, TorrentClientError
 from ..domain.book import Book
 from ..domain.book_matcher import BookMatcher
 from ..domain.book_request import MediaType
@@ -79,9 +79,14 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
         pending = {}  # torrent_id -> book
 
         for torrent_file, book in torrent_files:
-            torrent_id = self.torrent_client.add_torrent(
-                torrent_file, book, media_type=self.media_type
-            )
+            try:
+                torrent_id = self.torrent_client.add_torrent(
+                    torrent_file, book, media_type=self.media_type
+                )
+            except TorrentClientError as error:
+                logger.error("%s [%s]: could not add torrent: %s", book, self.media_type, error)
+                result.failed += 1
+                continue
             if torrent_id:
                 if torrent_id in pending:
                     logger.error(
