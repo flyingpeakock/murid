@@ -1,6 +1,7 @@
 """Abstract base class for torrent clients."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 
 from ...domain.book import Book
 from ...domain.book_request import MediaType
@@ -40,5 +41,11 @@ class TorrentClient(ABC):
         """Get a list of torrent ID's that have the specified tag"""
 
     @abstractmethod
-    def get_torrents(self, *, migrate: bool = False, media_type: MediaType | None = None) -> list:
-        """Read and optionally migrate selected media in Murid's configured category."""
+    def get_torrents(
+        self,
+        *,
+        migrate: bool = False,
+        media_type: MediaType | None = None,
+        on_error: Callable[[object, BaseException], None] | None = None,
+    ) -> list:
+        """Read selected media, reporting per-torrent preparation failures via on_error."""

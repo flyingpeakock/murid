@@ -187,12 +187,16 @@ def test_mixed_sync_acquires_only_missing_medium(factory):
     factory.torrent_import.assert_called_once_with("audiobook")
 
 
-def test_unidentifiable_recovery_stops_new_discovery(factory):
+def test_unidentifiable_recovery_does_not_stop_new_discovery(factory):
     from murid.services.retry_service import RetryImportResult
 
     factory.retry_service.return_value.retry_torrents.return_value = set()
     factory.retry_service.return_value.last_result = RetryImportResult(skipped=1)
+    book = Book("Dune", [], 42, [], "hardcover")
+    factory.wanted_requests.return_value = {BookRequest(book)}
+    factory.library.return_value.get_books.return_value = []
+    factory.matcher.return_value.match_books.return_value = []
+    factory.torrent_discovery.return_value.download_torrents.return_value = []
     assert SyncService(factory).run() is False
-    factory.wanted_requests.assert_not_called()
-    factory.torrent_discovery.assert_not_called()
+    factory.torrent_discovery.return_value.download_torrents.assert_called_once()
     factory.torrent_import.assert_not_called()

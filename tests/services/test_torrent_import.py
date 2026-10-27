@@ -380,3 +380,59 @@ def test_dry_run_does_not_resume_published_audio(service, torrent_client, book):
     service.library.resume_import.assert_not_called()
     service.library.import_book.assert_not_called()
     torrent_client.add_tag.assert_not_called()
+
+
+@pytest.mark.parametrize("error", [RuntimeError("unexpected"), SystemExit(1)])
+def test_unexpected_add_error_continues_batch(service, torrent_client, book, error, caplog):
+    torrent_client.add_torrent.side_effect = [error, "ok"]
+    service.process_torrent = MagicMock(return_value=True)
+    service.last_outcome = "imported"
+    result = service.import_torrents([(b"bad", book), (b"good", book)])
+    assert (result.added, result.imported, result.failed) == (1, 1, 1)
+    service.process_torrent.assert_called_once_with("ok", book)
+    assert "could not add torrent" in caplog.text
+
+
+@pytest.mark.parametrize("stage", ["resume", "path", "import", "notify", "cleanup"])
+def test_book_error_continues_importing_next_book(service, torrent_client, book, stage, caplog):
+    service.library = MagicMock(name="library")
+    service.library.resume_import.return_value = False
+    service.library.contains_book.return_value = True
+    torrent_client.add_torrent.side_effect = ["bad", "good"]
+    torrent_client.get_completed_path.return_value = "/downloads/book"
+    failure = RuntimeError(f"{stage} broke")
+    if stage == "resume":
+        service.library.resume_import.side_effect = [failure, False]
+    elif stage == "path":
+        torrent_client.get_completed_path.side_effect = [
+            failure,
+            "/downloads/book",
+            "/downloads/book",
+        ]
+    elif stage == "import":
+        service.library.import_book.side_effect = [failure, None]
+    elif stage == "notify":
+        service.notify.side_effect = [failure, None]
+    else:
+        torrent_client.remove_tag.side_effect = [failure, None, None, None]
+
+    result = service.import_torrents([(b"bad", book), (b"good", book)])
+
+    assert (result.added, result.imported, result.failed) == (2, 1, 1)
+    assert service.library.import_book.call_args.args[0] == book
+    assert f"{stage} broke" in caplog.text
+    assert "Dune" in caplog.text
+
+
+def test_keyboard_interrupt_still_stops_additions(service, torrent_client, book):
+    torrent_client.add_torrent.side_effect = KeyboardInterrupt
+    with pytest.raises(KeyboardInterrupt):
+        service.import_torrents([(b"torrent", book)])
+
+
+def test_timeout_reporting_error_does_not_skip_other_books(service, torrent_client, book, notify):
+    service.timeout = 0
+    notify.side_effect = [RuntimeError("notification failed"), None]
+    assert service._is_timeout(time.time() - 1, {"first": book, "second": book})
+    assert notify.call_count == 2
+    torrent_client.add_tag.assert_called_once_with("second", "murid-timeout")

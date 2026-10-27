@@ -213,10 +213,12 @@ def test_search_preview_reports_invalid_torrent_identity_without_blocking_candid
     recovery = workflow.run("run")
 
     assert recovery.code == 1
-    assert records(recovery, "sync_summary")[0]["skipped"] == 1
+    summary = records(recovery, "sync_summary")[0]
+    assert summary["skipped"] == 1
+    assert summary["imported"] == 1
     assert vars(torrent) == original
-    assert workflow.api.added_files == []
-    assert workflow.database.read_text() == "[]"
+    assert len(workflow.api.added_files) == 1
+    assert workflow.database.read_text() != "[]"
 
 
 @pytest.mark.parametrize("present", [False, True])

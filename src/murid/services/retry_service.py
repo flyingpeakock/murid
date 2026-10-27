@@ -94,48 +94,76 @@ class RetryService:
         incomplete = set()
         counts = dict.fromkeys(("imported", "already_present", "pending", "failed", "skipped"), 0)
         by_media = {}
-        selected_media = self._recovery.media_type if self._recovery else None
-        for torrent in self.torrent_client.get_torrents(migrate=True, media_type=selected_media):
-            tags = {tag.strip() for tag in (torrent.tags or "").split(",")}
-            relevant = tags & _IMPORT_TAGS
-            if not relevant:
-                continue
+
+        def preparation_failed(torrent, error):
+            logger.error("Torrent %s: could not prepare request for retry: %s", torrent.hash, error)
+            counts["skipped"] += 1
+
+        for torrent in self.torrent_client.get_torrents(
+            migrate=True,
+            media_type=self._recovery.media_type if self._recovery else None,
+            on_error=preparation_failed,
+        ):
+            request = None
             try:
-                media, _ = read_request(torrent)
-                if self._recovery and self._recovery.media_type not in {None, media}:
+                tags = {tag.strip() for tag in (torrent.tags or "").split(",")}
+                relevant = tags & _IMPORT_TAGS
+                if not relevant:
                     continue
-                request = self._request(torrent)
-            except ValueError as error:
-                logger.error(
-                    "Torrent %s: %s; inspect its Murid metadata before retrying",
-                    torrent.hash,
-                    error,
+                try:
+                    media, _ = read_request(torrent)
+                    if self._recovery and self._recovery.media_type not in {None, media}:
+                        continue
+                    request = self._request(torrent)
+                except ValueError as error:
+                    logger.error(
+                        "Torrent %s: %s; inspect its Murid metadata before retrying",
+                        torrent.hash,
+                        error,
+                    )
+                    request = None
+                if request is None:
+                    logger.warning(
+                        "Skipping torrent %s: could not identify its request", torrent.hash
+                    )
+                    counts["skipped"] += 1
+                    continue
+                importer = self._importer(request.media_type)
+                outcome = self._retry_request(torrent.hash, request, importer)
+                if outcome in {"pending", "failed"}:
+                    incomplete.add(request)
+                elif not importer.dry_run:
+                    for tag in (*IMPORT_TAGS, *TAG_ALIASES):
+                        if tag in relevant:
+                            self.torrent_client.remove_tag(torrent.hash, tag)
+                counts[outcome] += 1
+                media_counts = by_media.setdefault(
+                    request.media_type, {"destination": importer.library.name}
                 )
-                request = None
-            if request is None:
-                logger.warning("Skipping torrent %s: could not identify its request", torrent.hash)
-                counts["skipped"] += 1
-                continue
-            importer = self._importer(request.media_type)
-            outcome = self._retry_request(torrent.hash, request, importer)
-            counts[outcome] += 1
-            media_counts = by_media.setdefault(
-                request.media_type, {"destination": importer.library.name}
-            )
-            media_counts[outcome] = media_counts.get(outcome, 0) + 1
-            logger.info(
-                "%s [%s → %s]: %s",
-                request.book,
-                request.media_type,
-                importer.library.name,
-                outcome.replace("_", " "),
-            )
-            if outcome in {"pending", "failed"}:
-                incomplete.add(request)
-            elif not importer.dry_run:
-                for tag in (*IMPORT_TAGS, *TAG_ALIASES):
-                    if tag in relevant:
-                        self.torrent_client.remove_tag(torrent.hash, tag)
+                media_counts[outcome] = media_counts.get(outcome, 0) + 1
+                logger.info(
+                    "%s [%s → %s]: %s",
+                    request.book,
+                    request.media_type,
+                    importer.library.name,
+                    outcome.replace("_", " "),
+                )
+            except (Exception, SystemExit) as error:  # pylint: disable=broad-exception-caught
+                logger.error(
+                    "Torrent %s%s: retry failed: %s",
+                    torrent.hash,
+                    f" ({request.book} [{request.media_type}])" if request else "",
+                    error,
+                    exc_info=logger.isEnabledFor(logging.DEBUG),
+                )
+                if request is None:
+                    counts["skipped"] += 1
+                else:
+                    incomplete.add(request)
+                    counts["failed"] += 1
+                    media_counts = by_media.setdefault(request.media_type, {})
+                    media_counts["failed"] = media_counts.get("failed", 0) + 1
+
         self.last_result = RetryImportResult(**counts, by_media=by_media)
         return incomplete
 

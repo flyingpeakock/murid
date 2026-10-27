@@ -434,3 +434,29 @@ def test_path_mapping_respects_directories(client, monkeypatch, source, content,
         )
     )
     assert qbt.get_completed_path("abc123") == str(expected)
+
+
+@pytest.mark.parametrize("stage", ["properties", "migration"])
+def test_torrent_preparation_failure_does_not_hide_other_torrents(qbit_api, stage):
+    bad = legacy_torrent(hash="bad", comment=None if stage == "properties" else "")
+    good = legacy_torrent(hash="good")
+    qbit_api.items = [bad, good]
+    qbt = Qbittorrent(QbittorrentConfig(qbit_api, "murid", False))
+    if stage == "properties":
+        qbit_api.torrents_properties.side_effect = RuntimeError("cannot read properties")
+        migrate = False
+    else:
+        migrate = True
+        original = qbt._migrate_torrent
+
+        def migrate_one(torrent):
+            if torrent.hash == "bad":
+                raise RuntimeError("cannot migrate")
+            original(torrent)
+
+        qbt._migrate_torrent = migrate_one
+    errors = Mock()
+    assert qbt.get_torrents(migrate=migrate, on_error=errors) == [good]
+    assert errors.call_count == 1
+    assert errors.call_args.args[0] is bad
+    assert isinstance(errors.call_args.args[1], RuntimeError)

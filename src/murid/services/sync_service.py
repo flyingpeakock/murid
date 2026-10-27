@@ -88,10 +88,7 @@ class SyncService:
             isinstance(retry_service.last_result, RetryImportResult)
             and retry_service.last_result.skipped
         ):
-            logger.error(
-                "Request recovery is incomplete; resolve skipped torrents before discovery"
-            )
-            return self._summary(0, {}, ImportResult(), retry_service)
+            logger.error("Request recovery is incomplete; continuing discovery for other books")
 
         matcher = self.factory.matcher()
 

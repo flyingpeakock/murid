@@ -180,32 +180,49 @@ class TorrentDiscoveryService:
             book = request.book
             try:
                 _, tor_list = future.result()
-            except MAMSearchError as error:
+            except (Exception, SystemExit) as error:  # pylint: disable=broad-exception-caught
                 self.last_counts["failed"] += 1
                 self.last_counts["search_failed"] = self.last_counts.get("search_failed", 0) + 1
-                logger.warning("Search skipped: %s; continuing with other books", error)
-                continue
-
-            failed_ids = failed_import_mam_ids[request.media_type]
-            if failed_ids:
-                tor_list = {
-                    torrent for torrent in tor_list if str(torrent.book.id) not in failed_ids
-                }
-
-            if not tor_list:
-                logger.info(
-                    "%s: no eligible torrents found; use murid search-book to investigate", book
+                logger.error(
+                    "%s [%s]: search failed: %s; continuing with other books",
+                    book,
+                    request.media_type,
+                    error,
+                    exc_info=logger.isEnabledFor(logging.DEBUG),
                 )
                 continue
 
-            torrent = self.torrent_selectors[request.media_type].select(book, tor_list, matcher)
+            try:
+                failed_ids = failed_import_mam_ids[request.media_type]
+                if failed_ids:
+                    tor_list = {
+                        torrent for torrent in tor_list if str(torrent.book.id) not in failed_ids
+                    }
 
-            if not torrent:
-                continue
+                if not tor_list:
+                    logger.info(
+                        "%s: no eligible torrents found; use murid search-book to investigate", book
+                    )
+                    continue
 
-            download_future = executor.submit(self.mam.download_torrent, torrent)
-            self.last_counts["selected"] += 1
-            download_futures[download_future] = request
+                torrent = self.torrent_selectors[request.media_type].select(book, tor_list, matcher)
+
+                if not torrent:
+                    continue
+
+                download_future = executor.submit(self.mam.download_torrent, torrent)
+                self.last_counts["selected"] += 1
+                download_futures[download_future] = request
+            except (Exception, SystemExit) as error:  # pylint: disable=broad-exception-caught
+                self.last_counts["failed"] += 1
+                logger.error(
+                    "%s [%s]: torrent selection failed: %s",
+                    book,
+                    request.media_type,
+                    error,
+                    exc_info=logger.isEnabledFor(logging.DEBUG),
+                )
+
         return download_futures
 
     def collect_downloads(
@@ -218,7 +235,18 @@ class TorrentDiscoveryService:
         seen = set()
         # As above, preserve the order in which downloads were submitted.
         for future, request in download_futures.items():
-            torrent_file = future.result()
+            try:
+                torrent_file = future.result()
+            except (Exception, SystemExit) as error:  # pylint: disable=broad-exception-caught
+                self.last_counts["failed"] += 1
+                logger.error(
+                    "%s [%s]: torrent download failed: %s",
+                    request.book,
+                    request.media_type,
+                    error,
+                    exc_info=logger.isEnabledFor(logging.DEBUG),
+                )
+                continue
             if torrent_file:
                 download = (torrent_file, request)
                 if download not in seen:

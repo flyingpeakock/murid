@@ -7,7 +7,7 @@ from typing import Callable, Iterable
 
 import apprise
 
-from ..clients.torrent_clients.torrent_client import TorrentClient, TorrentClientError
+from ..clients.torrent_clients.torrent_client import TorrentClient
 from ..domain.book import Book
 from ..domain.book_matcher import BookMatcher
 from ..domain.book_request import MediaType
@@ -83,8 +83,14 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
                 torrent_id = self.torrent_client.add_torrent(
                     torrent_file, book, media_type=self.media_type
                 )
-            except TorrentClientError as error:
-                logger.error("%s [%s]: could not add torrent: %s", book, self.media_type, error)
+            except (Exception, SystemExit) as error:  # pylint: disable=broad-exception-caught
+                logger.error(
+                    "%s [%s]: could not add torrent: %s",
+                    book,
+                    self.media_type,
+                    error,
+                    exc_info=logger.isEnabledFor(logging.DEBUG),
+                )
                 result.failed += 1
                 continue
             if torrent_id:
@@ -116,15 +122,28 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
             completed = []
 
             for torrent_id, book in pending.items():
-                if self.process_torrent(torrent_id, book):
-                    completed.append(torrent_id)
-                    if self.last_outcome == "imported":
-                        self.clear_import_tags(torrent_id)
-                        result.imported += 1
-                    elif self.last_outcome == "pending":
-                        result.pending += 1
-                    else:
-                        result.failed += 1
+                try:
+                    if self.process_torrent(torrent_id, book):
+                        completed.append(torrent_id)
+                        if self.last_outcome == "imported":
+                            self.clear_import_tags(torrent_id)
+                            result.imported += 1
+                        elif self.last_outcome == "pending":
+                            result.pending += 1
+                        else:
+                            result.failed += 1
+                except (Exception, SystemExit) as error:  # pylint: disable=broad-exception-caught
+                    logger.error(
+                        "%s [%s]: torrent %s import failed: %s",
+                        book,
+                        self.media_type,
+                        torrent_id,
+                        error,
+                        exc_info=logger.isEnabledFor(logging.DEBUG),
+                    )
+                    if torrent_id not in completed:
+                        completed.append(torrent_id)
+                    result.failed += 1
 
             for tid in completed:
                 pending.pop(tid, None)
@@ -138,6 +157,22 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
         return result
 
     def process_torrent(self, torrent_id: str, book: Book) -> bool:
+        """Isolate a book's import failure, retaining its tags for a later retry."""
+        try:
+            return self._process_torrent(torrent_id, book)
+        except (Exception, SystemExit) as error:  # pylint: disable=broad-exception-caught
+            self.last_outcome = "failed"
+            logger.error(
+                "%s [%s]: torrent %s import failed: %s",
+                book,
+                self.media_type,
+                torrent_id,
+                error,
+                exc_info=logger.isEnabledFor(logging.DEBUG),
+            )
+            return True
+
+    def _process_torrent(self, torrent_id: str, book: Book) -> bool:
         """Resume published content or import a completed path through its library."""
         self.last_outcome = "pending"
         if self.dry_run:
@@ -206,16 +241,20 @@ class TorrentImportService:  # pylint: disable=too-many-instance-attributes
             )
             for tid, book in pending.items():
                 logger.warning("%s: still pending (torrent ID %s)", book, tid)
-                self.notify(
-                    title="Murid - Torrent download timeout",
-                    body=(
-                        f"The {self.media_type} torrent for {book} → {self.library.name} "
-                        "did not complete within "
-                        f"{self.timeout} seconds. If completed it will be imported "
-                        "in the next run, otherwise you may need to investigate the "
-                        "torrent client for issues."
-                    ),
-                )
-                self.torrent_client.add_tag(tid, "murid-timeout")
+                try:
+                    self.notify(
+                        title="Murid - Torrent download timeout",
+                        body=(
+                            f"The {self.media_type} torrent for {book} → {self.library.name} "
+                            "did not complete within "
+                            f"{self.timeout} seconds. If completed it will be imported "
+                            "in the next run, otherwise you may need to investigate the "
+                            "torrent client for issues."
+                        ),
+                    )
+                    self.torrent_client.add_tag(tid, "murid-timeout")
+                except (Exception, SystemExit) as error:  # pylint: disable=broad-exception-caught
+                    logger.error("%s: could not record download timeout: %s", book, error)
+
             return True
         return False

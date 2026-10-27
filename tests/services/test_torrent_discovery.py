@@ -45,13 +45,19 @@ def test_rejected_search_does_not_abort_other_book_downloads(mam, matcher, caplo
     assert "continuing with other books" in caplog.text
 
 
-def test_service_errors_still_abort_discovery(mam):
+@pytest.mark.parametrize(
+    "error", [MAMError("invalid session"), RuntimeError("broken"), SystemExit(1)]
+)
+def test_search_errors_do_not_abort_discovery(mam, error, caplog):
     future = Future()
-    future.set_exception(MAMError("invalid session"))
+    future.set_exception(error)
     service = TorrentDiscoveryService(mam, {"ebook": None})
     with ThreadPoolExecutor(max_workers=1) as executor:
-        with pytest.raises(MAMError, match="invalid session"):
-            service.submit_downloads(executor, {future: BookRequest(FakeBook("Book"))}, Mock())
+        assert not service.submit_downloads(
+            executor, {future: BookRequest(FakeBook("Book"))}, Mock()
+        )
+    assert service.last_counts["failed"] == service.last_counts["search_failed"] == 1
+    assert "search failed" in caplog.text
 
 
 class FakeBook:
@@ -558,3 +564,39 @@ def test_failed_import_filter_reports_invalid_identity_and_keeps_valid_ids(
     assert vars(invalid) == original
     client.add_tag.assert_not_called()
     client.remove_tag.assert_not_called()
+
+
+@pytest.mark.parametrize("stage", ["search", "selection", "download"])
+@pytest.mark.parametrize("error", [RuntimeError("unexpected"), SystemExit(1)])
+def test_book_failure_does_not_discard_other_downloads(mam, matcher, stage, error, caplog):
+    bad, good = BookRequest(FakeBook("Bad")), BookRequest(FakeBook("Good"))
+    bad_torrent, good_torrent = FakeTorrent(bad.book), FakeTorrent(good.book)
+    first, second = Future(), Future()
+    if stage == "search":
+        first.set_exception(error)
+    else:
+        first.set_result((bad, {bad_torrent}))
+    second.set_result((good, {good_torrent}))
+    selector = Mock()
+    selector.select.side_effect = (
+        [error, good_torrent]
+        if stage == "selection"
+        else ([good_torrent] if stage == "search" else [bad_torrent, good_torrent])
+    )
+    mam.download_torrent.side_effect = [error, b"ok"] if stage == "download" else [b"ok"]
+    service = TorrentDiscoveryService(mam, {"ebook": selector})
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        downloads = service.submit_downloads(executor, {first: bad, second: good}, matcher)
+        assert service.collect_downloads(downloads) == [(b"ok", good)]
+    assert service.last_counts["failed"] == 1
+    assert f"{stage if stage != 'selection' else 'torrent selection'} failed" in caplog.text
+
+
+def test_keyboard_interrupt_still_stops_discovery(mam):
+    future = Future()
+    future.set_exception(KeyboardInterrupt())
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with pytest.raises(KeyboardInterrupt):
+            TorrentDiscoveryService(mam, {"ebook": None}).submit_downloads(
+                executor, {future: BookRequest(FakeBook("Book"))}, Mock()
+            )

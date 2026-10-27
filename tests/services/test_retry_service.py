@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import Mock, call
+from unittest.mock import ANY, Mock, call
 
 import pytest
 
@@ -439,8 +439,7 @@ def test_hardcover_failure_keeps_downloads_tagged(
     ]
     mam.search.return_value = [make_torrent(book)]
     hardcover_books.side_effect = HardcoverError("unavailable")
-    with pytest.raises(HardcoverError, match="unavailable"):
-        service.retry_imports()
+    assert service.retry_imports().skipped == 1
     import_service.process_torrent.assert_not_called()
     torrent_client.remove_tag.assert_not_called()
 
@@ -471,7 +470,9 @@ def test_filtered_retry_does_not_resolve_or_modify_other_media(service, torrent_
     service._request = Mock(side_effect=AssertionError("Excluded request resolved"))
     result = service.retry_imports()
     assert result == type(result)()
-    torrent_client.get_torrents.assert_called_once_with(migrate=True, media_type=media)
+    torrent_client.get_torrents.assert_called_once_with(
+        migrate=True, media_type=media, on_error=ANY
+    )
     service._request.assert_not_called()
     torrent_client.remove_tag.assert_not_called()
 
@@ -484,3 +485,34 @@ def test_audio_retry_does_not_resolve_legacy_ebook(service, torrent_client):
     service._request = Mock(side_effect=AssertionError("Legacy ebook resolved"))
     assert service.retry_imports().skipped == 0
     service._request.assert_not_called()
+
+
+@pytest.mark.parametrize("stage", ["lookup", "presence", "import", "cleanup"])
+@pytest.mark.parametrize("error", [RuntimeError("unexpected"), SystemExit(1)])
+def test_retry_error_does_not_stop_next_torrent(
+    service, torrent_client, import_service, book, stage, error, caplog
+):
+    first = SimpleNamespace(hash="bad", tags="murid", comment="")
+    second = SimpleNamespace(hash="good", tags="murid", comment="")
+    torrent_client.get_torrents.return_value = [first, second]
+    request = BookRequest(book)
+    service._request = Mock(
+        side_effect=[error, request] if stage == "lookup" else [request, request]
+    )
+    import_service.library.contains_book.return_value = False
+    import_service.process_torrent.return_value = True
+    if stage == "presence":
+        import_service.library.contains_book.side_effect = [error, False]
+    elif stage == "import":
+        import_service.process_torrent.side_effect = [error, True]
+    elif stage == "cleanup":
+        torrent_client.remove_tag.side_effect = [error, None]
+
+    incomplete = service.retry_torrents()
+
+    assert service.last_result.imported == 1
+    assert service.last_result.skipped == (1 if stage == "lookup" else 0)
+    assert service.last_result.failed == (0 if stage == "lookup" else 1)
+    assert (request in incomplete) == (stage != "lookup")
+    assert ("good", "murid") in [call.args for call in torrent_client.remove_tag.call_args_list]
+    assert "retry failed" in caplog.text

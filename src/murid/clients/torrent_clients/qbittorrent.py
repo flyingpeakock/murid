@@ -4,6 +4,7 @@ import logging
 import ntpath
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
@@ -76,7 +77,13 @@ class Qbittorrent(TorrentClient):
         except ValueError as error:
             raise QbittorrentError(f"Invalid torrent metainfo: {error}") from error
         if not self._cleaned_tags:
-            self.get_torrents(migrate=True, media_type=media_type)
+            self.get_torrents(
+                migrate=True,
+                media_type=media_type,
+                on_error=lambda torrent, error: logger.error(
+                    "Torrent %s: metadata migration failed: %s", torrent.hash, error
+                ),
+            )
         hashes = "|".join(metainfo.hashes)
         existing = self._existing_torrent(hashes, identity)
         if existing is not None:
@@ -272,20 +279,31 @@ class Qbittorrent(TorrentClient):
             self._load_comment(torrent)
         return torrents
 
-    def get_torrents(self, *, migrate: bool = False, media_type: MediaType | None = None) -> list:
-        """Read and optionally migrate selected media, retaining invalid identity for reporting."""
+    def get_torrents(
+        self,
+        *,
+        migrate: bool = False,
+        media_type: MediaType | None = None,
+        on_error: Callable[[object, BaseException], None] | None = None,
+    ) -> list:
+        """Read selected media; on_error allows recovery to skip preparation failures."""
         torrents = self.client.torrents_info(category=self.category)
         selected = []
         for torrent in torrents:
-            self._load_comment(torrent)
             try:
+                self._load_comment(torrent)
                 if media_type is not None and read_request(torrent)[0] != media_type:
                     continue
                 if migrate and not self.dry_run:
                     self._migrate_torrent(torrent)
             except ValueError as error:
                 logger.error("Torrent %s: invalid request metadata: %s", torrent.hash, error)
+            except (Exception, SystemExit) as error:  # pylint: disable=broad-exception-caught
+                if on_error is None:
+                    raise
+                on_error(torrent, error)
+                continue
             selected.append(torrent)
         if migrate and not self.dry_run:
             self._cleanup_tags()
-        return selected if media_type is not None else torrents
+        return selected if media_type is not None or on_error is not None else torrents
