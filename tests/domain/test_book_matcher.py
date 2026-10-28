@@ -95,6 +95,35 @@ def test_author_similarity_matches_names_inside_joined_calibre_author_value():
     )
 
 
+@pytest.mark.parametrize(
+    "authors",
+    [["Sam Hughes, qntm"], ["Sam Hughes qntm"], ["Sam Hughes", "qntm"]],
+)
+def test_mononym_in_combined_author_field_is_assigned(authors):
+    matcher = BookMatcher()
+    hardcover = make_book(
+        title="There Is No Antimemetics Division", authors=["qntm"], source="hardcover"
+    )
+    calibre = make_book(title=hardcover.title, authors=authors, source="calibre")
+
+    assert matcher.is_match(hardcover, calibre)
+    assert matcher.is_match(calibre, hardcover)
+    assert matcher.match_books([calibre], [hardcover]) == {
+        (calibre, hardcover, matcher.similarity(hardcover, calibre))
+    }
+
+
+@pytest.mark.parametrize(
+    ("name", "combined"),
+    [("Hughes", "Sam Hughes"), ("S", "S Hughes qntm"), ("qntm", "Sam Hughes qntmx")],
+)
+def test_mononym_containment_requires_full_token_and_combined_names(name, combined):
+    matcher = BookMatcher()
+
+    assert matcher.author_similarity([name], [combined]) == 0.0
+    assert matcher.author_similarity([combined], [name]) == 0.0
+
+
 def test_same_series_book_matches_when_calibre_joins_coauthors():
     hardcover_book = Book(
         id=1,

@@ -416,7 +416,15 @@ class BookMatcher:
 
     @staticmethod
     def _contains_author_tokens(tokens_a: list[str], tokens_b: list[str]) -> bool:
-        """Check whether one multiword author value occurs inside the other."""
+        """Recognize names embedded in combined author values."""
+        # A mononym can accompany a full name (e.g. "Sam Hughes qntm").
+        # Require three tokens in the combined value to avoid treating a
+        # surname alone as a full two-word name, and exclude single initials.
+        for name, combined in ((tokens_a, tokens_b), (tokens_b, tokens_a)):
+            if len(name) == 1 and len(name[0]) > 1 and len(combined) >= 3:
+                if name[0] in combined:
+                    return True
+
         a_in_b = (
             len(tokens_a) >= 2
             and len(tokens_a) <= len(tokens_b)

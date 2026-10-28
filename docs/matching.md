@@ -29,7 +29,9 @@ excludes audiobook edition ISBNs and ASINs from ebook-metadata comparisons.
   suffixes, or omnibus labels. Alternate and shortened variants receive lower
   confidence scores.
 - **Authors:** Comparisons recognize `Surname, Given` ordering, initials, close
-  spellings, and names embedded in a combined author field. Extra contributors
+  spellings, and names embedded in a combined author field. Single-word names
+  also match whole tokens in combined fields containing at least three words;
+  single initials are excluded. Extra contributors
   are tolerated, with a small score reduction.
 
 Without a shared identifier, the overall score is `0.85 × title similarity +
