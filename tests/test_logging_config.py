@@ -1,6 +1,7 @@
 import io
 import json
 import logging
+import os
 import sys
 from types import SimpleNamespace
 
@@ -96,8 +97,11 @@ def test_is_journal_stream_matches_device_and_inode(monkeypatch):
     stream = SimpleNamespace(fileno=lambda: 2)
     monkeypatch.setenv("JOURNAL_STREAM", "123:456")
     monkeypatch.setattr(
-        "murid.logging_config.os.fstat",
-        lambda _: SimpleNamespace(st_dev=123, st_ino=456),
+        "murid.logging_config.os",
+        SimpleNamespace(
+            getenv=os.getenv,
+            fstat=lambda _: SimpleNamespace(st_dev=123, st_ino=456),
+        ),
     )
 
     assert is_journal_stream(stream)
@@ -110,8 +114,11 @@ def test_is_journal_stream_rejects_missing_or_mismatched_metadata(monkeypatch):
 
     monkeypatch.setenv("JOURNAL_STREAM", "123:456")
     monkeypatch.setattr(
-        "murid.logging_config.os.fstat",
-        lambda _: SimpleNamespace(st_dev=123, st_ino=789),
+        "murid.logging_config.os",
+        SimpleNamespace(
+            getenv=os.getenv,
+            fstat=lambda _: SimpleNamespace(st_dev=123, st_ino=789),
+        ),
     )
     assert not is_journal_stream(stream)
 
