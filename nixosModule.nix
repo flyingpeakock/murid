@@ -12,6 +12,53 @@ in
     }:
     let
       cfg = config.services.murid;
+      calibre = if cfg.config == null then null else cfg.config.calibre;
+      audio = if cfg.config == null then null else cfg.config.audiobookshelf;
+      downloadPath = if cfg.config == null then null else cfg.config.qbittorrent.mapping.murid_path;
+      calibreExecutable = if calibre == null then null else calibre.calibredb_executable;
+      useCalibreOnPath = cfg.configFile != null || calibreExecutable == "calibredb";
+      isWithin = parent: path: parent == path || lib.hasPrefix "${parent}/" path;
+      normalizePath =
+        path:
+        "/"
+        + lib.concatStringsSep "/" (
+          lib.filter (part: part != "" && part != ".") (lib.splitString "/" path)
+        );
+      libraryPath = normalizePath audio.library_path;
+      stagingPath = normalizePath (
+        if audio.staging_path != null then
+          audio.staging_path
+        else
+          "${builtins.dirOf libraryPath}/.murid-staging-${builtins.baseNameOf libraryPath}"
+      );
+      commonParent =
+        parent: path:
+        if parent == "/" || isWithin parent path then parent else commonParent (builtins.dirOf parent) path;
+      audioRoot = commonParent (builtins.dirOf libraryPath) stagingPath;
+      localCalibre =
+        calibre != null
+        && !(
+          lib.hasPrefix "http://" (lib.toLower calibre.library)
+          || lib.hasPrefix "https://" (lib.toLower calibre.library)
+        );
+      storeCalibre = calibreExecutable != null && lib.hasPrefix "${builtins.storeDir}/" calibreExecutable;
+      readOnlyPaths =
+        map normalizePath cfg.readOnlyPaths
+        ++ lib.optional (cfg.configFile != null) (normalizePath cfg.configFile)
+        ++ lib.optional (downloadPath != null) (normalizePath downloadPath)
+        ++ lib.optional (
+          calibreExecutable != null && lib.hasPrefix "/" calibreExecutable && !storeCalibre
+        ) (normalizePath calibreExecutable);
+      writablePaths = lib.unique (
+        map normalizePath cfg.readWritePaths
+        ++ lib.optional localCalibre (normalizePath calibre.library)
+        ++ lib.optional (audio != null) audioRoot
+      );
+      # A nested bind also introduces a mount boundary. Keep one mount per writable tree.
+      writableRoots = lib.filter (
+        path: !lib.any (parent: parent != path && isWithin parent path) writablePaths
+      ) writablePaths;
+      unitPath = path: builtins.toJSON (lib.replaceStrings [ "%" ] [ "%%" ] path);
       mediaTypes =
         if cfg.config == null then
           [ ]
@@ -129,14 +176,27 @@ in
           default = [ ];
         };
         requiresMountsFor = lib.mkOption {
-          description = "Additional absolute paths whose mounts must be available before Murid starts; use for configFile deployments and download mounts";
+          description = "Additional paths whose mounts must be available before Murid starts. This does not grant access inside the service.";
+          type = lib.types.listOf (lib.types.addCheck lib.types.str (lib.hasPrefix "/"));
+          default = [ ];
+        };
+
+        readOnlyPaths = lib.mkOption {
+          description = "Additional absolute paths to bind read-only, such as completed download directories without an inline qBittorrent path mapping.";
+          type = lib.types.listOf (lib.types.addCheck lib.types.str (lib.hasPrefix "/"));
+          default = [ ];
+        };
+
+        readWritePaths = lib.mkOption {
+          description = "Additional absolute paths to bind writable. With configFile, include the local Calibre library and a single common parent for audiobook library and staging.";
           type = lib.types.listOf (lib.types.addCheck lib.types.str (lib.hasPrefix "/"));
           default = [ ];
         };
 
         configFile = lib.mkOption {
           description = ''
-            Path to the murid configuration file.
+            Absolute path to the Murid configuration file. Use readOnlyPaths and readWritePaths
+            for the downloads and libraries referenced in this file.
             Set either this option or `config`.
           '';
           type = lib.types.nullOr lib.types.str;
@@ -393,6 +453,20 @@ in
             assertion = !(builtins.elem "audiobook" mediaTypes) || cfg.config.audiobookshelf != null;
             message = "Audiobook requests require services.murid.config.audiobookshelf";
           }
+          {
+            assertion =
+              lib.all (path: path != "/" && !(lib.elem ".." (lib.splitString "/" path))) (
+                readOnlyPaths ++ writablePaths
+              )
+              && (
+                audio == null
+                || lib.all (path: !(lib.elem ".." (lib.splitString "/" path))) [
+                  libraryPath
+                  stagingPath
+                ]
+              );
+            message = "Murid confinement paths cannot expose / or contain ..; use a dedicated common directory for the audiobook library and staging";
+          }
         ];
 
         users = {
@@ -412,41 +486,51 @@ in
           enable = true;
           after = [ "network.target" ];
           wantedBy = [ "multi-user.target" ];
-          unitConfig.RequiresMountsFor = lib.unique (
-            cfg.requiresMountsFor
-            ++ (
-              if cfg.config != null && cfg.config.audiobookshelf != null then
-                let
-                  audio = cfg.config.audiobookshelf;
-                  staging =
-                    if audio.staging_path != null then
-                      audio.staging_path
-                    else
-                      "${builtins.dirOf audio.library_path}/.murid-staging-${builtins.baseNameOf audio.library_path}";
-                in
-                [
-                  audio.library_path
-                  staging
-                ]
-              else
-                [ ]
+          path = lib.optional useCalibreOnPath pkgs.calibre;
+          # EnvironmentFile is read by the service manager before entering the private root.
+          environment = {
+            NIX_SSL_CERT_FILE = "/etc/ssl/certs/ca-bundle.crt";
+            SSL_CERT_FILE = "/etc/ssl/certs/ca-bundle.crt";
+          };
+          confinement = {
+            enable = true;
+            packages =
+              lib.optional useCalibreOnPath pkgs.calibre ++ lib.optional storeCalibre calibreExecutable;
+          };
+          unitConfig.RequiresMountsFor = map unitPath (
+            lib.unique (
+              cfg.requiresMountsFor
+              ++ readOnlyPaths
+              ++ lib.optional localCalibre (normalizePath calibre.library)
+              ++ map normalizePath cfg.readWritePaths
+              ++ lib.optionals (audio != null) [
+                libraryPath
+                stagingPath
+              ]
             )
           );
           serviceConfig =
             lib.mapAttrs (_: lib.mkDefault) {
+              AmbientCapabilities = "";
               CapabilityBoundingSet = "";
               LockPersonality = true;
+              MemoryDenyWriteExecute = true;
               NoNewPrivileges = true;
               PrivateDevices = true;
+              PrivateMounts = true;
+              PrivateTmp = true;
+              ProcSubset = "pid";
               ProtectClock = true;
               ProtectControlGroups = true;
+              # Hide host homes while allowing explicitly bound libraries beneath them.
+              ProtectHome = "tmpfs";
               ProtectHostname = true;
               ProtectKernelLogs = true;
               ProtectKernelModules = true;
               ProtectKernelTunables = true;
               ProtectProc = "invisible";
-              # Local Calibre libraries and audiobook staging paths can live on shared mounts.
-              ProtectSystem = "full";
+              ProtectSystem = "strict";
+              RemoveIPC = true;
               # Keep DNS, HTTPS and local sockets, including interface discovery over netlink.
               RestrictAddressFamilies = "AF_UNIX AF_INET AF_INET6 AF_NETLINK";
               RestrictNamespaces = true;
@@ -457,6 +541,20 @@ in
               SystemCallFilter = "~@clock @cpu-emulation @debug @module @mount @obsolete @raw-io @reboot @swap";
             }
             // {
+              BindReadOnlyPaths =
+                map (path: "-${path}") [
+                  "/etc/group"
+                  "/etc/hosts"
+                  "/etc/localtime"
+                  "/etc/nsswitch.conf"
+                  "/etc/passwd"
+                  "/etc/resolv.conf"
+                  "/etc/ssl/certs/ca-bundle.crt"
+                  "/etc/ssl/certs/ca-certificates.crt"
+                ]
+                ++ map unitPath (lib.unique readOnlyPaths);
+              BindPaths = map unitPath writableRoots;
+              ReadWritePaths = map (path: unitPath "+${path}") writableRoots;
               Type = "simple";
               SupplementaryGroups = cfg.supplementaryGroups;
               User = cfg.user;

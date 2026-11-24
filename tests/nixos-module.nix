@@ -50,11 +50,9 @@ let
       "media"
       "qbittorrent"
     ];
-    requiresMountsFor = [
-      "/shared/audiobooks"
-      "/shared/staging"
-      "/downloads"
-    ];
+    requiresMountsFor = [ "/mounted-first" ];
+    readOnlyPaths = [ "/downloads" ];
+    readWritePaths = [ "/shared" ];
   };
   fromUserLists = evaluate {
     config = inlineConfig // {
@@ -193,6 +191,24 @@ let
   );
   fileCommand = fromFile.systemd.services.murid.serviceConfig.ExecStart;
   fileUnit = fromFile.systemd.units."murid.service".text;
+  remoteService = fromInline.systemd.services.murid.serviceConfig;
+  audioService = fromAudio.systemd.services.murid.serviceConfig;
+  externalService = sharedService.systemd.services.murid.serviceConfig;
+  localService =
+    (evaluate {
+      config = audioConfig // {
+        calibre.library = "/mnt/calibre";
+        qbittorrent = inlineConfig.qbittorrent // {
+          mapping = {
+            qbit_path = "/torrents";
+            murid_path = "/mnt/downloads";
+          };
+        };
+        audiobookshelf = audioConfig.audiobookshelf // {
+          staging_path = "/mnt/private/staging";
+        };
+      };
+    }).systemd.services.murid.serviceConfig;
   inlineCommand = fromInline.systemd.services.murid.serviceConfig.ExecStart;
   expectedFileCommand = "${lib.getExe package} ${
     lib.escapeShellArgs [
@@ -225,8 +241,8 @@ let
     && fromInline.systemd.services.murid.unitConfig.RequiresMountsFor == [ ]
     &&
       fromAudio.systemd.services.murid.unitConfig.RequiresMountsFor == [
-        "/mnt/audiobooks"
-        "/mnt/.murid-staging-audiobooks"
+        ''"/mnt/audiobooks"''
+        ''"/mnt/.murid-staging-audiobooks"''
       ]
     &&
       sharedService.systemd.services.murid.serviceConfig.SupplementaryGroups == [
@@ -235,10 +251,22 @@ let
       ]
     &&
       sharedService.systemd.services.murid.unitConfig.RequiresMountsFor == [
-        "/shared/audiobooks"
-        "/shared/staging"
-        "/downloads"
+        ''"/mounted-first"''
+        ''"/downloads"''
+        ''"/etc/murid.yaml"''
+        ''"/shared"''
       ]
+    && remoteService.BindPaths == [ ]
+    && audioService.BindPaths == [ ''"/mnt"'' ]
+    && audioService.ReadWritePaths == [ ''"+/mnt"'' ]
+    && localService.BindPaths == [ ''"/mnt"'' ]
+    && builtins.elem ''"/mnt/downloads"'' localService.BindReadOnlyPaths
+    && !(builtins.elem ''"/torrents"'' localService.BindReadOnlyPaths)
+    && externalService.BindPaths == [ ''"/shared"'' ]
+    && builtins.elem ''"/downloads"'' externalService.BindReadOnlyPaths
+    && builtins.elem ''"/etc/murid.yaml"'' externalService.BindReadOnlyPaths
+    && !(builtins.elem ''"/mounted-first"'' externalService.BindReadOnlyPaths)
+    && !(builtins.elem ''"/etc/murid.env"'' externalService.BindReadOnlyPaths)
     && backendsValid fromAudio
     && backendsValid fromBoth
     && backendsValid fromGrouped
@@ -296,8 +324,19 @@ let
     && !(invalidMedia [ ]).success
     && !(invalidMedia [ "video" ]).success
     && fileCommand == expectedFileCommand
-    && lib.hasInfix "\nCapabilityBoundingSet=\n" fileUnit
-    && lib.hasInfix "\nNoNewPrivileges=true\n" fileUnit
+    && lib.all (line: lib.hasInfix "\n${line}\n" fileUnit) [
+      "AmbientCapabilities="
+      "CapabilityBoundingSet="
+      "MemoryDenyWriteExecute=true"
+      "NoNewPrivileges=true"
+      "PrivateMounts=true"
+      "PrivateTmp=true"
+      "ProcSubset=pid"
+      "ProtectHome=tmpfs"
+      "ProtectSystem=strict"
+      "RemoveIPC=true"
+      "RootDirectory=/run/confinement/%n"
+    ]
     && lib.hasPrefix "${lib.getExe package} ${
       lib.escapeShellArgs [
         "schedule"

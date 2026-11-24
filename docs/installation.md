@@ -65,11 +65,11 @@ The module starts `murid schedule` and accepts either an inline `services.murid.
 or a path in `services.murid.configFile`. Set `environmentFile` when the selected
 configuration uses `!ENV` secrets.
 
-The service sandbox allows outbound connections and protects `/etc`, `/usr`,
-and the boot directories from writes. If a local Calibre library is under one
-of those directories, grant write access to its specific path with
-`systemd.services.murid.serviceConfig.ReadWritePaths`. The service user still
-needs filesystem permission to write there.
+Murid runs in a private filesystem root. The module supplies its runtime
+dependencies, DNS configuration, and TLS trust store. Systemd reads
+`environmentFile` before entering that root, so the service has the environment
+variables without access to the credential file. `ProtectHome=tmpfs` hides host
+home directories while allowing explicitly bound media paths beneath them.
 
 ## Shared audiobook libraries on NixOS
 
@@ -81,31 +81,15 @@ paths, but they must expose the same library root. Staging must be on that same
 filesystem and physically outside all scanned roots, including bind-mount aliases.
 See [Audiobookshelf configuration](configuration.md#audiobookshelf).
 
-Murid publishes audiobooks with an atomic rename, so staging and the library
-must share one writable mount inside the service. If both are under a directory
-protected by the sandbox, add one `systemd.services.murid.serviceConfig.ReadWritePaths`
-entry for their narrowest existing common parent, such as `/etc/murid-media`
-for sibling `staging` and `audiobooks` directories. Separate entries for the
-two paths can create separate mounts and cause the rename to fail with `EXDEV`
-even when both paths are on the same filesystem. If the only common parent
-would grant write access too broadly, move both paths outside the protected
-tree and keep them on the same mount.
+Keep the audiobook library and staging together under a dedicated parent
+directory on one mount. Murid publishes with an atomic rename, which can fail
+with `EXDEV` across two bind mounts on the same filesystem. For inline
+`config`, the module binds the narrowest common parent once, with write access.
+It also binds a local `calibre.library` writable and
+`qbittorrent.mapping.murid_path` read-only when configured.
 
-If an existing layout spans a protected path and an unprotected path, such as
-`/etc/audiobooks` and `/srv/murid-staging`, a write exception for the library
-alone can split the mount. If you cannot move both paths onto one writable
-mount outside the protected tree, use this migration fallback and remove any
-`ReadWritePaths` exceptions added for these two paths:
-
-```nix
-systemd.services.murid.serviceConfig.ProtectSystem = false;
-```
-
-This disables the sandbox's read-only protection for OS directories for
-Murid. Restore the default after moving the library and staging to a shared
-writable mount.
-
-The NixOS module accepts extra service groups and mount dependencies:
+With `configFile`, declare the library and download paths explicitly. Use a
+single writable entry for the audiobook library and staging parent.
 
 ```nix
 services.murid = {
@@ -113,17 +97,17 @@ services.murid = {
   configFile = "/etc/murid.yaml";
   environmentFile = "/etc/murid.env";
   supplementaryGroups = [ "media" "qbittorrent" ];
-  requiresMountsFor = [ "/shared/audiobooks" "/shared/staging" "/downloads" ];
+  readOnlyPaths = [ "/downloads" ];
+  readWritePaths = [ "/shared/audiobook-media" "/shared/calibre" ];
 };
 ```
 
-Use existing groups appropriate to your deployment and grant directory access
-explicitly. The module does not chown or chmod your existing media directories.
-For inline `config`, it automatically adds mount dependencies for
-`audiobookshelf.library_path` and the explicit/default staging path. With
-`configFile`, specify these paths through `requiresMountsFor`; also include the
-completed-download mount when needed. Mount dependencies order startup but do not
-create directories or grant access.
+Use `readOnlyPaths` for the completed-download directory when qBittorrent
+returns paths without an inline mapping. Existing groups and file permissions
+still govern access. Use canonical paths for media and keep unrelated files
+outside the writable parent. The module orders startup after the configured
+mounts. `requiresMountsFor` adds startup dependencies only. Restart the unit
+after replacing a bind-mounted configuration file by atomic rename.
 
 Run connection diagnostics with the actual service user and service environment
 before enabling the schedule.

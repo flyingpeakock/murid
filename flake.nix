@@ -98,6 +98,10 @@
                   module = inputs.self.nixosModules.default;
                   inherit (inputs) nixpkgs;
                 };
+                nixos-smoke = pkgs.testers.runNixOSTest {
+                  imports = [ ./tests/nixos-smoke.nix ];
+                  defaults.imports = [ inputs.self.nixosModules.default ];
+                };
               }
             else
               { };
