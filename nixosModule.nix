@@ -432,24 +432,48 @@ in
                 [ ]
             )
           );
-          serviceConfig = {
-            Type = "simple";
-            SupplementaryGroups = cfg.supplementaryGroups;
-            User = cfg.user;
-            Group = cfg.group;
-            EnvironmentFile = lib.optionalString (cfg.environmentFile != null) cfg.environmentFile;
-            ExecStart =
-              let
-                configFile = if cfg.config != null then createYAMLConfig cfg.config else cfg.configFile;
-                args = [
-                  "schedule"
-                  "--config"
-                  (toString configFile)
-                ]
-                ++ cfg.extraArgs;
-              in
-              "${lib.getExe cfg.package} ${lib.escapeShellArgs args}";
-          };
+          serviceConfig =
+            lib.mapAttrs (_: lib.mkDefault) {
+              CapabilityBoundingSet = "";
+              LockPersonality = true;
+              NoNewPrivileges = true;
+              PrivateDevices = true;
+              ProtectClock = true;
+              ProtectControlGroups = true;
+              ProtectHostname = true;
+              ProtectKernelLogs = true;
+              ProtectKernelModules = true;
+              ProtectKernelTunables = true;
+              ProtectProc = "invisible";
+              # Local Calibre libraries and audiobook staging paths can live on shared mounts.
+              ProtectSystem = "full";
+              # Keep DNS, HTTPS and local sockets, including interface discovery over netlink.
+              RestrictAddressFamilies = "AF_UNIX AF_INET AF_INET6 AF_NETLINK";
+              RestrictNamespaces = true;
+              RestrictRealtime = true;
+              RestrictSUIDSGID = true;
+              SystemCallArchitectures = "native";
+              SystemCallErrorNumber = "EPERM";
+              SystemCallFilter = "~@clock @cpu-emulation @debug @module @mount @obsolete @raw-io @reboot @swap";
+            }
+            // {
+              Type = "simple";
+              SupplementaryGroups = cfg.supplementaryGroups;
+              User = cfg.user;
+              Group = cfg.group;
+              EnvironmentFile = lib.optionalString (cfg.environmentFile != null) cfg.environmentFile;
+              ExecStart =
+                let
+                  configFile = if cfg.config != null then createYAMLConfig cfg.config else cfg.configFile;
+                  args = [
+                    "schedule"
+                    "--config"
+                    (toString configFile)
+                  ]
+                  ++ cfg.extraArgs;
+                in
+                "${lib.getExe cfg.package} ${lib.escapeShellArgs args}";
+            };
         };
       };
     };

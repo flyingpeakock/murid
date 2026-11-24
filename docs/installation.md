@@ -65,6 +65,12 @@ The module starts `murid schedule` and accepts either an inline `services.murid.
 or a path in `services.murid.configFile`. Set `environmentFile` when the selected
 configuration uses `!ENV` secrets.
 
+The service sandbox allows outbound connections and protects `/etc`, `/usr`,
+and the boot directories from writes. If a local Calibre library is under one
+of those directories, grant write access to its specific path with
+`systemd.services.murid.serviceConfig.ReadWritePaths`. The service user still
+needs filesystem permission to write there.
+
 ## Shared audiobook libraries on NixOS
 
 Murid needs read access to completed downloads and read/write/traverse access to
@@ -74,6 +80,30 @@ the published library and its ancestors. The two processes may use different mou
 paths, but they must expose the same library root. Staging must be on that same
 filesystem and physically outside all scanned roots, including bind-mount aliases.
 See [Audiobookshelf configuration](configuration.md#audiobookshelf).
+
+Murid publishes audiobooks with an atomic rename, so staging and the library
+must share one writable mount inside the service. If both are under a directory
+protected by the sandbox, add one `systemd.services.murid.serviceConfig.ReadWritePaths`
+entry for their narrowest existing common parent, such as `/etc/murid-media`
+for sibling `staging` and `audiobooks` directories. Separate entries for the
+two paths can create separate mounts and cause the rename to fail with `EXDEV`
+even when both paths are on the same filesystem. If the only common parent
+would grant write access too broadly, move both paths outside the protected
+tree and keep them on the same mount.
+
+If an existing layout spans a protected path and an unprotected path, such as
+`/etc/audiobooks` and `/srv/murid-staging`, a write exception for the library
+alone can split the mount. If you cannot move both paths onto one writable
+mount outside the protected tree, use this migration fallback and remove any
+`ReadWritePaths` exceptions added for these two paths:
+
+```nix
+systemd.services.murid.serviceConfig.ProtectSystem = false;
+```
+
+This disables the sandbox's read-only protection for OS directories for
+Murid. Restore the default after moving the library and staging to a shared
+writable mount.
 
 The NixOS module accepts extra service groups and mount dependencies:
 

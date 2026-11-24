@@ -192,6 +192,7 @@ let
       true
   );
   fileCommand = fromFile.systemd.services.murid.serviceConfig.ExecStart;
+  fileUnit = fromFile.systemd.units."murid.service".text;
   inlineCommand = fromInline.systemd.services.murid.serviceConfig.ExecStart;
   expectedFileCommand = "${lib.getExe package} ${
     lib.escapeShellArgs [
@@ -295,6 +296,8 @@ let
     && !(invalidMedia [ ]).success
     && !(invalidMedia [ "video" ]).success
     && fileCommand == expectedFileCommand
+    && lib.hasInfix "\nCapabilityBoundingSet=\n" fileUnit
+    && lib.hasInfix "\nNoNewPrivileges=true\n" fileUnit
     && lib.hasPrefix "${lib.getExe package} ${
       lib.escapeShellArgs [
         "schedule"
