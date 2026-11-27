@@ -105,7 +105,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Install Nix
-        uses: cachix/install-nix-action@3c6342b75005b9cc7c7d4069c3e9179247c89012 # v31
+        uses: cachix/install-nix-action@382a9ed9481c7c1f94f68b72ef105b3417c73877 # v31
       - name: Run flake checks, including the NixOS module
         run: nix flake check --no-update-lock-file --print-build-logs
       - name: Build package
